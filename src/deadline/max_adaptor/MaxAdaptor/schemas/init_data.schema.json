@@ -1,0 +1,39 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+        "camera": { "type": "string" },
+        "output_file_path": { "type": "string" },
+        "output_file_name": { "type": "string" },
+        "output_file_format": {
+            "enum": [
+                ".avi",
+                ".bmp",
+                ".cin",
+                ".eps",
+                ".exr",
+                ".hdr",
+                ".jpg",
+                ".png",
+                ".rla",
+                ".rpf",
+                ".tga",
+                ".tif",
+                ".dds"
+            ]
+        },
+        "state_set": { "type": "string" },
+        "renderer": {
+            "enum": [
+                "Default_Scanline_Renderer",
+                "ART_Renderer"
+            ]
+        },
+        "scene_file": { "type": "string" },
+        "strict_error_checking": { "type": "boolean" }
+    },
+    "required": [
+        "renderer",
+        "scene_file"
+    ]
+}

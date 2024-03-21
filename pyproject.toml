@@ -1,0 +1,160 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "deadline-cloud-for-3ds-max"
+dynamic = ["version"]
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.9"
+# Python versions:
+# 2023 - 3.9: https://help.autodesk.com/view/MAXDEV/2023/ENU/?guid=MAXDEV_Python_about_the_3ds_max_python_api_html
+# 2024 - 3.9: https://help.autodesk.com/view/MAXDEV/2024/ENU/?guid=MAXDEV_Python_about_the_3ds_max_python_api_html
+
+dependencies = [
+    "deadline == 0.38.*", 
+    "openjd-adaptor-runtime == 0.5.*",
+]
+
+[project.scripts]
+3dsmax-openjd = "deadline.max_adaptor.MaxAdaptor:main"
+
+# --- HATCH ---
+
+[tool.hatch.build]
+artifacts = ["*_version.py"]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+version_scheme = "post-release"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "_version.py"
+
+[tool.hatch.build.hooks.custom]
+path = "hatch_custom_hook.py"
+
+[tool.hatch.build.hooks.custom.copy_version_py]
+destinations = [
+  "src/deadline/max_adaptor",
+  "src/deadline/max_submitter",
+]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/*", "hatch_custom_hook.py"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/deadline"]
+
+# --- MYPY ---
+
+[tool.mypy]
+python_version = "3.9"
+check_untyped_defs = true
+show_error_codes = true
+pretty = true
+files = ["src/**/*.py"]
+ignore_missing_imports = true
+# Tell mypy that there's a namespace package at src/deadline
+namespace_packages = true
+explicit_package_bases = true
+mypy_path = "src"
+
+# [[tool.mypy.overrides]]
+# module = ["PySide2.*"]
+
+# --- RUFF / BLACK ---
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["deadline_worker_agent"]
+
+[tool.black]
+line-length = 100
+
+# --- PYTEST ---
+
+[tool.pytest.ini_options]
+xfail_strict = true
+addopts = [
+  "--durations=5",
+  "--cov=src/deadline/max_adaptor",
+  "--cov=src/deadline/max_submitter",
+  "--color=yes",
+  "--cov-report=html:build/coverage",
+  "--cov-report=xml:build/coverage/coverage.xml",
+  "--cov-report=term-missing",
+  "--numprocesses=auto",
+]
+testpaths = ["test"]
+looponfailroots = ["src", "test"]
+# looponfailroots is deprecated, this removes the deprecation from the test output
+filterwarnings = ["ignore::DeprecationWarning"]
+
+# --- COVERAGE ---
+
+[tool.coverage.run]
+source_pkgs = [
+  "deadline/max_adaptor",
+  "deadline/max_submitter",
+]
+branch = true
+parallel = true
+omit = [
+  "**/__main__.py",
+  "**/_version.py",
+]
+
+
+[tool.coverage.paths]
+source = ["src/"]
+
+[tool.coverage.report]
+show_missing = true
+
+[tool.semantic_release]
+# Can be removed or set to true once we are v1
+major_on_zero = false
+tag_format = "{version}"
+
+[tool.semantic_release.commit_parser_options]
+allowed_tags = [
+    "build",
+    "chore",
+    "ci",
+    "docs",
+    "feat",
+    "fix",
+    "perf",
+    "style",
+    "refactor",
+    "test",
+]
+minor_tags = []
+patch_tags = [
+  "chore",
+  "feat",
+  "fix",
+  "refactor",
+]
+
+[tool.semantic_release.publish]
+upload_to_vcs_release = false
+
+[tool.semantic_release.changelog]
+template_dir = ".semantic_release"
+
+[tool.semantic_release.changelog.environment]
+trim_blocks = true
+lstrip_blocks = true
+
+[tool.semantic_release.branches.release]
+match = "(mainline|release)"

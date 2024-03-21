@@ -1,0 +1,32 @@
+# Hatch version temp file
+*_version.py
+
+# build artifacts
+build/
+dependency_bundle/
+dist/
+plugin_env/
+wheels/
+
+*.egg-info/
+__pycache__/
+*.py[cod]
+.coverage
+.tox
+
+# misc extensions that might pop up
+.run
+.exe
+.zip
+
+# virtualenv
+.venv
+venv/
+
+# IDE
+.vscode
+.idea/
+
+# macOS
+.DS_STORE
+

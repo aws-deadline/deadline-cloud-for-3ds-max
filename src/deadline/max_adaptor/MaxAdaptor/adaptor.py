@@ -141,7 +141,7 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
             return self._server.server_path
 
         raise RuntimeError(
-            "Could not find a socket path because the server did not finish " "initializing"
+            "Could not find a server path because the server did not finish initializing"
         )
 
     def _start_max_server(self) -> None:

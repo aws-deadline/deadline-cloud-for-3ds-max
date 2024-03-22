@@ -26,7 +26,7 @@ def show_ui():
     # Give popup if scene isn't saved yet
     if not rt.maxFileName:
         msg = QMessageBox()
-        msg.setWindowTitle("Deadline Cloud Submitter")
+        msg.setWindowTitle("AWS Deadline Cloud")
         msg.setText(
             "The 3dsMax Scene is not saved to disk. \n"
             "Please save it before opening the submitter dialog"

@@ -31,8 +31,8 @@ classifiers = [
 # 2024 - 3.9: https://help.autodesk.com/view/MAXDEV/2024/ENU/?guid=MAXDEV_Python_about_the_3ds_max_python_api_html
 
 dependencies = [
-    "deadline == 0.45.*", 
-    "openjd-adaptor-runtime == 0.6.*",
+    "deadline == 0.47.*", 
+    "openjd-adaptor-runtime == 0.7.*",
 ]
 
 [project.urls]

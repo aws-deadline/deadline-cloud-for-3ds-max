@@ -1,62 +1,59 @@
+[![pypi](https://img.shields.io/pypi/v/deadline-cloud-for-3ds-max.svg?style=flat)](https://pypi.python.org/pypi/deadline-cloud-for-3ds-max)
+[![python](https://img.shields.io/pypi/pyversions/deadline-cloud-for-3ds-max.svg?style=flat)](https://pypi.python.org/pypi/deadline-cloud-for-3ds-max)
+[![license](https://img.shields.io/pypi/l/deadline-cloud-for-3ds-max.svg?style=flat)](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/blob/mainline/LICENSE)
+
 # AWS Deadline Cloud for 3ds Max
 
+### Disclaimer
+---
 This GitHub repository is an example integration with AWS Deadline Cloud that is intended to only be used for testing and is subject to change. This code is an alpha release. It is not a commercial release and may contain bugs, errors, defects, or harmful components. Accordingly, the code in this repository is provided as-is. Use within a production environment is at your own risk!
- 
+
 Our focus is to explore a variety of software applications to ensure we have good coverage across common workflows. We prioritized making this example available earlier to users rather than being feature complete.
 
 This example has been used by at least one internal or external development team to create a series of jobs that successfully rendered. However, your mileage may vary. If you have questions or issues with this example, please start a discussion or cut an issue.
+---
 
-## Overview
+AWS Deadline Cloud for 3ds Max is a python package that allows users to create [AWS Deadline Cloud][deadline-cloud] jobs from within 3ds Max. Using the [Open Job Description (OpenJD) Adaptor Runtime][openjd-adaptor-runtime] this package also provides a command line application that adapts 3ds Max's command line interface to support the [OpenJD specification][openjd].
 
-This package has two active branches:
-
-- `mainline` -- For active development. This branch is not intended to be consumed by other packages. Any commit to this branch may break APIs, dependencies, and so on, and thus break any consumer without notice.
-- `release` -- The official release of the package intended for consumers. Any breaking releases will be accompanied with an increase to this package's interface version.
-
-The deadline.max_adaptor package is an adaptor that renders 3ds Max scenes through the 3dsmax executable. It uses the Open Job Description adaptor_runtime and supports job stickiness.
-
-## Development
-
-See [DEVELOPMENT](DEVELOPMENT.md) for more information.
-
-## Build / Test / Release
-
-### Build the package
-
-```bash
-hatch run build
-```
-
-### Run tests
-
-```bash
-hatch run test
-```
-
-### Run linting
-
-```bash
-hatch run lint
-```
-
-### Run formatting
-
-```bash
-hatch run fmt
-```
-
-### Run tests for all supported Python versions
-
-```bash
-hatch run all:test
-```
+[deadline-cloud]: https://docs.aws.amazon.com/deadline-cloud/latest/userguide/what-is-deadline-cloud.html
+[deadline-cloud-client]: https://github.com/aws-deadline/deadline-cloud
+[openjd]: https://github.com/OpenJobDescription/openjd-specifications/wiki
+[openjd-adaptor-runtime]: https://github.com/OpenJobDescription/openjd-adaptor-runtime-for-python
+[openjd-adaptor-runtime-lifecycle]: https://github.com/OpenJobDescription/openjd-adaptor-runtime-for-python/blob/release/README.md#adaptor-lifecycle
 
 ## Compatibility
 
 This library requires:
 
+1. 3ds Max 2024,
 1. Python 3.9 or higher; and
-2. Windows operating system.
+1. Windows operating system.
+
+## Submitter
+
+This package provides a 3ds Max plugin that creates jobs for AWS Deadline Cloud using the [AWS Deadline Cloud client library][deadline-cloud-client]. Based on the loaded scene it determines the files required, allows the user to specify render options, and builds an [OpenJD template][openjd] that defines the workflow.
+
+## Adaptor
+
+The 3ds Max Adaptor implements the [OpenJD][openjd-adaptor-runtime] interface that allows render workloads to launch 3ds Max and feed it commands. This gives the following benefits:
+* a standardized render application interface,
+* sticky rendering, where the application stays open between tasks,
+
+Jobs created by the submitter use this adaptor by default.
+
+### Getting Started
+
+The adaptor can be installed by the standard python packaging mechanisms:
+```sh
+$ pip install deadline-cloud-for-3ds-max
+```
+
+After installation it can then be used as a command line tool:
+```sh
+$ 3dsmax-openjd --help
+```
+
+For more information on the commands the OpenJD adaptor runtime provides, see [here][openjd-adaptor-runtime-lifecycle].
 
 ## Versioning
 
@@ -68,25 +65,13 @@ versions will increment during this initial development stage, they are describe
 2. The MINOR version is currently incremented when backwards incompatible changes are introduced to the public API. 
 3. The PATCH version is currently incremented when bug fixes or backwards compatible changes are introduced to the public API. 
 
-## Telemetry
-
-This library collects telemetry data by default. Telemetry events contain non-personally-identifiable information that helps us understand how users interact with our software so we know what features our customers use, and/or what existing pain points are.
-
-You can opt out of telemetry data collection by either:
-
-1. Setting the environment variable: `DEADLINE_CLOUD_TELEMETRY_OPT_OUT=true`
-2. Setting the config file: `deadline config set telemetry.opt_out true`
-
-Note that setting the environment variable supersedes the config file setting.
-
-## Downloading
-
-You can download this package from:
-- [GitHub releases](https://github.com/casillas2/deadline-cloud-for-3ds-max/releases)
-
 ## Security
 
-See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
+See [CONTRIBUTING](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/blob/release/CONTRIBUTING.md#security-issue-notifications) for more information.
+
+## Telemetry
+
+See [telemetry](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/blob/release/docs/telemetry.md) for more information.
 
 ## License
 

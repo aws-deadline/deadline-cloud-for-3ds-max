@@ -8,7 +8,7 @@ dynamic = ["version"]
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.9"
-description = "The submitter and adaptor to enable 3ds Max support for AWS Deadline Cloud"
+description = "AWS Deadline Cloud for 3ds Max"
 # https://pypi.org/classifiers/
 authors = [
   {name = "Amazon Web Services"},

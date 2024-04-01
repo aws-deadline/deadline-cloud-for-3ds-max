@@ -1,8 +1,9 @@
+# AWS Deadline Cloud for 3ds Max
+
+
 [![pypi](https://img.shields.io/pypi/v/deadline-cloud-for-3ds-max.svg?style=flat)](https://pypi.python.org/pypi/deadline-cloud-for-3ds-max)
 [![python](https://img.shields.io/pypi/pyversions/deadline-cloud-for-3ds-max.svg?style=flat)](https://pypi.python.org/pypi/deadline-cloud-for-3ds-max)
 [![license](https://img.shields.io/pypi/l/deadline-cloud-for-3ds-max.svg?style=flat)](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/blob/mainline/LICENSE)
-
-# AWS Deadline Cloud for 3ds Max
 
 ### Disclaimer
 ---

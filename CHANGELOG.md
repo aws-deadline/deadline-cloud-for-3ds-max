@@ -1,3 +1,10 @@
+## 0.1.0 (2024-04-02)
+
+### BREAKING CHANGES
+* public release (#11) ([`55d4c2f`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/55d4c2fbeeb76f036466f1754d2b0a205251d939))
+
+
+
 ## v0.0.1 (2024-03-26)
 
 ### BREAKING CHANGES

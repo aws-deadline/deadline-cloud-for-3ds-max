@@ -1,3 +1,9 @@
+## 0.1.1 (2024-05-01)
+
+### Dependencies
+* Update deadline requirement from ==0.47.* to ==0.48.* (#23) ([`b45f444`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/b45f444c91d5655c7c5b8278973a540a349c2b5e))
+
+
 ## 0.1.0 (2024-04-02)
 
 ### BREAKING CHANGES

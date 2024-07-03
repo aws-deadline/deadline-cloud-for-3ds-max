@@ -2,6 +2,7 @@
 
 from .default_max_handler import DefaultMaxHandler
 from .art_handler import ArtHandler
+from .corona_handler import CoronaHandler
 
 __all__ = ["DefaultMaxHandler", "get_render_handler"]
 
@@ -18,5 +19,7 @@ def get_render_handler(renderer: str = "Default_Scanline_Renderer") -> DefaultMa
     """
     if renderer == "ART_Renderer":
         return ArtHandler()
+    elif renderer == "Corona":
+        return CoronaHandler()
     else:
         return DefaultMaxHandler()

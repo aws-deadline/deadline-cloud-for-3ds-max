@@ -19,7 +19,7 @@ RENDER_SUBMITTER_SETTINGS_FILE_EXT = ".deadline_render_settings.json"
 TEMP_BACKUP_FILENAME = "max_backup_file.mx"
 
 # Renderers currently supported by Deadline Cloud
-ALLOWED_RENDERERS = ["Default_Scanline_Renderer", "ART_Renderer"]
+ALLOWED_RENDERERS = ["Default_Scanline_Renderer", "ART_Renderer", "Corona"]
 
 # Possible output extensions
 ALLOWED_EXTENSIONS = [
@@ -36,6 +36,7 @@ ALLOWED_EXTENSIONS = [
     ["Targa Image File (*.tga)", ".tga"],
     ["TIF Image File (*.tif)", ".tif"],
     ["DDS Image File (*.dds)", ".dds"],
+    ["Corona EXR Image Format (*.cxr)",".cxr"]
 ]
 
 # Materials allowed for custom override on submit

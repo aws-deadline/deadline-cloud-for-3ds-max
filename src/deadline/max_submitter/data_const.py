@@ -36,7 +36,7 @@ ALLOWED_EXTENSIONS = [
     ["Targa Image File (*.tga)", ".tga"],
     ["TIF Image File (*.tif)", ".tif"],
     ["DDS Image File (*.dds)", ".dds"],
-    ["Corona EXR Image Format (*.cxr)",".cxr"]
+    ["Corona EXR Image Format (*.cxr)", ".cxr"],
 ]
 
 # Materials allowed for custom override on submit

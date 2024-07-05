@@ -19,14 +19,16 @@
                 ".rpf",
                 ".tga",
                 ".tif",
-                ".dds"
+                ".dds",
+                ".cxr"
             ]
         },
         "state_set": { "type": "string" },
         "renderer": {
             "enum": [
                 "Default_Scanline_Renderer",
-                "ART_Renderer"
+                "ART_Renderer",
+                "Corona"
             ]
         },
         "scene_file": { "type": "string" },

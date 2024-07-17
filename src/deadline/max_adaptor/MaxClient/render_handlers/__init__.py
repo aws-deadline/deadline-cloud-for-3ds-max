@@ -3,6 +3,7 @@
 from .default_max_handler import DefaultMaxHandler
 from .art_handler import ArtHandler
 from .corona_handler import CoronaHandler
+from .vray_handler import VrayHandler
 
 __all__ = ["DefaultMaxHandler", "get_render_handler"]
 
@@ -21,5 +22,9 @@ def get_render_handler(renderer: str = "Default_Scanline_Renderer") -> DefaultMa
         return ArtHandler()
     elif renderer == "Corona":
         return CoronaHandler()
+    elif renderer == "V_Ray_6":
+        return VrayHandler(GPU=False)
+    elif renderer == "V_Ray_GPU_6":
+        return VrayHandler(GPU=True)
     else:
         return DefaultMaxHandler()

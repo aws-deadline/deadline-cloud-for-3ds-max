@@ -34,8 +34,12 @@ class VrayHandler(DefaultMaxHandler):
         current_renderer = str(rt.renderers.current).split(":")[0].split("__")[0]
 
         # The V-Ray renderer class name is "V_Ray_6__update_#_#" and "V_Ray_GPU_6__update_#_#"
-        vray = [i for i in list(rt.rendererclass.classes) if "V_Ray" in str(i) and "GPU" not in str(i)][-1]
-        vray_gpu = [i for i in list(rt.rendererclass.classes) if "V_Ray" in str(i) and "GPU" in str(i)][-1]
+        vray = [
+            i for i in list(rt.rendererclass.classes) if "V_Ray" in str(i) and "GPU" not in str(i)
+        ][-1]
+        vray_gpu = [
+            i for i in list(rt.rendererclass.classes) if "V_Ray" in str(i) and "GPU" in str(i)
+        ][-1]
 
         if self.GPU:
             if "V_Ray_GPU" not in current_renderer:

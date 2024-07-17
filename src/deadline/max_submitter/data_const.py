@@ -19,7 +19,13 @@ RENDER_SUBMITTER_SETTINGS_FILE_EXT = ".deadline_render_settings.json"
 TEMP_BACKUP_FILENAME = "max_backup_file.mx"
 
 # Renderers currently supported by Deadline Cloud
-ALLOWED_RENDERERS = ["Default_Scanline_Renderer", "ART_Renderer", "Corona", "V_Ray_6", "V_Ray_GPU_6"]
+ALLOWED_RENDERERS = [
+    "Default_Scanline_Renderer",
+    "ART_Renderer",
+    "Corona",
+    "V_Ray_6",
+    "V_Ray_GPU_6",
+]
 
 # Possible output extensions
 ALLOWED_EXTENSIONS = [

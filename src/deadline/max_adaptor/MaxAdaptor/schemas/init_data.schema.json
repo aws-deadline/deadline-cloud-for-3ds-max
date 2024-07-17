@@ -20,7 +20,8 @@
                 ".tga",
                 ".tif",
                 ".dds",
-                ".cxr"
+                ".cxr",
+                ".vrimg"
             ]
         },
         "state_set": { "type": "string" },
@@ -28,7 +29,9 @@
             "enum": [
                 "Default_Scanline_Renderer",
                 "ART_Renderer",
-                "Corona"
+                "Corona",
+                "V_Ray_6",
+                "V_Ray_GPU_6"
             ]
         },
         "scene_file": { "type": "string" },

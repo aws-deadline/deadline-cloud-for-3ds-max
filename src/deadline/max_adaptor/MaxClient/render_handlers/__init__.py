@@ -22,9 +22,9 @@ def get_render_handler(renderer: str = "Default_Scanline_Renderer") -> DefaultMa
         return ArtHandler()
     elif renderer == "Corona":
         return CoronaHandler()
-    elif renderer == "V_Ray_6":
-        return VrayHandler(GPU=False)
-    elif renderer == "V_Ray_GPU_6":
-        return VrayHandler(GPU=True)
+    elif renderer.startswith("V_Ray_6"):
+        return VrayHandler(gpu=False)
+    elif renderer.startswith("V_Ray_GPU_6"):
+        return VrayHandler(gpu=True)
     else:
         return DefaultMaxHandler()

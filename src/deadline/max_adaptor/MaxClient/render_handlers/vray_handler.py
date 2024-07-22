@@ -6,7 +6,6 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
 import sys
 
-import pymxs  # noqa
 from pymxs import runtime as rt
 
 from .default_max_handler import DefaultMaxHandler
@@ -19,12 +18,12 @@ sys.stderr = sys.__stderr__
 class VrayHandler(DefaultMaxHandler):
     """Render Handler for V-Ray"""
 
-    def __init__(self, GPU):
+    def __init__(self, gpu):
         """
         Initializes the V-Ray and V-Ray Handler
         """
         super().__init__()
-        self.GPU: bool = GPU
+        self.gpu: bool = gpu
 
     def check_renderer(self) -> None:
         """
@@ -34,7 +33,7 @@ class VrayHandler(DefaultMaxHandler):
         current_renderer = str(rt.renderers.current).split(":")[0]
 
         # The V-Ray renderer class name is "V_Ray_6__update_#_#" and "V_Ray_GPU_6__update_#_#"
-        if self.GPU:
+        if self.gpu:
             try:
                 vray_gpu = [
                     i

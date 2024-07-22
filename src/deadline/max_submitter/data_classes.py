@@ -5,15 +5,14 @@
 """
 
 import dataclasses
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
-import json
 from typing import Optional
 
 import pymxs  # noqa
-from pymxs import runtime as rt
-
 from data_const import ALL_CAMERAS_STR, RENDER_SUBMITTER_SETTINGS_FILE_EXT
+from pymxs import runtime as rt
 
 
 @dataclass
@@ -113,7 +112,6 @@ class RenderSubmitterUISettings:
                     f"WARNING: Failed to load sticky settings file {sticky_settings_filename}, reverting to the "
                     "default settings."
                 )
-                pass
 
     def save_sticky_settings(self):
         """

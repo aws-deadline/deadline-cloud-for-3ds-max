@@ -3,29 +3,28 @@
 """
 Defines the Render submitter command which is registered in 3ds Max.
 """
-import os
-import tempfile
-from unittest import mock
-import shutil
-import filecmp
 import difflib
-from typing import Any
-from pathlib import Path
+import filecmp
+import os
+import shutil
+import tempfile
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+from unittest import mock
 
 import pymxs  # noqa
-from pymxs import runtime as rt
 import qtmax
+from deadline.client.exceptions import DeadlineOperationError
+from deadline.client.ui import gui_error_handler
+from deadline.client.ui.dialogs import submit_job_to_deadline_dialog
+from max_render_submitter import show_job_bundle_submitter
+from pymxs import runtime as rt
 from PySide2.QtWidgets import (  # pylint: disable=import-error; type: ignore
     QApplication,
     QFileDialog,
     QMessageBox,
 )
-
-from deadline.client.ui import gui_error_handler
-from deadline.client.exceptions import DeadlineOperationError
-from deadline.client.ui.dialogs import submit_job_to_deadline_dialog
-from max_render_submitter import show_job_bundle_submitter
 
 
 # The following functions expose a DCC interface to the job bundle output test logic.

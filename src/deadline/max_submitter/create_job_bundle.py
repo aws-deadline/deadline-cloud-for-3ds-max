@@ -4,17 +4,16 @@
 3ds Max Deadline Cloud Submitter - Functions for generating the job template and parameter values files
 """
 
-from copy import deepcopy
-from typing import Any
 import os
+from copy import deepcopy
 from pathlib import Path
+from typing import Any
+
 import yaml
-
-from deadline.client.exceptions import DeadlineOperationError
-
-from utilities import max_utils
 from data_classes import RenderSubmitterUISettings, StateSetData
-from data_const import ALL_CAMERAS_STR, ALL_STEREO_CAMERAS_STR, ALL_STATE_SETS_STR
+from data_const import ALL_CAMERAS_STR, ALL_STATE_SETS_STR, ALL_STEREO_CAMERAS_STR
+from deadline.client.exceptions import DeadlineOperationError
+from utilities import max_utils
 
 
 def get_job_template(

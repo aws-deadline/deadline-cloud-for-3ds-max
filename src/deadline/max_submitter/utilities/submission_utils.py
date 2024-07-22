@@ -8,12 +8,10 @@ import logging
 import os
 
 import pymxs  # separate import to initialize
-from pymxs import runtime as rt
-
-from deadline.client.job_bundle.submission import AssetReferences
-
 from data_classes import RenderSubmitterUISettings
 from data_const import SCENE_TWEAKS_MATS
+from deadline.client.job_bundle.submission import AssetReferences
+from pymxs import runtime as rt
 from utilities import max_utils
 
 _logger = logging.getLogger(__name__)
@@ -289,7 +287,7 @@ def clear_material_editor() -> list:
         _logger.info("Closed the Material Editor")
     material_storage = []
     # Note: meditMaterials is a system global containing 24 sample slots in the Material Editor
-    for i in range(0, 24):
+    for i in range(24):
         material_storage.append(rt.meditMaterials[i])
         rt.meditMaterials[i] = rt.standard()
     _logger.info("Cleared the Material Editor")
@@ -304,7 +302,7 @@ def restore_material_editor(materials: list):
     :param materials: the previously saved materials we want to restore
     """
     # Note: meditMaterials is a system global containing 24 sample slots in the Material Editor
-    for i in range(0, 24):
+    for i in range(24):
         rt.meditMaterials[i] = materials[i]
     _logger.info("Restored the Material Editor")
 
@@ -404,7 +402,7 @@ def make_paths_absolute():
         ) else false
     )
     """
-    rt.execute("closeError={}".format(close_error_mxs_function))
+    rt.execute(f"closeError={close_error_mxs_function}")
 
     # Check for deep references
     scene = max_utils.get_scene_path()

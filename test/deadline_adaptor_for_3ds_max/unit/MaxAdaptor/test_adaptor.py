@@ -5,14 +5,13 @@ from __future__ import annotations
 import re
 from unittest.mock import Mock, PropertyMock, patch
 
-import pytest
 import jsonschema  # type: ignore
-
+import pytest
 from deadline.max_adaptor.MaxAdaptor import MaxAdaptor
 from deadline.max_adaptor.MaxAdaptor.adaptor import _FIRST_MAX_ACTIONS, MaxNotRunningError
 
 
-@pytest.fixture()
+@pytest.fixture
 def init_data() -> dict:
     """
     Pytest Fixture to return an init_data dictionary that passes validation
@@ -33,7 +32,7 @@ def init_data() -> dict:
     }
 
 
-@pytest.fixture()
+@pytest.fixture
 def run_data() -> dict:
     """
     Pytest Fixture to return a run_data dictionary that passes validation

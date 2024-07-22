@@ -7,7 +7,6 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 import logging
 
 from deadline.client.ui.dialogs.submit_job_to_deadline_dialog import SubmitJobToDeadlineDialog
-
 from utilities import submission_utils
 
 _logger = logging.getLogger(__name__)

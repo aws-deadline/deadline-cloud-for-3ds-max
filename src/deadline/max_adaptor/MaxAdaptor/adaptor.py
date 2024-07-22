@@ -15,20 +15,17 @@ import time
 from typing import Callable
 
 from openjd.adaptor_runtime.adaptors import Adaptor, AdaptorDataValidators, SemanticVersion
-from openjd.adaptor_runtime_client import Action
 from openjd.adaptor_runtime.adaptors.configuration import AdaptorConfiguration
-from openjd.adaptor_runtime.process import LoggingSubprocess
 from openjd.adaptor_runtime.app_handlers import RegexCallback, RegexHandler
-from openjd.adaptor_runtime.application_ipc import ActionsQueue
-from openjd.adaptor_runtime.application_ipc import AdaptorServer
+from openjd.adaptor_runtime.application_ipc import ActionsQueue, AdaptorServer
+from openjd.adaptor_runtime.process import LoggingSubprocess
+from openjd.adaptor_runtime_client import Action
 
 _logger = logging.getLogger(__name__)
 
 
 class MaxNotRunningError(Exception):
     """Error that is raised when attempting to use Max while it is not running"""
-
-    pass
 
 
 # Renderer needs extra steps
@@ -249,8 +246,8 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
 
         # Add the openjd namespace directory to PYTHONPATH, so that adaptor_runtime_client will be available
         # directly to the adaptor client.
-        import openjd.adaptor_runtime_client
         import deadline.max_adaptor
+        import openjd.adaptor_runtime_client
 
         openjd_namespace_dir = os.path.dirname(
             os.path.dirname(openjd.adaptor_runtime_client.__file__)

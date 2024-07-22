@@ -5,8 +5,8 @@
 """
 
 import logging
-from logging.handlers import RotatingFileHandler
 import os
+from logging.handlers import RotatingFileHandler
 
 LOGGING_FORMAT_FILE = (
     "%(asctime)s %(levelname)8s {%(threadName)-10s}:  %(module)s %(funcName)s: %(message)s"

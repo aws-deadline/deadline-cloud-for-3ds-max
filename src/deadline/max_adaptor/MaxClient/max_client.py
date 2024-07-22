@@ -6,8 +6,8 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
 from __future__ import annotations
 
-import os
 import logging
+import os
 import sys
 from types import FrameType
 from typing import Optional
@@ -19,15 +19,16 @@ from pymxs import runtime as rt
 # adaptor_runtime_client should work.
 try:
     from adaptor_runtime_client import ClientInterface  # type: ignore[import]
+
     from max_adaptor.MaxClient.render_handlers import (  # type: ignore[import]
         get_render_handler,
     )
 
 except (ImportError, ModuleNotFoundError):
-    from openjd.adaptor_runtime_client import ClientInterface  # type: ignore[import]
     from deadline.max_adaptor.MaxClient.render_handlers import (  # type: ignore[import]
         get_render_handler,
     )
+    from openjd.adaptor_runtime_client import ClientInterface  # type: ignore[import]
 
 logger = logging.getLogger(__name__)
 

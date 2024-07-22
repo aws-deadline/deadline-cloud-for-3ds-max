@@ -11,30 +11,27 @@ from os.path import abspath, join, normpath
 from pathlib import Path
 from typing import Any, Optional
 
-import yaml
-
-import qtmax
 import pymxs  # noqa
-from pymxs import runtime as rt
-
-from PySide2.QtCore import Qt
-
-from deadline.client.job_bundle.submission import AssetReferences
-from deadline.client.job_bundle._yaml import deadline_yaml_dump
-from deadline.client.ui.dialogs._types import JobBundlePurpose
-
-from ui.submit_dialog import SubmitMaxJobToDeadlineDialog
-from ui.scene_settings_tab import SceneSettingsWidget
-from data_classes import RenderSubmitterUISettings, StateSetData
-from sanity_checks import check_sanity
+import qtmax
+import yaml
 from create_job_bundle import get_job_template, get_parameters_values
-from utilities import max_utils, submission_utils
+from data_classes import RenderSubmitterUISettings, StateSetData
 from data_const import (
-    ALL_STEREO_CAMERAS_STR,
     ALL_STATE_SETS_STR,
-    UI_GROUP_LABEL,
+    ALL_STEREO_CAMERAS_STR,
     TEMP_BACKUP_FILENAME,
+    UI_GROUP_LABEL,
 )
+from deadline.client.job_bundle._yaml import deadline_yaml_dump
+from deadline.client.job_bundle.submission import AssetReferences
+from deadline.client.ui.dialogs._types import JobBundlePurpose
+from pymxs import runtime as rt
+from PySide2.QtCore import Qt
+from sanity_checks import check_sanity
+from ui.scene_settings_tab import SceneSettingsWidget
+from ui.submit_dialog import SubmitMaxJobToDeadlineDialog
+from utilities import max_utils, submission_utils
+
 from _version import version_tuple as adaptor_version_tuple
 
 _logger = logging.getLogger(__name__)

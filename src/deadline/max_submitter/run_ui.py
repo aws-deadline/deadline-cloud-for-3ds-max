@@ -6,14 +6,11 @@
 
 from logging import root
 
-from pymxs import runtime as rt
-
-from PySide2.QtWidgets import QMessageBox
-
 from deadline.client.config import config_file
-
-from utilities.log_utils import configure_logging
 from max_render_submitter import show_job_bundle_submitter
+from pymxs import runtime as rt
+from PySide2.QtWidgets import QMessageBox
+from utilities.log_utils import configure_logging
 
 
 def show_ui():

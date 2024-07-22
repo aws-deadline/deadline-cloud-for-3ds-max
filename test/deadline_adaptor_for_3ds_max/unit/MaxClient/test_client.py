@@ -4,7 +4,6 @@ import os
 from unittest.mock import Mock, patch
 
 import pytest
-
 from deadline.max_adaptor.MaxClient.max_client import MaxClient, main
 
 

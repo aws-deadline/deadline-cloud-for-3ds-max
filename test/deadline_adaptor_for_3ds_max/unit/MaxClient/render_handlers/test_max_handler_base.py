@@ -2,11 +2,10 @@
 from __future__ import annotations
 
 import pytest
-
 from deadline.max_adaptor.MaxClient.render_handlers import DefaultMaxHandler
 
 
-@pytest.fixture()
+@pytest.fixture
 def maxhandlerbase():
     return DefaultMaxHandler()
 

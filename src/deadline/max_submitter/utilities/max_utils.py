@@ -4,9 +4,9 @@
 3ds Max Deadline Cloud Submitter - Deadline Cloud 3ds Max utilities
 """
 
-from pathlib import Path
 import logging
 import os
+from pathlib import Path
 
 import pymxs  # separate import to initialize
 from pymxs import runtime as rt

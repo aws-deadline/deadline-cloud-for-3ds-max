@@ -4,41 +4,38 @@
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 """
 
-import os
 import logging
+import os
 
 import pymxs  # noqa
+from data_const import (
+    ALL_STATE_SETS_STR,
+    ALLOWED_EXTENSIONS,
+    ALLOWED_RENDERERS,
+    SCENE_TWEAKS_MATS,
+    STEREO_CAMERA_OPTIONS,
+)
+from deadline.client.ui import block_signals
 from pymxs import runtime as rt
-
+from PySide2.QtCore import QRegularExpression, QSize, Qt  # type: ignore
 from PySide2.QtGui import QRegularExpressionValidator
-from PySide2.QtCore import QSize, Qt, QRegularExpression  # type: ignore
 from PySide2.QtWidgets import (  # type: ignore
+    QApplication,
     QCheckBox,
     QComboBox,
     QFileDialog,
     QGridLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QSpacerItem,
     QWidget,
-    QGroupBox,
-    QMessageBox,
-    QApplication,
 )
-
-from deadline.client.ui import block_signals
-
 from utilities import max_utils
-from data_const import (
-    ALLOWED_RENDERERS,
-    ALLOWED_EXTENSIONS,
-    SCENE_TWEAKS_MATS,
-    STEREO_CAMERA_OPTIONS,
-    ALL_STATE_SETS_STR,
-)
 
 _logger = logging.getLogger(__name__)
 
@@ -175,7 +172,8 @@ class SceneSettingsWidget(QWidget):
         )
         self.renderers_box.addItem("Current Renderer not supported by Submitter")
         for renderer in self.renderers:
-            if renderer in ALLOWED_RENDERERS:
+
+            if str(renderer).split("__")[0] in ALLOWED_RENDERERS:
                 self.renderers_box.addItem(renderer.replace("_", " "), renderer)
         lyt.addWidget(QLabel("Renderer"), 5, 0)
         lyt.addWidget(self.renderers_box, 5, 1)

@@ -132,7 +132,7 @@ def check_sanity_specific_state_set(settings: RenderSubmitterUISettings, state_s
     :param settings: a RenderSubmitterUISettings object containing the latest UI settings
     :param state_set: the name of the active state set
     """
-    if str(rt.renderers.current).split(":")[0] not in ALLOWED_RENDERERS:
+    if str(rt.renderers.current).split(":")[0].split("__")[0] not in ALLOWED_RENDERERS:
         raise Exception(
             f"{state_set} has an unsupported renderer set. Renderer: "
             f"{str(rt.renderers.current).split(':')[0]}"

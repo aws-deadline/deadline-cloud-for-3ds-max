@@ -61,7 +61,7 @@ def show_job_bundle_submitter():
     render_settings.output_path = max_utils.get_scene_dir()
     render_settings.output_name = max_utils.get_scene_name() + "_###"
     render_settings.backup_file = rt.execute("GetDir #temp") + "\\" + TEMP_BACKUP_FILENAME
-    render_settings.renderer = str(rt.renderers.current).split(":")[0].split("__")[0]
+    render_settings.renderer = str(rt.renderers.current).split(":")[0]
 
     render_settings.load_sticky_settings()
 
@@ -151,7 +151,7 @@ def show_job_bundle_submitter():
                 state_sets_to_submit.append(
                     StateSetData(
                         state_set=state_set[0],
-                        renderer=str(rt.renderers.current).split(":")[0].split("__")[0],
+                        renderer=str(rt.renderers.current).split(":")[0],
                         frame_range=max_utils.get_frames(),
                         output_directories=output_directories,
                         output_file_dir=output_dir,
@@ -190,7 +190,7 @@ def show_job_bundle_submitter():
             state_sets_to_submit.append(
                 StateSetData(
                     state_set=settings.state_set,
-                    renderer=str(rt.renderers.current).split(":")[0].split("__")[0],
+                    renderer=str(rt.renderers.current).split(":")[0],
                     frame_range=max_utils.get_frames(),
                     output_directories=output_directories,
                     output_file_dir=output_dir,

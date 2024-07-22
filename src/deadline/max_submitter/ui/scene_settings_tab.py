@@ -175,9 +175,8 @@ class SceneSettingsWidget(QWidget):
         )
         self.renderers_box.addItem("Current Renderer not supported by Submitter")
         for renderer in self.renderers:
-            # Adding this to the below if statement doesn't work.
-            renderer = renderer.split("__")[0]
-            if renderer in ALLOWED_RENDERERS:
+
+            if str(renderer).split("__")[0] in ALLOWED_RENDERERS:
                 self.renderers_box.addItem(renderer.replace("_", " "), renderer)
         lyt.addWidget(QLabel("Renderer"), 5, 0)
         lyt.addWidget(self.renderers_box, 5, 1)
@@ -451,7 +450,7 @@ class SceneSettingsWidget(QWidget):
         """
         Set the initial status of the ui fields
         """
-        settings.renderer = str(rt.renderers.current).split(":")[0].split("__")[0]
+        settings.renderer = str(rt.renderers.current).split(":")[0]
         self.proj_path_txt.setText(settings.project_path)
         self.output_path_txt.setText(settings.output_path)
         self.output_name_txt.setText(settings.output_name)
@@ -543,7 +542,7 @@ class SceneSettingsWidget(QWidget):
         Gets the current renderer from the render settings and set it in the UI
         """
         _logger.debug("Renderer updated in Render Settings")
-        renderer = str(rt.renderers.current).split(":")[0].split("__")[0]
+        renderer = str(rt.renderers.current).split(":")[0]
         index = self.renderers_box.findData(renderer)
         if index >= 0:
             self.renderers_box.setCurrentIndex(index)

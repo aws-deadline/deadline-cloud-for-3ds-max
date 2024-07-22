@@ -2,9 +2,15 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
     "properties": {
-        "camera": { "type": "string" },
-        "output_file_path": { "type": "string" },
-        "output_file_name": { "type": "string" },
+        "camera": {
+            "type": "string"
+        },
+        "output_file_path": {
+            "type": "string"
+        },
+        "output_file_name": {
+            "type": "string"
+        },
         "output_file_format": {
             "enum": [
                 ".avi",
@@ -24,18 +30,30 @@
                 ".vrimg"
             ]
         },
-        "state_set": { "type": "string" },
+        "state_set": {
+            "type": "string"
+        },
         "renderer": {
-            "enum": [
-                "Default_Scanline_Renderer",
-                "ART_Renderer",
-                "Corona",
-                "V_Ray_6",
-                "V_Ray_GPU_6"
+            "oneOf": [
+                {
+                    "type": "string",
+                    "pattern": "^V_Ray_[1-9](_GPU)?.*$"
+                },
+                {
+                    "enum": [
+                        "Default_Scanline_Renderer",
+                        "ART_Renderer",
+                        "Corona"
+                    ]
+                }
             ]
         },
-        "scene_file": { "type": "string" },
-        "strict_error_checking": { "type": "boolean" }
+        "scene_file": {
+            "type": "string"
+        },
+        "strict_error_checking": {
+            "type": "boolean"
+        }
     },
     "required": [
         "renderer",

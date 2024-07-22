@@ -43,7 +43,7 @@ ALLOWED_EXTENSIONS = [
     ["TIF Image File (*.tif)", ".tif"],
     ["DDS Image File (*.dds)", ".dds"],
     ["Corona EXR Image Format (*.cxr)", ".cxr"],
-    ["V-Ray image formamt (*.vrimg)", ".vrimg"],
+    ["V-Ray Image Format (*.vrimg)", ".vrimg"],
 ]
 
 # Materials allowed for custom override on submit

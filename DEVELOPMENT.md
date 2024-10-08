@@ -52,12 +52,15 @@ WARNING: This workflow installs additional Python packages into your 3ds Max's p
 
 #### Manual installation
 
-1. Copy `STDCMenuCreator.ms` into your 3DS Max startup scripts (e.g. `C:\Program Files\Autodesk\<version>\scripts\Startup`)
-2. Put `AWSDeadline-SubmitToDeadlineCloud.mcr` in 3ds Max usermacros directory (e.g. `C:\Users\<username>\AppData\Local\Autodesk\3dsMax\<version>\ENU\usermacros`).
-3. Create a `python` folder in your scripts directory (e.g. `C:\Users\<username>\AppData\Local\Autodesk\3dsMax\<version>\ENU\scripts`).
-4. Copy `max_submitter` folder into that newly created `python` folder.
-5. Install `deadline` package (from CodeArtifact) to `~\DeadlineCloudSubmitter\Submitters\3dsMax\scripts` using a Python 3.9 installation (for compatibility with Max)
-    - `pip install deadline -t ~\DeadlineCloudSubmitter\Submitters\3dsMax\scripts`
+1. Build your local copy of `deadline-cloud-for-3ds-max`.
+1. To install the submitter in 3dsMax:
+    1. Copy `STDCMenuCreator.ms` into your 3DS Max startup scripts (e.g. `C:\Program Files\Autodesk\<version>\scripts\Startup`)
+    1. Copy `AWSDeadline-SubmitToDeadlineCloud.mcr` in 3ds Max usermacros directory (e.g. `C:\Users\<username>\AppData\Local\Autodesk\3dsMax\<version>\ENU\usermacros`).
+1. The point of entry for the submitter is the `run_ui.py` file under the `max_submitter` folder. Thus, this file needs to be discoverable by 3dsMax, and `max_submitter` needs to be a discoverable package by python.
+    1. Add the path to `max_submitter` to the `ADSK_3DSMAX_SCRIPTS_ADDON_DIR` environment variable (e.g. In Powershell run `$env:ADSK_3DSMAX_SCRIPTS_ADDON_DIR += "C:\Users\<username>\workplace\deadline-cloud-for-3ds-max\src\deadline\max_submitter"`).
+    1. Add the path to `max_submitter` to the `PYTHONPATH` environment variable (e.g. In Powershell run `$env:PYTHONPATH += "C:\Users\<username>\workplace\deadline-cloud-for-3ds-max\src\deadline\max_submitter"`).
+1. Install `deadline` package to `~\DeadlineCloudSubmitter\Submitters\3dsMax\scripts`, using a python version that is compatible with the version of 3dsMax that you are using (e.g. For 3dsMax 2024 run `pip install deadline --python-version 3.10 --only-binary=:all: -t $env:HOMEPATH\DeadlineCloudSubmitter\Submitters\3dsMax\scripts` in Powershell).
+1. Run `3dsmax` from the same command-line window where the environment variables were set. To do so, `3dsmax` needs to be part of the PATH (e.g. In Powershell run `$env:PATH += ";C:\Program Files\Autodesk\<version>"`).
 
 #### Install for Development
 

@@ -241,7 +241,7 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
 
         :raises: FileNotFoundError: If the max_client.py file could not be found.
         """
-        max_exe = "3dsmax"
+        max_exe = os.environ.get("3DSMAX_ADAPTOR_3DSMAX_EXECUTABLE", "3dsmax")
         regexhandler = RegexHandler(self._get_regex_callbacks())
 
         # Add the openjd namespace directory to PYTHONPATH, so that adaptor_runtime_client will be available

@@ -263,7 +263,7 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
 
         # PythonHost executes 3ds Max with scripts from cli
         self._max_client = LoggingSubprocess(
-            args=[max_exe, "-U", "PythonHost", self.max_client_path],
+            args=[max_exe, "-U", "PythonHost", self.max_client_path, "-silent", "-dm"],
             stdout_handler=regexhandler,
             stderr_handler=regexhandler,
         )

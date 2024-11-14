@@ -31,7 +31,7 @@ AWS Deadline Cloud for 3ds Max is a python package that allows users to create [
 This library requires:
 
 1. 3ds Max 2024,
-1. Python 3.9 or higher; and
+1. Python 3.10 or higher; and
 1. Windows operating system.
 
 ## Submitter

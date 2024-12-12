@@ -1,3 +1,13 @@
+## 0.1.2 (2024-12-12)
+
+
+### Features
+* Added Support for V-Ray 6 and V-Ray GPU 6 Renderers (#35) ([`8cea88e`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/8cea88ec48848c4f0324e5e63ba7d09dca5a2ac6))
+* Added Support for Corona Renderer (#34) ([`ff3c26f`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/ff3c26f52783164b63dfdb6cd74603738d765f9c))
+
+### Bug Fixes
+* Run 3dsMax in silent mode (#52) ([`59d1716`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/59d1716000dda7fbf41a3b81888ded550f04a780))
+
 ## 0.1.1 (2024-05-01)
 
 ### Dependencies

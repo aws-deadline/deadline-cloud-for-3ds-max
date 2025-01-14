@@ -240,12 +240,12 @@ def _merge_adaptor_override_environment():
     if wheels_path_package_names != {
         "openjd_adaptor_runtime",
         "deadline",
-        "deadline_cloud_for_max",
+        "deadline_cloud_for_3ds_max",
     }:
         raise RuntimeError(
             "The Developer Option 'Include Adaptor Wheels' is enabled, but the wheels directory contains the "
             "wrong wheels:\n"
-            + "Expected: openjd_adaptor_runtime, deadline, and deadline_cloud_for_max\n"
+            + "Expected: openjd_adaptor_runtime, deadline, and deadline_cloud_for_3ds_max\n"
             + f"Actual: {wheels_path_package_names}"
         )
 
@@ -368,7 +368,7 @@ def _get_queue_parameters_for_bundle(
 ) -> list[dict[str, Any]]:
     """
     Checks for any overlap between the job parameters we've defined and the queue parameters.
-    Removes the deadline_cloud_for_max from the RezPackages if adaptor wheels are included.
+    Removes the deadline_cloud_for_3ds_max from the RezPackages if adaptor wheels are included.
 
     :param settings: a RenderSubmitterUISettings object containing the latest UI settings
     :param parameter_values: the job parameters we've defined
@@ -386,7 +386,7 @@ def _get_queue_parameters_for_bundle(
             "Max job parameters:\n" + f"{', '.join(parameter_overlap)}"
         )
 
-    # If we're overriding the adaptor with wheels, remove deadline_cloud_for_max from the RezPackages
+    # If we're overriding the adaptor with wheels, remove deadline_cloud_for_3ds_max from the RezPackages
     if settings.include_adaptor_wheels:
         conda_param: dict[str, str] = {}
         # Find the RezPackages parameter definition
@@ -394,7 +394,7 @@ def _get_queue_parameters_for_bundle(
             if param["name"] == "CondaPackages":
                 conda_param = param
                 break
-        # Remove the deadline_cloud_for_max rez package
+        # Remove the deadline_cloud_for_3ds_max rez package
         if conda_param:
             conda_param["value"] = " ".join(
                 pkg for pkg in conda_param["value"].split() if not pkg.startswith("3dsmax-openjd")

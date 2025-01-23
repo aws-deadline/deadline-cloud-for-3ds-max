@@ -13,6 +13,8 @@ import sys
 import pymxs  # noqa
 from pymxs import runtime as rt
 
+from deadline.max_adaptor.executable_handler import MaxExecutableHandler, SupportedMaxExecutable
+
 logger = logging.getLogger(__name__)
 
 # Re-assign sys stdout and stderr to print in the console instead of the Max Listener
@@ -37,6 +39,7 @@ class DefaultMaxHandler:
         self.output_dir = None
         self.output_name = None
         self.output_format = None
+        self._executable_handler: MaxExecutableHandler = MaxExecutableHandler()
 
     def start_render(self, data: dict) -> None:
         """
@@ -52,11 +55,11 @@ class DefaultMaxHandler:
         """
         frame = data.get("frame")
         if frame is None:
-            print("Error: MaxClient: start_render called without a frame number.")
+            self.log_to_console("Error: MaxClient: start_render called without a frame number.")
             raise RuntimeError("MaxClient: start_render called without a frame number.")
 
         if self.output_dir is None or self.output_name is None or self.output_format is None:
-            print(
+            self.log_to_console(
                 "Error: MaxClient: start_render called without a valid output path. Output directory, name or format "
                 "is missing."
             )
@@ -80,7 +83,7 @@ class DefaultMaxHandler:
 
         # Since camera can be set by both init and run data, this isn't a required parameter in either schema.
         if self.camera_node is None:
-            print("Error: MaxClient: start_render called without a camera.")
+            self.log_to_console("Error: MaxClient: start_render called without a camera.")
             raise RuntimeError("MaxClient: start_render called without a camera.")
 
         # Create output path to pass along with render
@@ -101,7 +104,7 @@ class DefaultMaxHandler:
 
         rt.render(camera=self.camera_node, outputFile=output_path)
 
-        print(f"MaxClient: Finished Rendering Frame {frame}\n", flush=True)
+        self.log_to_console(f"MaxClient: Finished Rendering Frame {frame}")
 
     def reformat_framenumber_padding(self, name: str, number: int) -> str:
         """
@@ -147,7 +150,7 @@ class DefaultMaxHandler:
         logger.debug("Setting camera with init data")
         camera_name = data.get("camera")
         if not camera_name:
-            print("No camera specified in init data")
+            self.log_to_console("No camera specified in init data")
             return
         camera = self.get_camera_to_render(camera_name)
         self.camera_node = rt.getNodeByName(camera)
@@ -167,7 +170,7 @@ class DefaultMaxHandler:
         camera_names = [camera.name for camera in cameras]
 
         if camera_name not in camera_names:
-            print(f"Error: The specified camera, {camera_name}, does not exist.")
+            self.log_to_console(f"Error: The specified camera, {camera_name}, does not exist.")
             raise RuntimeError(f"The specified camera, {camera_name}, does not exist.")
         return camera_name
 
@@ -247,7 +250,9 @@ class DefaultMaxHandler:
                 f"masterState.CurrentState = #(needState)"
             )
         except NameError:
-            print(f"Error: The specified state set, '{state_set_name}', does not exist.")
+            self.log_to_console(
+                f"Error: The specified state set, '{state_set_name}', does not exist."
+            )
             raise RuntimeError(f"The specified state set, '{state_set_name}', does not exist.")
 
         self.check_renderer()
@@ -264,11 +269,21 @@ class DefaultMaxHandler:
         logger.debug("opening max scene")
         file_path = data.get("scene_file", "")
         if not os.path.isfile(file_path):
-            print(f"Error: The scene file '{file_path}' does not exist")
+            self.log_to_console(f"Error: The scene file '{file_path}' does not exist")
             raise FileNotFoundError(f"Error: The scene file '{file_path}' does not exist")
         try:
             rt.SetQuietMode(True)
             rt.loadMaxFile(file_path, quiet=True)
         except Exception:
-            print(f"Error: while opening '{file_path}'")
+            self.log_to_console(f"Error: while opening '{file_path}'")
             raise RuntimeError(f"Error: while opening '{file_path}'")
+
+    def log_to_console(self, message: str) -> None:
+        """
+        Handles logging to the stdout, based on which 3dsMax executable is being used.
+        :param message: The text to log to the stdout.
+        """
+        if self._executable_handler.is_executable_type(SupportedMaxExecutable.BATCH):
+            rt.logsystem.logEntry(message, broadcast=True)
+        else:
+            print(message, flush=True)

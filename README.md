@@ -44,7 +44,11 @@ The 3ds Max Adaptor implements the [OpenJD][openjd-adaptor-runtime] interface th
 * a standardized render application interface,
 * sticky rendering, where the application stays open between tasks,
 
-Jobs created by the submitter use this adaptor by default.
+Jobs created by the submitter use this adaptor by default, and require that both the installed adaptor
+and the 3dsMax executable be available on the PATH of the user that will be running the jobs.
+
+Alternatively, you can set the `3DSMAX_EXECUTABLE` environment variable to point to a 3dsMax executable.
+The adaptor supports both `3dsmax` and `3dsmaxbatch`.
 
 ### Getting Started
 

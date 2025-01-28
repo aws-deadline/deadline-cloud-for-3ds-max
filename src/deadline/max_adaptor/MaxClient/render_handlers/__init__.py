@@ -4,6 +4,7 @@ from .art_handler import ArtHandler
 from .corona_handler import CoronaHandler
 from .default_max_handler import DefaultMaxHandler
 from .vray_handler import VrayHandler
+from .redshift_handler import RedshiftHandler
 
 __all__ = ["DefaultMaxHandler", "get_render_handler"]
 
@@ -26,5 +27,7 @@ def get_render_handler(renderer: str = "Default_Scanline_Renderer") -> DefaultMa
         return VrayHandler(gpu=False)
     elif renderer.startswith("V_Ray_GPU_6"):
         return VrayHandler(gpu=True)
+    elif renderer == "Redshift_Renderer":
+        return RedshiftHandler()
     else:
         return DefaultMaxHandler()

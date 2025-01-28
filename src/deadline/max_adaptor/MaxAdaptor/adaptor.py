@@ -16,10 +16,13 @@ from typing import Callable
 
 from openjd.adaptor_runtime.adaptors import Adaptor, AdaptorDataValidators, SemanticVersion
 from openjd.adaptor_runtime.adaptors.configuration import AdaptorConfiguration
-from openjd.adaptor_runtime.app_handlers import RegexCallback, RegexHandler
+from openjd.adaptor_runtime.app_handlers import RegexHandler
 from openjd.adaptor_runtime.application_ipc import ActionsQueue, AdaptorServer
 from openjd.adaptor_runtime.process import LoggingSubprocess
 from openjd.adaptor_runtime_client import Action
+
+from deadline.max_adaptor.executable_handler import MaxExecutableHandler
+from deadline.max_adaptor.MaxAdaptor.regex_callback_handler import MaxRegexCallback
 
 _logger = logging.getLogger(__name__)
 
@@ -58,7 +61,8 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
     _server: AdaptorServer | None = None
     _server_thread: threading.Thread | None = None
     _max_client: LoggingSubprocess | None = None
-    _action_queue = ActionsQueue()
+    _executable_handler: MaxExecutableHandler = MaxExecutableHandler()
+    _action_queue: ActionsQueue = ActionsQueue()
     _is_rendering: bool = False
 
     # If a thread raises an exception we will update this to raise in the main thread
@@ -162,22 +166,25 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
         _logger.debug("start max server thread")
         os.environ["MAX_ADAPTOR_SERVER_PATH"] = self._wait_for_socket()
 
-    def _get_regex_callbacks(self) -> list[RegexCallback]:
+    def _get_regex_callbacks(self) -> list[MaxRegexCallback]:
         """
-        Returns a list of RegexCallbacks used by the Max Adaptor
+        Returns a list of MaxRegexCallbacks used by the Max Adaptor
 
         :returns: List of Regex Callbacks to add
-        :return type: list[RegexCallback]
+        :return type: list[MaxRegexCallback]
         """
         callback_list = []
         completed_regexes = [re.compile("MaxClient: Finished Rendering Frame [0-9]+")]
-        progress_regexes = [re.compile("\\[PROGRESS\\] ([0-9]+) percent")]
+        progress_regexes = [
+            re.compile("\\[PROGRESS\\] ([0-9]+) percent"),
+            re.compile("Rendering Image Completed ([0-9]+) %"),
+        ]
         error_regexes = [re.compile(".*Exception:.*|.*Error:.*|.*Warning.*")]
 
-        callback_list.append(RegexCallback(completed_regexes, self._handle_complete))
-        callback_list.append(RegexCallback(progress_regexes, self._handle_progress))
+        callback_list.append(MaxRegexCallback(completed_regexes, self._handle_complete))
+        callback_list.append(MaxRegexCallback(progress_regexes, self._handle_progress))
         if self.init_data.get("strict_error_checking", False):
-            callback_list.append(RegexCallback(error_regexes, self._handle_error))
+            callback_list.append(MaxRegexCallback(error_regexes, self._handle_error))
 
         return callback_list
 
@@ -241,7 +248,6 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
 
         :raises: FileNotFoundError: If the max_client.py file could not be found.
         """
-        max_exe = "3dsmax"
         regexhandler = RegexHandler(self._get_regex_callbacks())
 
         # Add the openjd namespace directory to PYTHONPATH, so that adaptor_runtime_client will be available
@@ -263,7 +269,7 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
 
         # PythonHost executes 3ds Max with scripts from cli
         self._max_client = LoggingSubprocess(
-            args=[max_exe, "-U", "PythonHost", self.max_client_path, "-silent", "-dm"],
+            args=self._executable_handler.calculate_execution_parameters(self.max_client_path),
             stdout_handler=regexhandler,
             stderr_handler=regexhandler,
         )

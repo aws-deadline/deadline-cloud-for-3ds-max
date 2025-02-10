@@ -43,7 +43,8 @@
                     "enum": [
                         "Default_Scanline_Renderer",
                         "ART_Renderer",
-                        "Corona"
+                        "Corona",
+                        "Redshift_Renderer"
                     ]
                 }
             ]

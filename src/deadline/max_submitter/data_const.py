@@ -25,6 +25,7 @@ ALLOWED_RENDERERS = [
     "Corona",
     "V_Ray_6",
     "V_Ray_GPU_6",
+    "Redshift_Renderer",
 ]
 
 # Possible output extensions

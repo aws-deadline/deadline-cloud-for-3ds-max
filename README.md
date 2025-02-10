@@ -11,11 +11,8 @@ This GitHub repository is an example integration with AWS Deadline Cloud that is
 
 Our focus is to explore a variety of software applications to ensure we have good coverage across common workflows. We prioritized making this example available earlier to users rather than being feature complete.
 
-There are two open issues that prevent successful installation and rendering:
-* [Bug: Opening the 3ds Max Submitter fails with “runtime error : Failed to open file run_ui.py”](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/issues/27)
-* [Bug: Adaptor freezes on launching 3ds Max](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/issues/39)
-
 This example has been used by at least one internal or external development team to create a series of jobs that successfully rendered. However, your mileage may vary. If you have questions or issues with this example, please start a discussion or cut an issue.
+
 ---
 
 AWS Deadline Cloud for 3ds Max is a python package that allows users to create [AWS Deadline Cloud][deadline-cloud] jobs from within 3ds Max. Using the [Open Job Description (OpenJD) Adaptor Runtime][openjd-adaptor-runtime] this package also provides a command line application that adapts 3ds Max's command line interface to support the [OpenJD specification][openjd].

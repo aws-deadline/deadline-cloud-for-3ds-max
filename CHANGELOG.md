@@ -1,3 +1,13 @@
+## 0.1.3 (2025-02-11)
+
+
+### Features
+* Added Support for Redshift Renderer (#68) ([`11684a5`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/11684a54867a1db29c5f4b8cd4a8fd297a3bd2d7))
+* Add support for 3dsmaxbatch (#72) ([`04ec149`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/04ec1494f06b737ff05c57ce31a62cec8b77ad29))
+
+### Bug Fixes
+* fix typo in wheel name check during job submission (#71) ([`f5d42bd`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/f5d42bdf215bfcb0818788592e29c79de4f5a1e8))
+
 ## 0.1.2 (2024-12-12)
 
 

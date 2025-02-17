@@ -8,7 +8,7 @@ import logging
 import os
 
 import pymxs  # noqa
-from data_const import (
+from deadline.max_submitter.data_const import (
     ALL_STATE_SETS_STR,
     ALLOWED_EXTENSIONS,
     ALLOWED_RENDERERS,
@@ -35,9 +35,12 @@ from PySide2.QtWidgets import (  # type: ignore
     QSpacerItem,
     QWidget,
 )
-from utilities import max_utils
+from deadline.max_submitter.utilities import max_utils
 
 _logger = logging.getLogger(__name__)
+
+# This is the maximum string length allowed for OJD job parameters.
+DEFAULT_MAX_STRING_LENGTH: int = 1024
 
 
 class FileSearchLineEdit(QWidget):
@@ -59,6 +62,7 @@ class FileSearchLineEdit(QWidget):
         lyt.setMargin(0)
 
         self.edit = QLineEdit(self)
+        self.edit.setMaxLength(DEFAULT_MAX_STRING_LENGTH)
         self.btn = QPushButton("...", parent=self)
         self.btn.setMaximumSize(QSize(100, 40))
         self.btn.clicked.connect(self.get_file)
@@ -130,6 +134,7 @@ class SceneSettingsWidget(QWidget):
 
         # Project path
         self.proj_path_txt = QLineEdit(self)
+        self.proj_path_txt.setMaxLength(DEFAULT_MAX_STRING_LENGTH)
         self.proj_path_txt.setEnabled(False)
         lyt.addWidget(QLabel("Project Path"), 0, 0)
         lyt.addWidget(self.proj_path_txt, 0, 1)
@@ -141,6 +146,7 @@ class SceneSettingsWidget(QWidget):
 
         # Output filename
         self.output_name_txt = QLineEdit(self)
+        self.output_name_txt.setMaxLength(DEFAULT_MAX_STRING_LENGTH)
         lyt.addWidget(QLabel("Output Filename"), 2, 0)
         lyt.addWidget(self.output_name_txt, 2, 1)
 
@@ -209,6 +215,7 @@ class SceneSettingsWidget(QWidget):
         # Override frame range
         self.frame_override_chck = QCheckBox("Override Frame Range", self)
         self.frame_override_txt = QLineEdit(self)
+        self.frame_override_txt.setMaxLength(DEFAULT_MAX_STRING_LENGTH)
         self.frame_override_txt.setToolTip(
             "Frame range you want to use as override. \n" "E.g. 1,3,5-10 or 1, 3, 5-10"
         )

@@ -7,14 +7,21 @@
 import pymxs  # noqa
 from pymxs import runtime as rt
 
-from utilities import max_utils
-from data_classes import RenderSubmitterUISettings
-from data_const import (
+from deadline.max_submitter.utilities import max_utils
+from deadline.max_submitter.data_classes import RenderSubmitterUISettings
+from deadline.max_submitter.data_const import (
     ALL_CAMERAS_STR,
     ALL_STEREO_CAMERAS_STR,
     ALL_STATE_SETS_STR,
     ALLOWED_RENDERERS,
 )
+
+
+# This is the maximum string length allowed for OJD job parameters.
+JOB_PARAMETER_MAX_STRING_LENGTH: int = 1024
+
+# This is the maximum string lenght allowed for OJD step names.
+STEP_NAME_MAX_STRING_LENGTH: int = 64
 
 
 def check_sanity(settings: RenderSubmitterUISettings):
@@ -30,6 +37,26 @@ def check_sanity(settings: RenderSubmitterUISettings):
 
     # Check if any unsaved changes were made to the scene and prompt the user to save if not
     rt.checkForSave()
+
+    if len(settings.project_path) > JOB_PARAMETER_MAX_STRING_LENGTH:
+        raise Exception(
+            f"The project path {settings.project_path} is too long. The max length allowed is {JOB_PARAMETER_MAX_STRING_LENGTH}."
+        )
+
+    if settings.output_path and len(settings.output_path) > JOB_PARAMETER_MAX_STRING_LENGTH:
+        raise Exception(
+            f"The setting tab output path {settings.output_path} is too long. The max length allowed is {JOB_PARAMETER_MAX_STRING_LENGTH}."
+        )
+
+    if rt.rendOutputFilename and len(rt.rendOutputFilename) > JOB_PARAMETER_MAX_STRING_LENGTH:
+        raise Exception(
+            f"The rendering setup output path {rt.rendOutputFilename} is too long. The max length allowed is {JOB_PARAMETER_MAX_STRING_LENGTH}."
+        )
+
+    if len(settings.output_name) > JOB_PARAMETER_MAX_STRING_LENGTH:
+        raise Exception(
+            f"The output filename {settings.output_name} is too long. The max length allowed is {JOB_PARAMETER_MAX_STRING_LENGTH}."
+        )
 
     check_sanity_cameras(settings)
     check_sanity_state_sets(settings)
@@ -48,6 +75,13 @@ def check_sanity(settings: RenderSubmitterUISettings):
                 "You entered an invalid frame range. Please make sure there are no duplicate frames in "
                 "your range. \n"
                 f"Duplicate frames: {max_utils.get_duplicate_frames(settings.frame_list)}"
+            )
+        if (
+            settings.override_frame_range
+            and len(settings.frame_list) > JOB_PARAMETER_MAX_STRING_LENGTH
+        ):
+            raise Exception(
+                f"The overriden frame range value {settings.frame_list} is too long. The max length allowed is {JOB_PARAMETER_MAX_STRING_LENGTH}."
             )
 
     if not settings.name:
@@ -78,6 +112,12 @@ def check_sanity_cameras(settings: RenderSubmitterUISettings):
                 f"{settings.camera_selection} was removed or renamed with the 'Submit to Deadline "
                 "Cloud' dialog open. \n"
                 "Re-open the dialog to update the 'Cameras To Render' list in the UI."
+            )
+
+    for camera in cameras:
+        if len(camera) > JOB_PARAMETER_MAX_STRING_LENGTH:
+            raise Exception(
+                f"The camera name {camera} is too long. The max length allowed is {JOB_PARAMETER_MAX_STRING_LENGTH}."
             )
 
 
@@ -132,6 +172,11 @@ def check_sanity_specific_state_set(settings: RenderSubmitterUISettings, state_s
     :param settings: a RenderSubmitterUISettings object containing the latest UI settings
     :param state_set: the name of the active state set
     """
+    if len(state_set) > STEP_NAME_MAX_STRING_LENGTH:
+        raise Exception(
+            f"The state set name {state_set} is too long. The max length allowed is {STEP_NAME_MAX_STRING_LENGTH}."
+        )
+
     if str(rt.renderers.current).split(":")[0].split("__")[0] not in ALLOWED_RENDERERS:
         raise Exception(
             f"{state_set} has an unsupported renderer set. Renderer: "

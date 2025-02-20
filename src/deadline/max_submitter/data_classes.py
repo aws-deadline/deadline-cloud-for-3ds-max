@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 import pymxs  # noqa
-from data_const import ALL_CAMERAS_STR, RENDER_SUBMITTER_SETTINGS_FILE_EXT
+from deadline.max_submitter.data_const import ALL_CAMERAS_STR, RENDER_SUBMITTER_SETTINGS_FILE_EXT
 from pymxs import runtime as rt
 
 
@@ -81,7 +81,7 @@ class RenderSubmitterUISettings:
     # Developer options
     include_adaptor_wheels: bool = field(default=False, metadata={"sticky": True})
 
-    def load_sticky_settings(self):
+    def load_sticky_settings(self) -> None:
         """
         Reads sticky settings from the sticky settings json file saved alongside the max scene
         """
@@ -113,7 +113,7 @@ class RenderSubmitterUISettings:
                     "default settings."
                 )
 
-    def save_sticky_settings(self):
+    def save_sticky_settings(self) -> None:
         """
         Writes sticky settings to json file at same directory as max scene
         """

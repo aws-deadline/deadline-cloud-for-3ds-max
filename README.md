@@ -5,16 +5,6 @@
 [![python](https://img.shields.io/pypi/pyversions/deadline-cloud-for-3ds-max.svg?style=flat)](https://pypi.python.org/pypi/deadline-cloud-for-3ds-max)
 [![license](https://img.shields.io/pypi/l/deadline-cloud-for-3ds-max.svg?style=flat)](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/blob/mainline/LICENSE)
 
-### Disclaimer
----
-This GitHub repository is an example integration with AWS Deadline Cloud that is intended to only be used for testing and is subject to change. **This code is an alpha release. It is not a commercial release and may contain bugs, errors, defects, or harmful components.** Accordingly, the code in this repository is provided as-is. Use within a production environment is at your own risk!
-
-Our focus is to explore a variety of software applications to ensure we have good coverage across common workflows. We prioritized making this example available earlier to users rather than being feature complete.
-
-This example has been used by at least one internal or external development team to create a series of jobs that successfully rendered. However, your mileage may vary. If you have questions or issues with this example, please start a discussion or cut an issue.
-
----
-
 AWS Deadline Cloud for 3ds Max is a python package that allows users to create [AWS Deadline Cloud][deadline-cloud] jobs from within 3ds Max. Using the [Open Job Description (OpenJD) Adaptor Runtime][openjd-adaptor-runtime] this package also provides a command line application that adapts 3ds Max's command line interface to support the [OpenJD specification][openjd].
 
 [deadline-cloud]: https://docs.aws.amazon.com/deadline-cloud/latest/userguide/what-is-deadline-cloud.html
@@ -27,8 +17,8 @@ AWS Deadline Cloud for 3ds Max is a python package that allows users to create [
 
 This library requires:
 
-1. 3ds Max 2024,
-1. Python 3.10 or higher; and
+1. 3ds Max 2024.
+1. Python 3.10 or higher.
 1. Windows operating system.
 
 ## Submitter

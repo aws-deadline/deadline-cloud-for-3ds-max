@@ -16,7 +16,7 @@ from deadline.max_submitter.sanity_checks import (
 from deadline.max_submitter.data_classes import RenderSubmitterUISettings
 
 
-@fixture(scope="session", autouse=True)
+@fixture(scope="function", autouse=True)
 def mock_max_utils():
     with patch("deadline.max_submitter.sanity_checks.max_utils") as mock_max_utils:
         mock_max_utils.get_camera_names.return_value = [
@@ -33,14 +33,14 @@ def mock_max_utils():
         yield mock_max_utils
 
 
-@fixture(scope="session", autouse=True)
+@fixture(scope="function", autouse=True)
 def mock_pymx_runtime():
     with patch("deadline.max_submitter.sanity_checks.rt") as mock_pymx_runtime:
         mock_pymx_runtime.renderers.current = ALLOWED_RENDERERS[0]
         yield mock_pymx_runtime
 
 
-@fixture
+@fixture(scope="function")
 def default_settings() -> RenderSubmitterUISettings:
     settings: RenderSubmitterUISettings = RenderSubmitterUISettings()
     settings.name = "test_job_name"

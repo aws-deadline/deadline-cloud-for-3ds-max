@@ -102,3 +102,35 @@ your build of the adaptor for the one in the service.
    ```
 
 3. Open the 3ds Max integrated submitter, and in the Job-Specific Settings tab, enable the option 'Include Adaptor Wheels'. This option is only visible when the environment variable `DEADLINE_ENABLE_DEVELOPER_OPTIONS` is set to `true`. Then submit your test job.
+
+### Intergration Test Workflow
+Integration tests are located under `test/integ` directory of this repository. If you are adding
+or modifying functionality, then you will want to be writing one or more integ tests to demonstrate that your
+logic behaves as expected and that future changes do not accidentally break your change.
+
+To run the integ tests, you need to:
+1. Add 3dsMax python executable to the PATH:
+   
+   For example, default path of 3dsMax python on Windows is 
+
+```
+C:\Program Files\Autodesk\3ds Max 2024\Python
+```
+2. Run command to install pip to this python executable:
+```
+python -m ensurepip
+```
+3. Set the `3DSMAX_EXECUTABLE` environment variable to use `3dsmaxbatch`
+
+4. Use hatch to run all integ tests:
+```
+hatch run integ:test
+```
+5. (Optional) Use hatch to run submitter tests:
+```
+hatch run integ:test_submitters
+```
+6. (Optional) Use hatch to run adaptor tests:
+```
+hatch run integ:test_adaptors
+```

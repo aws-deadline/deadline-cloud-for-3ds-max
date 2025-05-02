@@ -111,12 +111,14 @@ steps:
               - '{{Env.File.runStart}}'
             cancelation:
               mode: NOTIFY_THEN_TERMINATE
+            timeout: 87000
           onExit:
             command: powershell
             args:
               - '{{Env.File.runStop}}'
             cancelation:
               mode: NOTIFY_THEN_TERMINATE
+            timeout: 600
   script:
     actions:
       onRun:

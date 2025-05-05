@@ -1,3 +1,11 @@
+## 0.1.4 (2025-03-21)
+
+
+
+### Bug Fixes
+* Add length validations for job settings input fields (#86) ([`9dc4d50`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/9dc4d50993443fa5d3f4a5fd653454aaf4eaef4b))
+* Add length valdation for QLineEdit widgets (#84) ([`26222ea`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/26222ea3987f69b5a30a58efe40fd0e9922bdaa7))
+
 ## 0.1.3 (2025-02-11)
 
 

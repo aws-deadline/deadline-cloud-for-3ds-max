@@ -1,6 +1,6 @@
-specificationVersion: 'jobtemplate-2023-09'
-name: Default Max Job Template
-description:
+specificationVersion: jobtemplate-2023-09
+name: test
+description: null
 parameterDefinitions:
 - name: MaxSceneFile
   type: PATH
@@ -42,7 +42,7 @@ parameterDefinitions:
     label: Output File Name
     groupLabel: 3dsMax Settings
   description: The output file name.
-  default: "image_###"
+  default: image_###
 - name: OutputFileFormat
   type: STRING
   userInterface:
@@ -78,47 +78,59 @@ parameterDefinitions:
   - 'true'
   - 'false'
 steps:
-- name: Render
+- name: State01
   parameterSpace:
     taskParameterDefinitions:
     - name: Frame
       type: INT
-      range: "{{Param.Frames}}"
+      range: '{{Param.Frames}}'
+    - name: Camera
+      type: STRING
+      range:
+      - TopCam
+      - SideCam
   stepEnvironments:
-    - name: 3ds Max
-      description: Runs 3ds Max in the background.
-      script:
-        embeddedFiles:
-          - name: initData
-            filename: init-data.yaml
-            type: TEXT
-            data: |
-              scene_file: {{Param.MaxSceneFile}}
-          - name: runStart
-            filename: start.bat
-            type: TEXT
-            data: |
-              3dsmax-openjd daemon start --connection-file {{Session.WorkingDirectory}}/connection.json --init-data file://{{Env.File.initData}}
-          - name: runStop
-            filename: stop.bat
-            type: TEXT
-            data: |
-              3dsmax-openjd daemon stop --connection-file {{Session.WorkingDirectory}}/connection.json
-        actions:
-          onEnter:
-            command: powershell
-            args:
-              - '{{Env.File.runStart}}'
-            cancelation:
-              mode: NOTIFY_THEN_TERMINATE
-            timeout: 87000
-          onExit:
-            command: powershell
-            args:
-              - '{{Env.File.runStop}}'
-            cancelation:
-              mode: NOTIFY_THEN_TERMINATE
-            timeout: 600
+  - name: 3ds Max
+    description: Runs 3ds Max in the background.
+    script:
+      embeddedFiles:
+      - name: initData
+        filename: init-data.yaml
+        type: TEXT
+        data: |
+          scene_file: {{Param.MaxSceneFile}}
+          renderer: Default_Scanline_Renderer
+          state_set: State01
+          output_file_name: State01_test_###
+          output_file_path: '{{Param.OutputFilePath}}'
+          output_file_format: '{{Param.OutputFileFormat}}'
+          image_width: '{{Param.ImageWidth}}'
+          image_height: '{{Param.ImageHeight}}'
+      - name: runStart
+        filename: start.bat
+        type: TEXT
+        data: |
+          3dsmax-openjd daemon start --connection-file {{Session.WorkingDirectory}}/connection.json --init-data file://{{Env.File.initData}}
+      - name: runStop
+        filename: stop.bat
+        type: TEXT
+        data: |
+          3dsmax-openjd daemon stop --connection-file {{Session.WorkingDirectory}}/connection.json
+      actions:
+        onEnter:
+          command: powershell
+          args:
+          - '{{Env.File.runStart}}'
+          cancelation:
+            mode: NOTIFY_THEN_TERMINATE
+          timeout: 87000
+        onExit:
+          command: powershell
+          args:
+          - '{{Env.File.runStop}}'
+          cancelation:
+            mode: NOTIFY_THEN_TERMINATE
+          timeout: 600
   script:
     actions:
       onRun:
@@ -131,8 +143,9 @@ steps:
     - name: runData
       filename: run-data.yaml
       type: TEXT
-      data: |
+      data: |-
         frame: {{Task.Param.Frame}}
+        camera: '{{Task.Param.Camera}}'
     - name: runRender
       filename: render.bat
       type: TEXT

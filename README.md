@@ -21,9 +21,25 @@ This library requires:
 1. Python 3.10 or higher.
 1. Windows operating system.
 
+## Getting Started
+
+This 3ds Max integration for AWS Deadline Cloud has two components that you will need to install:
+
+1. The 3ds Max submitter plug-in must be installed on the workstation that you will use to submit jobs; and
+2. The 3ds Max adaptor must be installed on all of your AWS Deadline Cloud worker hosts that will be running the 3ds Max jobs that you submit.
+
+Before submitting any large, complex, or otherwise compute-heavy 3ds Max render jobs to your farm using the submitter and adaptor that you
+set up, we strongly recommend that you construct a simple test scene that can be rendered quickly and submit renders of that
+scene to your farm to ensure that your setup is correctly functioning.
+
 ## Submitter
 
-This package provides a 3ds Max plugin that creates jobs for AWS Deadline Cloud using the [AWS Deadline Cloud client library][deadline-cloud-client]. Based on the loaded scene it determines the files required, allows the user to specify render options, and builds an [OpenJD template][openjd] that defines the workflow.
+The 3ds Max submitter plug-in creates a shelf button in your 3ds Max UI that can be used to submit jobs to AWS Deadline Cloud. Clicking this button
+reveals a UI to create a job submission for AWS Deadline Cloud using the [AWS Deadline Cloud client library][deadline-cloud-client].
+It automatically determines the files required based on the loaded scene, allows the user to specify render options, builds an
+[Open Job Description template][openjd] that defines the workflow, and submits the job to the farm and queue of your choosing.
+
+We are working on implementing a submitter installer for 3ds Max to automate the submitter installation. In the meantime, the submitter needs to be installed manually. To install the submitter follow the instructions [here](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/blob/mainline/DEVELOPMENT.md#manual-installation).
 
 ## Adaptor
 
@@ -36,8 +52,6 @@ and the 3dsMax executable be available on the PATH of the user that will be runn
 
 Alternatively, you can set the `3DSMAX_EXECUTABLE` environment variable to point to a 3dsMax executable.
 The adaptor supports both `3dsmax` and `3dsmaxbatch`.
-
-### Getting Started
 
 The adaptor can be installed by the standard python packaging mechanisms:
 ```sh

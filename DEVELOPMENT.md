@@ -1,3 +1,7 @@
+[deadline-cloud-monitor-setup]: https://docs.aws.amazon.com/deadline-cloud/latest/userguide/submitter.html#install-deadline-cloud-monitor
+[aws-cli-credentials]: https://docs.aws.amazon.com/cli/v1/userguide/cli-chap-authentication.html
+[3ds-max-2024-folders-documentation]: https://help.autodesk.com/view/MAXDEV/2024/ENU/?guid=GUID-F7577416-051E-478C-BB5D-81243BAAC8EC
+
 # Development documentation
 This package has two active branches:
 
@@ -36,41 +40,29 @@ hatch run fmt
 hatch run all:test
 ```
 
-## Use development Submitter in 3ds Max
-
-```bash
-hatch run install
-hatch shell
-```
-Then launch 3ds Max from that terminal.
-
-A development version of deadline-cloud-for-3ds-max is then available to be loaded.
-
 ## Submitter Development Workflow
 
 WARNING: This workflow installs additional Python packages into your 3ds Max's python distribution.
 
 #### Manual installation
 
-1. Build your local copy of `deadline-cloud-for-3ds-max`.
-1. To install the submitter in 3dsMax:
-    1. Copy `STDCMenuCreator.ms` into your 3DS Max startup scripts (e.g. `C:\Program Files\Autodesk\<version>\scripts\Startup`)
-    1. Copy `AWSDeadline-SubmitToDeadlineCloud.mcr` in 3ds Max usermacros directory (e.g. `C:\Users\<username>\AppData\Local\Autodesk\3dsMax\<version>\ENU\usermacros`).
-1. The point of entry for the submitter is the `run_ui.py` file under the `max_submitter` folder. Thus, this file needs to be discoverable by 3dsMax, and `max_submitter` needs to be a discoverable package by python.
-    1. Add the path to `max_submitter` to the `ADSK_3DSMAX_SCRIPTS_ADDON_DIR` environment variable (e.g. In Powershell run `$env:ADSK_3DSMAX_SCRIPTS_ADDON_DIR += "C:\Users\<username>\workplace\deadline-cloud-for-3ds-max\src\deadline\max_submitter"`).
-    1. Add the path to `max_submitter` to the `PYTHONPATH` environment variable (e.g. In Powershell run `$env:PYTHONPATH += "C:\Users\<username>\workplace\deadline-cloud-for-3ds-max\src\deadline\max_submitter"`).
-1. Install `deadline` package to `~\DeadlineCloudSubmitter\Submitters\3dsMax\scripts`, using a python version that is compatible with the version of 3dsMax that you are using (e.g. For 3dsMax 2024 run `pip install deadline --python-version 3.10 --only-binary=:all: -t $env:HOMEPATH\DeadlineCloudSubmitter\Submitters\3dsMax\scripts` in Powershell).
-1. Run `3dsmax` from the same command-line window where the environment variables were set. To do so, `3dsmax` needs to be part of the PATH (e.g. In Powershell run `$env:PATH += ";C:\Program Files\Autodesk\<version>"`).
-
-#### Install for Development
-
-1. Copy `STDCMenuCreator.ms` into your 3DS Max startup scripts (e.g. `C:\Program Files\Autodesk\<version>\scripts\Startup`).
-2. Modify the file path in `STDCMenuCreator.ms`  to `<reporoot>/src/deadline/max_submitter`. Set the `DEBUG` variable to `true`.
-3. Put `AWSDeadline-SubmitToDeadlineCloud.mcr` and `AWSDeadline-RunJobBundleTests.mcr` in 3ds Max usermacros directory (e.g. `C:\Users\<username>\AppData\Local\Autodesk\3dsMax\<version>\ENU\usermacros`).
-4. Modify the path in `AWSDeadline-SubmitToDeadlineCloud.mcr` to `<reporoot>/src/deadline/max_submitter/run_ui.py`. Set the `DEBUG` variable to `true`.
-5. Modify the path in `AWSDeadline-RunJobBundleTests.mcr` to `<reporoot>/src/deadline/max_submitter/job_bundle_output_test_runner.py`. Set the `DEBUG` variable to `true`.
-6. Install `deadline` package (from CodeArtifact) to `~\DeadlineCloudSubmitter\Submitters\3dsMax\scripts` using a Python 3.10 installation (for compatibility with Max)
-    - `pip install deadline -t ~\DeadlineCloudSubmitter\Submitters\3dsMax\scripts`
+1. Clone `deadline-cloud-for-3ds-max`, and build your local copy running `hatch build`.
+1. To install the submitter in 3dsMax, you need to copy the UI components into the corresponding 3ds Max installation directories. You can find the UI component files in your local copy of `deadline-cloud-for-3ds-max`.
+    1. Copy `<LOCAL_REPO_PATH>\install_files\STDCMenuCreator.ms` into your 3DS Max startup scripts (e.g. `C:\Program Files\Autodesk\<version>\scripts\Startup`, more details about 3ds Max system directories can be found in the 3ds Max [documentation][3ds-max-2024-folders-documentation])
+    1. Copy `<LOCAL_REPO_PATH>\install_files\AWSDeadline-SubmitToDeadlineCloud.mcr` in 3ds Max usermacros directory (e.g. `C:\Users\<username>\AppData\Local\Autodesk\3dsMax\<version>\ENU\usermacros`).
+1. The point of entry for the submitter is the `run_ui.py` file under the `max_submitter` folder. Thus, this file needs to be discoverable by 3dsMax, and `max_submitter` needs to be a discoverable package by python. In Powershell run:
+    1. `$env:ADSK_3DSMAX_SCRIPTS_ADDON_DIR += ";<LOCAL_REPO_PATH>\src\deadline\max_submitter"`.
+    1. `$env:PYTHONPATH += ";<LOCAL_REPO_PATH>\src\;<LOCAL_REPO_PATH>\src\deadline\max_submitter"`.
+1. Install `deadline` package to `~\DeadlineCloudSubmitter\Submitters\3dsMax\scripts`, using a python version that is compatible with the version of 3dsMax that you are using. In Powershell run:
+    1. `& "C:\Program Files\Autodesk\<version>\Python\python.exe" -m ensurepip`
+    1. `& "C:\Program Files\Autodesk\<version>\Python\python.exe" -m pip install deadline -t $env:HOMEPATH\DeadlineCloudSubmitter\Submitters\3dsMax\scripts` 
+1. Run `3dsmax` from the same command-line window where the environment variables were set. To do so, `3dsmax` needs to be part of the PATH. In Powershell run `$env:PATH += ";C:\Program Files\Autodesk\<version>"`.
+1. To supply AWS account credentials for the submitter to use when submitting a job you can either:
+    1. [Install and set up the Deadline Cloud Monitor][deadline-cloud-monitor-setup], and then log in to the monitor. Logging in
+       to the monitor will make AWS credentials available to the submitter, automatically.
+    1. Set up an AWS credentials profile [as you would for the AWS CLI][aws-cli-credentials], and select that profile for the submitter
+       to use.
+    1. Or default to your AWS EC2 instance profile credentials if you are running a workstation in the cloud.
 
 ### Usage
 

@@ -17,9 +17,9 @@ from deadline.max_submitter.data_const import (
 )
 from deadline.client.ui import block_signals
 from pymxs import runtime as rt
-from PySide2.QtCore import QRegularExpression, QSize, Qt  # type: ignore
-from PySide2.QtGui import QRegularExpressionValidator
-from PySide2.QtWidgets import (  # type: ignore
+from qtpy.QtCore import QRegularExpression, QSize, Qt  # type: ignore
+from qtpy.QtGui import QRegularExpressionValidator  # type: ignore
+from qtpy.QtWidgets import (  # type: ignore
     QApplication,
     QCheckBox,
     QComboBox,
@@ -56,7 +56,6 @@ class FileSearchLineEdit(QWidget):
 
         lyt = QHBoxLayout(self)
         lyt.setContentsMargins(0, 0, 0, 0)
-        lyt.setMargin(0)
 
         self.edit = QLineEdit(self)
         self.btn = QPushButton("...", parent=self)
@@ -526,13 +525,13 @@ class SceneSettingsWidget(QWidget):
         """
         Set the activated/deactivated status of the Frame override text box
         """
-        self.frame_override_txt.setEnabled(state == Qt.Checked)
+        self.frame_override_txt.setEnabled(Qt.CheckState(state) == Qt.Checked)
 
     def activate_custom_material_changed(self, state):
         """
         Set the activated/deactivated status of the Custom material combo box
         """
-        self.custom_mat_box.setEnabled(state == Qt.Checked)
+        self.custom_mat_box.setEnabled(Qt.CheckState(state) == Qt.Checked)
 
     def _update_renderer(self):
         """

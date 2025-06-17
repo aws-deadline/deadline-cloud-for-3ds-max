@@ -9,7 +9,7 @@ from logging import root
 from deadline.client.config import config_file
 from max_render_submitter import show_job_bundle_submitter
 from pymxs import runtime as rt
-from PySide2.QtWidgets import QMessageBox
+from qtpy.QtWidgets import QMessageBox  # type: ignore
 from utilities.log_utils import configure_logging
 
 

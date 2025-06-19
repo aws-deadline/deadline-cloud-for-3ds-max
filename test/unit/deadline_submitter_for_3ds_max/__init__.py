@@ -5,11 +5,11 @@ from unittest.mock import MagicMock
 mock_modules = [
     "deadline.client.ui.deadline_authentication_status",
     "pymxs",
-    "PySide2",
-    "PySide2.QtCore",
-    "PySide2.QtGui",
-    "PySide2.QtWidgets",
     "qtmax",
+    "qtpy",
+    "qtpy.QtCore",
+    "qtpy.QtWidgets",
+    "qtpy.QtGui",
 ]
 
 for module in mock_modules:

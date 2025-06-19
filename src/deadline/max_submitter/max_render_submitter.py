@@ -26,7 +26,7 @@ from deadline.client.job_bundle._yaml import deadline_yaml_dump
 from deadline.client.job_bundle.submission import AssetReferences
 from deadline.client.ui.dialogs._types import JobBundlePurpose
 from pymxs import runtime as rt
-from PySide2.QtCore import Qt
+from qtpy.QtCore import Qt  # type: ignore
 from sanity_checks import check_sanity
 from ui.scene_settings_tab import SceneSettingsWidget
 from ui.submit_dialog import SubmitMaxJobToDeadlineDialog

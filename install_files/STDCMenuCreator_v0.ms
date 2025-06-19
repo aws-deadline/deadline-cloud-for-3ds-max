@@ -1,4 +1,5 @@
 -- Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+-- Compatibility: 3ds Max 2024
 (
 	-- change to true for development install
 	local DEBUG = false

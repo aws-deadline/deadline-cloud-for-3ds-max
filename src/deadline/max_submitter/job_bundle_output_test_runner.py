@@ -20,7 +20,7 @@ from deadline.client.ui import gui_error_handler
 from deadline.client.ui.dialogs import submit_job_to_deadline_dialog
 from max_render_submitter import show_job_bundle_submitter
 from pymxs import runtime as rt
-from PySide2.QtWidgets import (  # pylint: disable=import-error; type: ignore
+from qtpy.QtWidgets import (  # type: ignore
     QApplication,
     QFileDialog,
     QMessageBox,

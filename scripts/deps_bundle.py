@@ -4,11 +4,12 @@ import re
 import shutil
 import subprocess
 import sys
+
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
-SUPPORTED_PYTHON_VERSIONS = ["3.9", "3.10", "3.11"]
+SUPPORTED_PYTHON_VERSIONS = ["3.9", "3.10", "3.11", "3.12"]
 SUPPORTED_PLATFORMS = ["win_amd64"]
 NATIVE_DEPENDENCIES = ["xxhash"]
 
@@ -78,25 +79,20 @@ def _download_native_dependencies(working_directory: Path, base_env: Path) -> li
     ]
     native_dependency_paths = []
     for version in SUPPORTED_PYTHON_VERSIONS:
-        for platform in SUPPORTED_PLATFORMS:
-            native_dependency_path = (
-                working_directory / "native" / f"{version.replace('.', '_')}_{platform}"
-            )
-            native_dependency_paths.append(native_dependency_path)
-            native_dependency_path.mkdir(parents=True)
-            native_dependency_pip_args = [
-                "pip",
-                "install",
-                "--target",
-                str(native_dependency_path),
-                "--platform",
-                platform,
-                "--python-version",
-                version,
-                "--only-binary=:all:",
-                *versioned_native_dependencies,
-            ]
-            subprocess.run(native_dependency_pip_args, check=True)
+        native_dependency_path = working_directory / "native" / f"{version.replace('.', '_')}"
+        native_dependency_paths.append(native_dependency_path)
+        native_dependency_path.mkdir(parents=True)
+        native_dependency_pip_args = [
+            "pip",
+            "install",
+            "--target",
+            str(native_dependency_path),
+            "--python-version",
+            version,
+            "--only-binary=:all:",
+            *versioned_native_dependencies,
+        ]
+        subprocess.run(native_dependency_pip_args, check=True)
     return native_dependency_paths
 
 
@@ -126,13 +122,15 @@ def _zip_bundle(base_env: Path, zip_path: Path) -> None:
     shutil.make_archive(str(zip_path.with_suffix("")), "zip", str(base_env))
 
 
-def _copy_zip_to_destination(zip_path: Path) -> None:
+def _copy_zip_to_destination(zip_path: Path) -> Path:
     dependency_bundle_dir = Path.cwd() / "dependency_bundle"
     dependency_bundle_dir.mkdir(exist_ok=True)
     zip_destination = dependency_bundle_dir / zip_path.name
     if zip_destination.exists():
         zip_destination.unlink()
     shutil.copy(str(zip_path), str(zip_destination))
+
+    return zip_destination
 
 
 def build_deps_bundle() -> None:

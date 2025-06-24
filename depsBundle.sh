@@ -1,8 +1,10 @@
 #!/bin/bash
+
+# This script is called in a shell subprocess.
+# If editing this script, please see the security considerations
+# of this invocation method:
+# https://docs.python.org/3/library/subprocess.html#security-considerations
+
 set -xeuo pipefail
 
-python depsBundle.py
-
-rm -f dependency_bundle/deadline_cloud_for_3ds_max_submitter-deps-windows.zip
-
-cp dependency_bundle/deadline_cloud_for_3ds_max_submitter-deps.zip dependency_bundle/deadline_cloud_for_3ds_max_submitter-deps-windows.zip
+python3 scripts/deps_bundle.py

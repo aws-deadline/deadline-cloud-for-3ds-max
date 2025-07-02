@@ -19,6 +19,7 @@ RENDER_SUBMITTER_SETTINGS_FILE_EXT = ".deadline_render_settings.json"
 TEMP_BACKUP_FILENAME = "max_backup_file.mx"
 
 # Renderers currently supported by Deadline Cloud
+# Add new renderers to the README when adding to here
 ALLOWED_RENDERERS = [
     "Default_Scanline_Renderer",
     "ART_Renderer",

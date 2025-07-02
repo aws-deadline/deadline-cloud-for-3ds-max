@@ -44,6 +44,18 @@ jobs:
       with:
           tag: ${{ needs.TagRelease.outputs.tag }}
 
+  BuildAndStageInstallers:
+    needs: [TagRelease, PreRelease]
+    uses: aws-deadline/.github/.github/workflows/reusable_build_and_stage_installers.yml@mainline
+    secrets: inherit
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      project_name: ${{ github.event.repository.name }}
+      tag: ${{ needs.TagRelease.outputs.tag }}
+      oses: "['Windows']"
+
   Release:
       needs: [TagRelease, PreRelease]
       uses: aws-deadline/.github/.github/workflows/reusable_release.yml@mainline

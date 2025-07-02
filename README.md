@@ -21,6 +21,16 @@ This library requires:
 1. Python 3.10 or higher.
 1. Windows operating system.
 
+### Compatible Renderers
+
+AWS Deadline Cloud officially supports rendering 3ds Max jobs using the following renderers:
+
+* Autodesk Scanline 
+* Autodesk Raytracer (ART) 
+* Chaos Corona 
+* Chaos V-Ray 6 (CPU & GPU)
+* Chaos V-Ray 7 (CPU)
+* Maxon Redshift
 ## Getting Started
 
 This 3ds Max integration for AWS Deadline Cloud has two components that you will need to install:

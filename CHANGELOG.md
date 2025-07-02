@@ -4,7 +4,7 @@
 ### Features
 * Implement 3dsMax submitter installer (#110) ([`bbcba95`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/bbcba9589b1aad162957b21f4c0bcbf406ed2093))
 * Add submitter support for 3dsMax 2025+ (#109) ([`f33b4e0`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/f33b4e0583b983ad7b4460206b7e051f668217f8))
-* Add vray7 support without gpu (#104) ([`48d3eeb`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/48d3eeb05d90d2a93b28f5d7d083c1fb01d19ce6))
+* Add V-Ray7 support without GPU (#104) ([`48d3eeb`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/48d3eeb05d90d2a93b28f5d7d083c1fb01d19ce6))
 
 
 ## 0.1.4 (2025-03-21)

@@ -6,6 +6,7 @@ pre-install-commands = [
 [envs.default.scripts]
 sync = "pip install -r requirements-testing.txt"
 test = "pytest --cov-config pyproject.toml {args:test/unit}"
+test-installer = "pytest --no-cov {args:test/installer} -vvv"
 typing = "mypy {args:src test}"
 style = [
   "ruff check {args:.}",
@@ -50,3 +51,6 @@ detached = true
 deps = "pip install -r requirements-release.txt"
 bump = "semantic-release -v --strict version --no-push --no-commit --no-tag --skip-build {args}"
 version = "semantic-release -v --strict version --print {args}"
+
+[envs.installer.scripts]
+build-installer = "python {root}/scripts/build_installer_cli.py --installer-source-path {root}/installer/DeadlineCloudFor3dsMaxSubmitter.xml {args:}"

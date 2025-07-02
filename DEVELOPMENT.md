@@ -48,7 +48,7 @@ WARNING: This workflow installs additional Python packages into your 3ds Max's p
 
 1. Clone `deadline-cloud-for-3ds-max`, and build your local copy running `hatch build`.
 1. To install the submitter in 3dsMax, you need to copy the UI components into the corresponding 3ds Max installation directories. You can find the UI component files in your local copy of `deadline-cloud-for-3ds-max`.
-    1. Copy `<LOCAL_REPO_PATH>\install_files\STDCMenuCreator_v#.ms` into your 3DS Max startup scripts (e.g. `C:\Program Files\Autodesk\<version>\scripts\Startup`, more details about 3ds Max system directories can be found in the 3ds Max [documentation][3ds-max-2024-folders-documentation]). For 3ds Max 2024 use `STDCMenuCreator_v0.ms`. For 3ds Max 2025+ use `STDCMenuCreator_v1.ms`.
+    1. Copy `<LOCAL_REPO_PATH>\install_files\DeadlineCloudMenu.ms` into your 3DS Max startup scripts (e.g. `C:\Program Files\Autodesk\<version>\scripts\Startup`, more details about 3ds Max system directories can be found in the 3ds Max [documentation][3ds-max-2024-folders-documentation]).
     1. Copy `<LOCAL_REPO_PATH>\install_files\AWSDeadline-SubmitToDeadlineCloud.mcr` in 3ds Max usermacros directory (e.g. `C:\Users\<username>\AppData\Local\Autodesk\3dsMax\<version>\ENU\usermacros`).
 1. The point of entry for the submitter is the `run_ui.py` file under the `max_submitter` folder. Thus, this file needs to be discoverable by 3dsMax, and `max_submitter` needs to be a discoverable package by python. In Powershell run:
     1. `$env:ADSK_3DSMAX_SCRIPTS_ADDON_DIR += ";<LOCAL_REPO_PATH>\src\deadline\max_submitter"`.

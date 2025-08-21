@@ -37,7 +37,7 @@
             "oneOf": [
                 {
                     "type": "string",
-                    "pattern": "^V_Ray_([1-9]|GPU_[1-9]).*$"
+                    "pattern": "^V_Ray.*$"
                 },
                 {
                     "enum": [

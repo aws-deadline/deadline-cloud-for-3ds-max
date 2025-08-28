@@ -44,6 +44,14 @@ hatch run all:test
 
 WARNING: This workflow installs additional Python packages into your 3ds Max's python distribution.
 
+#### Installer installation (Recommended)
+1. Download the install builder tool from https://installbuilder.com/ (Evaluation)
+1. Clone `deadline-cloud-for-3ds-max`, and build your local copy running `hatch build`.
+1. Run hatch build
+1. Run - `hatch run installer:build-installer --local-dev`
+1. Installer should be built under the `installer` sub-folder.
+1. Double click on the built installer to setup all 3dsMax versions.
+
 #### Manual installation
 
 1. Clone `deadline-cloud-for-3ds-max`, and build your local copy running `hatch build`.

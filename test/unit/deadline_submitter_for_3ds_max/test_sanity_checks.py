@@ -7,6 +7,7 @@ from pytest import fixture, raises
 
 from deadline.max_submitter.sanity_checks import (
     check_sanity,
+    check_sanity_specific_state_set,
     JOB_PARAMETER_MAX_STRING_LENGTH,
     STEP_NAME_MAX_STRING_LENGTH,
     ALL_CAMERAS_STR,
@@ -37,6 +38,11 @@ def mock_max_utils():
 def mock_pymx_runtime():
     with patch("deadline.max_submitter.sanity_checks.rt") as mock_pymx_runtime:
         mock_pymx_runtime.renderers.current = ALLOWED_RENDERERS[0]
+        mock_pymx_runtime.maxFileName = "test_scene.max"
+        mock_pymx_runtime.rendOutputFilename = "test_output.png"
+        mock_pymx_runtime.rendTimeType = 1  # Single frame
+        mock_pymx_runtime.checkForSave.return_value = None
+        mock_pymx_runtime.execute.return_value = None
         yield mock_pymx_runtime
 
 
@@ -149,3 +155,39 @@ class TestSanityChecks:
 
         with raises(Exception):
             check_sanity(default_settings)
+
+    def test_check_sanity_specific_state_set_vray_6_update_renderer(
+        self,
+        mock_pymx_runtime: Mock,
+        default_settings: RenderSubmitterUISettings,
+    ) -> None:
+        """Test that V_Ray_6__update_2_1 renderer is accepted (splits by __ to V_Ray_6)"""
+        mock_pymx_runtime.renderers.current = "V_Ray_6__update_2_1:V-Ray 6, update 2.1"
+        mock_pymx_runtime.rendOutputFilename = ""
+
+        # Should not raise an exception
+        check_sanity_specific_state_set(default_settings, "test_state_set")
+
+    def test_check_sanity_specific_state_set_vray_gpu_7_hotfix_renderer(
+        self,
+        mock_pymx_runtime: Mock,
+        default_settings: RenderSubmitterUISettings,
+    ) -> None:
+        """Test that V_Ray_GPU_7_Hotfix_2 renderer is accepted (splits by _ to V_Ray_GPU_7)"""
+        mock_pymx_runtime.renderers.current = "V_Ray_GPU_7_Hotfix_2:V-Ray GPU 7, Hotfix 2"
+        mock_pymx_runtime.rendOutputFilename = ""
+
+        # Should not raise an exception
+        check_sanity_specific_state_set(default_settings, "test_state_set")
+
+    def test_check_sanity_specific_state_set_unsupported_renderer(
+        self,
+        mock_pymx_runtime: Mock,
+        default_settings: RenderSubmitterUISettings,
+    ) -> None:
+        """Test that an unsupported renderer raises an exception"""
+        mock_pymx_runtime.renderers.current = "Unsupported_Renderer:Some Unsupported Renderer"
+        mock_pymx_runtime.rendOutputFilename = ""
+
+        with raises(Exception, match="has an unsupported renderer set"):
+            check_sanity_specific_state_set(default_settings, "test_state_set")

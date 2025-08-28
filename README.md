@@ -29,7 +29,7 @@ AWS Deadline Cloud officially supports rendering 3ds Max jobs using the followin
 * Autodesk Raytracer (ART) 
 * Chaos Corona 
 * Chaos V-Ray 6 (CPU & GPU)
-* Chaos V-Ray 7 (CPU)
+* Chaos V-Ray 7 (CPU & GPU)
 * Maxon Redshift
 ## Getting Started
 

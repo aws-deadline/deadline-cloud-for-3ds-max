@@ -177,10 +177,16 @@ def check_sanity_specific_state_set(settings: RenderSubmitterUISettings, state_s
             f"The state set name {state_set} is too long. The max length allowed is {STEP_NAME_MAX_STRING_LENGTH}."
         )
 
-    if str(rt.renderers.current).split(":")[0].split("__")[0] not in ALLOWED_RENDERERS:
+    renderer_name = str(rt.renderers.current).split(":")[0]
+    renderer_split_underscore = renderer_name.split("__")[0]
+    renderer_split_single_underscore = "_".join(renderer_name.split("_")[:4])
+
+    if (
+        renderer_split_underscore not in ALLOWED_RENDERERS
+        and renderer_split_single_underscore not in ALLOWED_RENDERERS
+    ):
         raise Exception(
-            f"{state_set} has an unsupported renderer set. Renderer: "
-            f"{str(rt.renderers.current).split(':')[0]}"
+            f"{state_set} has an unsupported renderer set. Renderer: " f"{renderer_name}"
         )
 
     if not settings.override_frame_range:

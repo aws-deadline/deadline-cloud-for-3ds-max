@@ -23,11 +23,9 @@ def get_render_handler(renderer: str = "Default_Scanline_Renderer") -> DefaultMa
         return ArtHandler()
     elif renderer == "Corona":
         return CoronaHandler()
-    elif renderer.startswith("V_Ray_6"):
-        return VrayHandler(gpu=False)
-    elif renderer.startswith("V_Ray_GPU_6"):
+    elif renderer.startswith("V_Ray_GPU_"):
         return VrayHandler(gpu=True)
-    elif renderer.startswith("V_Ray_7"):
+    elif renderer.startswith("V_Ray_"):
         return VrayHandler(gpu=False)
     elif renderer == "Redshift_Renderer":
         return RedshiftHandler()

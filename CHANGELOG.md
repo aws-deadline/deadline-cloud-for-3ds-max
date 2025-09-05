@@ -1,3 +1,11 @@
+## 0.1.6 (2025-09-05)
+
+
+
+### Bug Fixes
+* add Constants to support VRay7 GPU (#132) ([`ceb2463`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/ceb24631c9a1b9da8d39390a634618c29b907d82))
+* use correct VRay regex in adaptor init-data schema (#136) ([`ae23570`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/ae23570d6c52a9fe07b920caedf59b0785b08cd6))
+
 ## 0.1.5 (2025-07-02)
 
 

@@ -49,7 +49,9 @@ reveals a UI to create a job submission for AWS Deadline Cloud using the [AWS De
 It automatically determines the files required based on the loaded scene, allows the user to specify render options, builds an
 [Open Job Description template][openjd] that defines the workflow, and submits the job to the farm and queue of your choosing.
 
-We are working on implementing a submitter installer for 3ds Max to automate the submitter installation. In the meantime, the submitter needs to be installed manually. To install the submitter follow the instructions [here](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/blob/mainline/DEVELOPMENT.md#manual-installation).
+The 3ds Max submitter plugin is packaged as part of the Deadline Cloud submitter installer. Please visit the Deadline Cloud downloads page in the AWS console to download the latest version.
+
+To manually build the installer, please follow the instructions [here](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/blob/mainline/DEVELOPMENT.md#manual-installation).
 
 ## Adaptor
 

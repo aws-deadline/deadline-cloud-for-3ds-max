@@ -178,13 +178,17 @@ def check_sanity_specific_state_set(settings: RenderSubmitterUISettings, state_s
         )
 
     renderer_name = str(rt.renderers.current).split(":")[0]
-    renderer_split_underscore = renderer_name.split("__")[0]
-    renderer_split_single_underscore = "_".join(renderer_name.split("_")[:4])
 
-    if (
-        renderer_split_underscore not in ALLOWED_RENDERERS
-        and renderer_split_single_underscore not in ALLOWED_RENDERERS
-    ):
+    # Check if renderer is supported - either exact match or starts with an allowed renderer
+    renderer_supported = renderer_name in ALLOWED_RENDERERS
+    if not renderer_supported:
+        # Check if renderer starts with any allowed renderer (handles versions/hotfixes)
+        for allowed_renderer in ALLOWED_RENDERERS:
+            if renderer_name.startswith(allowed_renderer):
+                renderer_supported = True
+                break
+
+    if not renderer_supported:
         raise Exception(
             f"{state_set} has an unsupported renderer set. Renderer: " f"{renderer_name}"
         )

@@ -161,7 +161,7 @@ class TestSanityChecks:
         mock_pymx_runtime: Mock,
         default_settings: RenderSubmitterUISettings,
     ) -> None:
-        """Test that V_Ray_6__update_2_1 renderer is accepted (splits by __ to V_Ray_6)"""
+        """Test that V_Ray_6__update_2_1 renderer is accepted (starts with V_Ray_6)"""
         mock_pymx_runtime.renderers.current = "V_Ray_6__update_2_1:V-Ray 6, update 2.1"
         mock_pymx_runtime.rendOutputFilename = ""
 
@@ -173,8 +173,20 @@ class TestSanityChecks:
         mock_pymx_runtime: Mock,
         default_settings: RenderSubmitterUISettings,
     ) -> None:
-        """Test that V_Ray_GPU_7_Hotfix_2 renderer is accepted (splits by _ to V_Ray_GPU_7)"""
+        """Test that V_Ray_GPU_7_Hotfix_2 renderer is accepted (starts with V_Ray_GPU_7)"""
         mock_pymx_runtime.renderers.current = "V_Ray_GPU_7_Hotfix_2:V-Ray GPU 7, Hotfix 2"
+        mock_pymx_runtime.rendOutputFilename = ""
+
+        # Should not raise an exception
+        check_sanity_specific_state_set(default_settings, "test_state_set")
+
+    def test_check_sanity_specific_state_set_vray_7_hotfix_renderer(
+        self,
+        mock_pymx_runtime: Mock,
+        default_settings: RenderSubmitterUISettings,
+    ) -> None:
+        """Test that V_Ray_7_Hotfix_2 renderer is accepted (starts with V_Ray_7)"""
+        mock_pymx_runtime.renderers.current = "V_Ray_7_Hotfix_2:V-Ray 7, Hotfix 2"
         mock_pymx_runtime.rendOutputFilename = ""
 
         # Should not raise an exception
@@ -191,3 +203,25 @@ class TestSanityChecks:
 
         with raises(Exception, match="has an unsupported renderer set"):
             check_sanity_specific_state_set(default_settings, "test_state_set")
+
+    def test_allowed_renderers_no_substring_conflicts(self) -> None:
+        """Test that none of the allowed renderers is a substring of another.
+
+        This prevents issues where renderer version checking might incorrectly match
+        a shorter renderer name that is a substring of a longer one.
+        For example, if 'V_Ray' and 'V_Ray_6' were both in the list,
+        'V_Ray_6_update_1' would match 'V_Ray' first instead of 'V_Ray_6'.
+        """
+        for i, renderer_a in enumerate(ALLOWED_RENDERERS):
+            for j, renderer_b in enumerate(ALLOWED_RENDERERS):
+                if i != j:  # Don't compare renderer with itself
+                    assert renderer_a not in renderer_b, (
+                        f"Renderer '{renderer_a}' is a substring of '{renderer_b}'. "
+                        f"This could cause incorrect renderer detection. "
+                        f"Consider using more specific renderer names or reordering the list."
+                    )
+                    assert renderer_b not in renderer_a, (
+                        f"Renderer '{renderer_b}' is a substring of '{renderer_a}'. "
+                        f"This could cause incorrect renderer detection. "
+                        f"Consider using more specific renderer names or reordering the list."
+                    )

@@ -52,6 +52,9 @@ WARNING: This workflow installs additional Python packages into your 3ds Max's p
 1. Installer should be built under the `installer` sub-folder.
 1. Double click on the built installer to setup all 3dsMax versions.
 
+##### Quick Update for development.
+1. After using the Installer installation, developers can quickly iterate by using `.\scripts\update_installed_files.bat` The script will copy and update all `.py` files.
+
 #### Manual installation
 
 1. Clone `deadline-cloud-for-3ds-max`, and build your local copy running `hatch build`.

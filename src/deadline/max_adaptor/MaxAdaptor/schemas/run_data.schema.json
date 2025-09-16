@@ -3,7 +3,7 @@
     "type": "object",
     "properties": {
         "frame": { "type": "number" },
-        "camera": { "type":  "string" }
+        "camera": { "type": "string" }
     },
     "required": ["frame"]
 }

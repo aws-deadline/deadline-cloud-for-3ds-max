@@ -33,7 +33,21 @@ class MaxNotRunningError(Exception):
 
 # Renderer needs extra steps
 _FIRST_MAX_ACTIONS = ["scene_file", "state_set"]  # Actions which must be queued before any others
-_MAX_INIT_KEYS = {"camera", "output_file_path", "output_file_name", "output_file_format"}
+_MAX_INIT_KEYS = {
+    "camera",
+    "output_file_path",
+    "output_file_name",
+    "output_file_format",
+    "render_elements",
+    "render_elements_update_paths",
+    "render_elements_include_name_in_path",
+    "render_elements_include_type_in_path",
+    "render_elements_include_name_in_filename",
+    "render_elements_include_type_in_filename",
+    "vray_render_elements_vfb_control",
+    "vray_split_buffer_support",
+    "ignore_render_elements_by_name",
+}
 
 
 def _check_for_exception(func: Callable) -> Callable:
@@ -291,6 +305,37 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
         for action_name in _MAX_INIT_KEYS:
             if action_name in self.init_data:
                 self._action_queue.enqueue_action(self._action_from_action_item(action_name))
+
+        # If any render element parameters are present, enqueue the configure_render_elements action
+        render_element_keys = [
+            "render_elements",
+            "render_elements_update_paths",
+            "render_elements_include_name_in_path",
+            "render_elements_include_type_in_path",
+            "render_elements_include_name_in_filename",
+            "render_elements_include_type_in_filename",
+            "vray_render_elements_vfb_control",
+            "vray_split_buffer_support",
+            "ignore_render_elements_by_name",
+        ]
+
+        render_element_data = {}
+        has_render_element_config = False
+
+        for key in render_element_keys:
+            if key in self.init_data:
+                render_element_data[key] = self.init_data[key]
+                has_render_element_config = True
+
+        if has_render_element_config:
+            _logger.info(
+                f"Queueing configure_render_elements action with data: {render_element_data}"
+            )
+            self._action_queue.enqueue_action(
+                Action("configure_render_elements", render_element_data)
+            )
+        else:
+            _logger.info("No render element configuration found in init_data")
 
     def on_start(self) -> None:
         """

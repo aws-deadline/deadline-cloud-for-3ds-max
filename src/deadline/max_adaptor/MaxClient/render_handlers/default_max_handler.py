@@ -13,13 +13,42 @@ import sys
 import pymxs  # noqa
 from pymxs import runtime as rt
 
-from deadline.max_adaptor.executable_handler import MaxExecutableHandler, SupportedMaxExecutable
+from deadline.max_adaptor.executable_handler import MaxExecutableHandler
 
 logger = logging.getLogger(__name__)
 
 # Re-assign sys stdout and stderr to print in the console instead of the Max Listener
 sys.stdout = sys.__stdout__
 sys.stderr = sys.__stderr__
+
+
+class ConsoleLogHandler(logging.Handler):
+    """Custom logging handler that routes logs to both console and Max.log file."""
+
+    def __init__(self, log_to_console_func):
+        super().__init__()
+        self.log_to_console_func = log_to_console_func
+        # Set a formatter for better log formatting
+        formatter = logging.Formatter("[%(name)s] %(levelname)s: %(message)s")
+        self.setFormatter(formatter)
+
+    def emit(self, record):
+        """Emit a log record by sending it to both console and Max.log."""
+        try:
+            msg = self.format(record)
+            # Send to console (stdout)
+            self.log_to_console_func(msg)
+            # Also send to Max.log file via logsystem
+            try:
+                import pymxs
+
+                pymxs.runtime.logsystem.logEntry(msg, broadcast=True)
+            except Exception:
+                # If pymxs is not available or fails, just continue
+                pass
+        except Exception:
+            # Avoid infinite recursion if logging fails
+            pass
 
 
 class DefaultMaxHandler:
@@ -34,12 +63,30 @@ class DefaultMaxHandler:
             "output_file_format": self.set_output_file_format,
             "state_set": self.set_state_set,
             "scene_file": self.set_scene_file,
+            # Render elements integration actions
+            "render_elements": self.configure_render_elements,
+            "configure_render_elements": self.configure_render_elements,
+            "cleanup_render_elements": self.cleanup_render_elements,
+            # Individual render element parameter actions
+            "render_elements_update_paths": self._no_op_action,
+            "render_elements_include_name_in_path": self._no_op_action,
+            "render_elements_include_type_in_path": self._no_op_action,
+            "render_elements_include_name_in_filename": self._no_op_action,
+            "render_elements_include_type_in_filename": self._no_op_action,
+            "vray_render_elements_vfb_control": self._no_op_action,
+            "vray_split_buffer_support": self._no_op_action,
+            "ignore_render_elements_by_name": self._no_op_action,
         }
         self.camera_node = None
         self.output_dir = None
         self.output_name = None
         self.output_format = None
         self._executable_handler: MaxExecutableHandler = MaxExecutableHandler()
+        # Initialize render element manager directly
+        self.render_element_manager = None
+        # Logger interceptor for render element manager
+        self._console_handler = None
+        self._intercepted_loggers = []
 
     def start_render(self, data: dict) -> None:
         """
@@ -68,43 +115,58 @@ class DefaultMaxHandler:
                 "format is missing."
             )
 
-        # Set the frame to render
-        rt.rendTimeType = 1  # Set to single frame
-        rt.sliderTime = frame
+        # Check if render elements were configured during initialization
+        render_elements_configured = (
+            self.render_element_manager is not None
+            and self.render_element_manager.has_render_elements_configured()
+        )
 
-        output_name = ""
-        camera = data.get("camera")
-        if camera is not None:
-            logger.debug("Setting camera with run data")
-            camera = self.get_camera_to_render(camera)
-            self.camera_node = rt.getNodeByName(camera)
-            # If camera gets set by run data, add the camera to the output name
-            output_name = self.output_name + "_" + camera
+        try:
+            # Set the frame to render
+            rt.rendTimeType = 1  # Set to single frame
+            rt.sliderTime = frame
 
-        # Since camera can be set by both init and run data, this isn't a required parameter in either schema.
-        if self.camera_node is None:
-            self.log_to_console("Error: MaxClient: start_render called without a camera.")
-            raise RuntimeError("MaxClient: start_render called without a camera.")
+            output_name = ""
+            camera = data.get("camera")
+            if camera is not None:
+                logger.debug("Setting camera with run data")
+                camera = self.get_camera_to_render(camera)
+                self.camera_node = rt.getNodeByName(camera)
+                # If camera gets set by run data, add the camera to the output name
+                output_name = self.output_name + "_" + camera
 
-        # Create output path to pass along with render
-        if not output_name:
-            output_name = self.reformat_framenumber_padding(self.output_name, frame)
-        else:
-            output_name = self.reformat_framenumber_padding(output_name, frame)
-        output_file = output_name + self.output_format
-        output_path = os.path.join(self.output_dir, output_file)
+            # Since camera can be set by both init and run data, this isn't a required parameter in either schema.
+            if self.camera_node is None:
+                self.log_to_console("Error: MaxClient: start_render called without a camera.")
+                raise RuntimeError("MaxClient: start_render called without a camera.")
 
-        # Create the folder(s) if the directory doesn't exist
-        if not os.path.exists(self.output_dir):
-            os.makedirs(self.output_dir)
+            # Create output path to pass along with render
+            if not output_name:
+                output_name = self.reformat_framenumber_padding(self.output_name, frame)
+            else:
+                output_name = self.reformat_framenumber_padding(output_name, frame)
+            output_file = output_name + self.output_format
+            output_path = os.path.join(self.output_dir, output_file)
 
-        # Not sure if needed?
-        if os.path.exists(output_path):
-            os.remove(output_path)
+            # Create the folder(s) if the directory doesn't exist
+            if not os.path.exists(self.output_dir):
+                os.makedirs(self.output_dir)
 
-        rt.render(camera=self.camera_node, outputFile=output_path)
+            # Not sure if needed?
+            if os.path.exists(output_path):
+                os.remove(output_path)
 
-        self.log_to_console(f"MaxClient: Finished Rendering Frame {frame}")
+            rt.render(camera=self.camera_node, outputFile=output_path)
+
+            self.log_to_console(f"MaxClient: Finished Rendering Frame {frame}")
+
+        finally:
+            # Restore render elements after rendering if they were configured
+            if render_elements_configured:
+                try:
+                    self.cleanup_render_elements(data)
+                except Exception as e:
+                    self.log_to_console(f"Warning: Render elements cleanup failed: {e}")
 
     def reformat_framenumber_padding(self, name: str, number: int) -> str:
         """
@@ -280,10 +342,136 @@ class DefaultMaxHandler:
 
     def log_to_console(self, message: str) -> None:
         """
-        Handles logging to the stdout, based on which 3dsMax executable is being used.
-        :param message: The text to log to the stdout.
+        Handles logging to both stdout and Max.log file for better debugging.
+        :param message: The text to log to the stdout and Max.log.
         """
-        if self._executable_handler.is_executable_type(SupportedMaxExecutable.BATCH):
+        # Always print to stdout for immediate feedback
+        print(message, flush=True)
+
+        # Also log to Max.log file for persistent debugging
+        try:
             rt.logsystem.logEntry(message, broadcast=True)
-        else:
-            print(message, flush=True)
+        except Exception:
+            # If logsystem fails, continue without breaking execution
+            pass
+
+    def _setup_logger_interceptor(self) -> None:
+        """
+        Set up logger interceptor to capture render element manager logs.
+        """
+        if self._console_handler is not None:
+            return  # Already set up
+
+        # Create console handler
+        self._console_handler = ConsoleLogHandler(self.log_to_console)
+        self._console_handler.setLevel(logging.DEBUG)
+
+        # List of logger names to intercept
+        logger_names = [
+            "max_adaptor.MaxClient.render_element_manager",
+            "deadline.max_shared.utilities.max_utils",
+            # Add the root logger name from render_element_manager.py
+            "deadline.max_adaptor.MaxClient.render_element_manager",
+        ]
+
+        # Add handler to relevant loggers
+        for logger_name in logger_names:
+            target_logger = logging.getLogger(logger_name)
+            target_logger.addHandler(self._console_handler)
+            target_logger.setLevel(logging.DEBUG)  # Ensure we capture DEBUG level logs
+            self._intercepted_loggers.append(target_logger)
+
+        self.log_to_console("Logger interceptor set up for render element manager")
+
+    def _teardown_logger_interceptor(self) -> None:
+        """
+        Tear down logger interceptor.
+        """
+        if self._console_handler is None:
+            return  # Not set up
+
+        # Remove handler from all intercepted loggers
+        for target_logger in self._intercepted_loggers:
+            target_logger.removeHandler(self._console_handler)
+
+        # Clear references
+        self._intercepted_loggers.clear()
+        self._console_handler = None
+
+        self.log_to_console("Logger interceptor torn down")
+
+    def configure_render_elements(self, data: dict) -> None:
+        """
+        Configure render elements using the render element manager directly.
+
+        :param data: The data containing render elements configuration
+        :raises: RuntimeError if configuration fails
+        """
+        try:
+            # Lazy initialize render element manager to avoid circular imports
+            if self.render_element_manager is None:
+                from deadline.max_adaptor.MaxClient.render_element_manager import (
+                    RenderElementManager,
+                )
+
+                self.render_element_manager = RenderElementManager()
+
+            # Set up logger interceptor to capture detailed logs
+            self._setup_logger_interceptor()
+
+            result = self.render_element_manager.configure_render_elements(data)
+            if not result.get("success"):
+                error_msg = result.get("error", "Unknown error")
+                self.log_to_console(f"Error: Render elements configuration failed: {error_msg}")
+                raise RuntimeError(f"Render elements configuration failed: {error_msg}")
+            else:
+                # Log success message if available
+                success_msg = result.get("message", "Render elements configured successfully")
+                self.log_to_console(f"Render elements configuration: {success_msg}")
+        except Exception as e:
+            self.log_to_console(f"Error configuring render elements: {e}")
+            # Clean up logger interceptor on error
+            self._teardown_logger_interceptor()
+            raise RuntimeError(f"Render elements configuration failed: {e}")
+
+    def _no_op_action(self, data: dict) -> None:
+        """
+        No-operation action for render element parameters.
+        These parameters are handled by the main configure_render_elements action.
+        """
+        # This is intentionally empty - the parameters are processed by configure_render_elements
+        pass
+
+    def cleanup_render_elements(self, data: dict) -> None:
+        """
+        Cleanup render elements after rendering completes.
+        Uses the render element manager's cached configuration.
+
+        :param data: The run data (not used for render elements cleanup)
+        """
+        # Check if render element manager exists and was configured
+        if (
+            self.render_element_manager is None
+            or not self.render_element_manager.has_render_elements_configured()
+        ):
+            self.log_to_console("No render element configuration found, skipping cleanup")
+            # Still tear down logger interceptor
+            self._teardown_logger_interceptor()
+            return
+
+        try:
+            self.log_to_console("Cleaning up render elements after rendering")
+            result = self.render_element_manager.restore_render_elements()
+            if result.get("success"):
+                success_msg = result.get(
+                    "message", "Render elements cleanup completed successfully"
+                )
+                self.log_to_console(f"Render elements cleanup: {success_msg}")
+            else:
+                error_msg = result.get("error", "Unknown error")
+                self.log_to_console(f"Warning: Render elements cleanup had issues: {error_msg}")
+        except Exception as e:
+            self.log_to_console(f"Warning: Error during render elements cleanup: {e}")
+        finally:
+            # Always tear down logger interceptor
+            self._teardown_logger_interceptor()

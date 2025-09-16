@@ -31,12 +31,23 @@
         </folder>
         <folder>
             <description>3ds Max Submitter Files</description>
-            <destination>${max_installdir}/scripts/deadline/max_submitter</destination>
+            <destination>${max_installdir}/scripts/deadline</destination>
             <name>maxsubmitter</name>
             <platforms>all</platforms>
             <distributionFileList>
                 <distributionDirectory allowWildcards="1">
-                    <origin>../src/deadline/max_submitter/*</origin>
+                    <origin>../src/deadline/max_submitter</origin>
+                </distributionDirectory>
+            </distributionFileList>
+        </folder>
+        <folder>
+            <description>3ds Max Shared Files</description>
+            <destination>${max_installdir}/scripts/deadline</destination>
+            <name>maxshared</name>
+            <platforms>all</platforms>
+            <distributionFileList>
+                <distributionDirectory allowWildcards="1">
+                    <origin>../src/deadline/max_shared</origin>
                 </distributionDirectory>
             </distributionFileList>
         </folder>
@@ -101,6 +112,13 @@
         <fnAddPathEnvironmentVariable>
 			<progressText>Registering 3ds Max submitter path</progressText>
 			<name>MAX_SUBMITTER</name>
+			<value>${max_installdir}/scripts</value>
+			<scope>${installscope}</scope>
+			<insertAt>end</insertAt>
+		</fnAddPathEnvironmentVariable>
+        <fnAddPathEnvironmentVariable>
+			<progressText>Adding scripts directory to Python path</progressText>
+			<name>PYTHONPATH</name>
 			<value>${max_installdir}/scripts</value>
 			<scope>${installscope}</scope>
 			<insertAt>end</insertAt>

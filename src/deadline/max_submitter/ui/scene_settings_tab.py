@@ -36,6 +36,7 @@ from qtpy.QtWidgets import (  # type: ignore
     QWidget,
 )
 from deadline.max_submitter.utilities import max_utils
+from deadline.max_submitter.ui.render_elements_widget import RenderElementsWidget
 
 _logger = logging.getLogger(__name__)
 
@@ -232,13 +233,23 @@ class SceneSettingsWidget(QWidget):
         self._build_scene_tweaks_ui()
         lyt.addWidget(self.scene_tweaks_grp_box, 9, 0, 3, 5)
 
+        # Authentic Deadline 10 render elements widget
+        self.render_elements_widget = RenderElementsWidget(settings, self)
+        self.render_elements_widget.settings_changed.connect(
+            self._on_render_elements_settings_changed
+        )
+        self.render_elements_widget.validation_changed.connect(
+            self._on_render_elements_validation_changed
+        )
+        lyt.addWidget(self.render_elements_widget, 12, 0, 4, 5)
+
         if self.developer_options:
             self.include_adaptor_wheels = QCheckBox(
                 "Developer Option: Include Adaptor Wheels", self
             )
-            lyt.addWidget(self.include_adaptor_wheels, 12, 0)
+            lyt.addWidget(self.include_adaptor_wheels, 16, 0)
 
-        lyt.addItem(QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding), 13, 0)
+        lyt.addItem(QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding), 17, 0)
 
         self._fill_cameras_box(0)
 
@@ -281,6 +292,30 @@ class SceneSettingsWidget(QWidget):
         for mat in SCENE_TWEAKS_MATS:
             self.custom_mat_box.addItem(mat, mat)
         scene_tweaks_lyt.addWidget(self.custom_mat_box, 3, 1)
+
+    def _on_render_elements_settings_changed(self):
+        """
+        Handle changes from the enhanced render elements widget.
+
+        The render elements widget manages its own settings internally,
+        so we just need to acknowledge the change occurred.
+        """
+        _logger.debug("Render elements settings changed")
+        # The render elements widget handles its own settings updates
+        # No additional action needed here
+
+    def _on_render_elements_validation_changed(self, warnings):
+        """
+        Handle validation changes from the enhanced render elements widget.
+
+        :param warnings: List of validation warning messages
+        :type warnings: list[str]
+        """
+        # Log validation warnings
+        if warnings:
+            _logger.warning(f"Render elements validation warnings: {warnings}")
+        else:
+            _logger.debug("Render elements validation passed")
 
     def _update_state_set(self, _):
         """
@@ -488,6 +523,9 @@ class SceneSettingsWidget(QWidget):
         if self.developer_options:
             (self.include_adaptor_wheels.setChecked(settings.include_adaptor_wheels))
 
+        # Update render elements widget from settings
+        self.render_elements_widget.update_settings_from_data_class(settings)
+
     def update_settings(self, settings):
         """
         Update a scene settings object with the latest values.
@@ -520,6 +558,13 @@ class SceneSettingsWidget(QWidget):
             settings.include_adaptor_wheels = self.include_adaptor_wheels.isChecked()
         else:
             settings.include_adaptor_wheels = False
+
+        # Update render elements settings from widget
+        self.render_elements_widget.update_data_class_from_settings(settings)
+
+        # Update render element output filenames from detected elements
+        # Keep render_element_output_filenames empty for now
+        settings.render_element_output_filenames = []
 
     def activate_frame_override_changed(self, state):
         """

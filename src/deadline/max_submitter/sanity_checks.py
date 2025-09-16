@@ -187,7 +187,6 @@ def check_sanity_specific_state_set(settings: RenderSubmitterUISettings, state_s
             if renderer_name.startswith(allowed_renderer):
                 renderer_supported = True
                 break
-
     if not renderer_supported:
         raise Exception(
             f"{state_set} has an unsupported renderer set. Renderer: " f"{renderer_name}"

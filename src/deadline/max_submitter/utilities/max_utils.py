@@ -11,6 +11,7 @@ from pathlib import Path
 import pymxs  # separate import to initialize
 from pymxs import runtime as rt
 
+
 _logger = logging.getLogger(__name__)
 
 
@@ -314,3 +315,13 @@ def get_state_set_names() -> list:
     for i in range(-1, master_state.Children.count - 2):
         state_sets.append([master_state.Children.Item[i].Name, i + 1])
     return state_sets
+
+
+# Render elements functions are now imported from shared utilities
+# See deadline.max_shared.utilities.max_utils for:
+# - get_render_elements()
+# - validate_render_element_paths()
+# - get_render_elements_output_directories()
+# - purify_render_element_name()
+# - get_render_element_by_name()
+# - validate_render_element_configuration()

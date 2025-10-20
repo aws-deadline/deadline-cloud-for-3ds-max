@@ -19,16 +19,17 @@ if ($Help) {
     Write-Host "  Tests the deadline-cloud-for-3ds-max adaptor directly without worker agent setup"
     Write-Host ""
     Write-Host "USAGE:" -ForegroundColor Yellow
-    Write-Host "  .\test-3dsmax-openjd.ps1 -JobBundleDir <path>" -ForegroundColor Cyan
-    Write-Host "  Example: .\test-3dsmax-openjd.ps1 -JobBundleDir test_bundle" -ForegroundColor Cyan
+    Write-Host "  Run this script from the repository root directory:" -ForegroundColor Yellow
+    Write-Host "  .\scripts\test-3dsmax-openjd-run.ps1 -JobBundleDir <path>" -ForegroundColor Cyan
+    Write-Host "  Example: .\scripts\test-3dsmax-openjd-run.ps1 -JobBundleDir test_bundle" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "PARAMETERS:" -ForegroundColor Yellow
     Write-Host "  -JobBundleDir    (Required) Path to the job bundle directory" -ForegroundColor Cyan
     Write-Host "  -WheelPath       Path to the wheel file to install" -ForegroundColor Cyan
     Write-Host "  -MaxVersion      3ds Max version (default: 2026)" -ForegroundColor Cyan
     Write-Host "  -Step            Step number to run (default: 0)" -ForegroundColor Cyan
-    Write-Host "  -SkipInstall     Skip wheel installation" -ForegroundColor Cyan
-    Write-Host "  -ShowOutput      Show detailed output" -ForegroundColor Cyan
+    Write-Host "  -SkipInstall     Skip wheel installation (optional)" -ForegroundColor Cyan
+    Write-Host "  -ShowOutput      Show detailed output (optional)" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "PREREQUISITES:" -ForegroundColor Yellow
     Write-Host "  Install PowerShell YAML module for proper parameter parsing:"
@@ -127,14 +128,13 @@ function Setup-Environment {
     Write-Host "`n--- Setting Up Environment ---" -ForegroundColor Yellow
     
     $maxPythonDir = Split-Path $MaxPythonPath -Parent
-    $pythonScriptsDir = "C:\Users\$env:USERNAME\AppData\Roaming\Python\Python311\Scripts"
     $repoPath = Get-Location
     $maxSubmitterPath = "$repoPath\src\deadline\max_submitter"
     
     # Set PATH with 3ds Max Python and executable FIRST (highest priority)
     $maxExecutableDir = "C:\Program Files\Autodesk\3ds Max $MaxVersion"
     Write-Host "Setting up PATH with 3ds Max priority..." -ForegroundColor Gray
-    $env:PATH = "$maxPythonDir;$maxExecutableDir;$pythonScriptsDir;$env:PATH"
+    $env:PATH = "$maxPythonDir;$maxExecutableDir;$env:PATH"
     Write-Host "Updated PATH to include:" -ForegroundColor Green
     Write-Host "  - 3ds Max Python: $maxPythonDir" -ForegroundColor Green
     Write-Host "  - 3ds Max Executable: $maxExecutableDir" -ForegroundColor Green
@@ -188,7 +188,7 @@ function Install-Adaptor {
     Write-Host "Running: $MaxPythonPath -m pip install $WheelPath --force-reinstall" -ForegroundColor Cyan
     
     try {
-        & $MaxPythonPath -m pip install $WheelPath --force-reinstall
+        & $MaxPythonPath -m pip install $WheelPath --force-reinstall --no-deps
         if ($LASTEXITCODE -eq 0) {
             Write-Host "Adaptor installed successfully" -ForegroundColor Green
             return $true
@@ -361,9 +361,9 @@ function Build-TestCommand {
     }
     [System.IO.File]::WriteAllText($taskParamsFile, $taskParamsJson, $utf8NoBom)
     
-    # Build openjd run command with JSON file references (use filtered parameters for runner)
+    # Build openjd run command with JSON file references using 3ds Max Python
     $stepName = $selectedStep.name
-    $testCommand = "openjd run `"$templateFile`" --step `"$stepName`" --job-param `"file://$runnerJobParamsFile`" --tasks `"file://$taskParamsFile`""
+    $testCommand = "`"$MaxPythonPath`" -m openjd run `"$templateFile`" --step `"$stepName`" --job-param `"file://$runnerJobParamsFile`" --tasks `"file://$taskParamsFile`""
     
     # Print parameter information to console
     Write-Host "`nComplete Job Parameters JSON ($jobParamsFile):" -ForegroundColor Yellow

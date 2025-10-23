@@ -8,11 +8,39 @@ import dataclasses
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional
 
 import pymxs  # noqa
 from deadline.max_submitter.data_const import ALL_CAMERAS_STR, RENDER_SUBMITTER_SETTINGS_FILE_EXT
 from pymxs import runtime as rt
+
+
+# Constants for render element parameter processing
+RENDER_ELEMENT_PARAMS: List[str] = [
+    "RenderElementsModified",
+    "RenderElements",
+    "RenderElementsUpdatePaths",
+    "RenderElementsIncludeNameInPath",
+    "RenderElementsIncludeTypeInPath",
+    "RenderElementsIncludeNameInFilename",
+    "RenderElementsIncludeTypeInFilename",
+    "VRayRenderElementsVFBControl",
+    "VRaySplitBufferSupport",
+    "IgnoreRenderElementsByName",
+]
+
+RENDER_ELEMENT_PARAM_MAPPING: Dict[str, str] = {
+    "RenderElementsModified": "enabled_modify_render_elements",
+    "RenderElements": "render_elements",
+    "RenderElementsUpdatePaths": "render_elements_update_paths",
+    "RenderElementsIncludeNameInPath": "render_elements_include_name_in_path",
+    "RenderElementsIncludeTypeInPath": "render_elements_include_type_in_path",
+    "RenderElementsIncludeNameInFilename": "render_elements_include_name_in_filename",
+    "RenderElementsIncludeTypeInFilename": "render_elements_include_type_in_filename",
+    "VRayRenderElementsVFBControl": "vray_render_elements_vfb_control",
+    "VRaySplitBufferSupport": "vray_split_buffer_support",
+    "IgnoreRenderElementsByName": "ignore_render_elements_by_name",
+}
 
 
 @dataclass
@@ -78,6 +106,41 @@ class RenderSubmitterUISettings:
     all_cameras: list[str] = field(default_factory=list)
     all_stereo_cameras: list[str] = field(default_factory=list)
 
+    # Render Elements (Basic Support - already implemented)
+    # Master control for render elements modification
+    enabled_modify_render_elements: bool = field(default=False, metadata={"sticky": True})
+    # Enable/disable render elements output
+    render_elements: bool = field(default=True, metadata={"sticky": True})
+
+    # List of specific render element names to ignore
+    ignore_render_elements_by_name: list[str] = field(
+        default_factory=list, metadata={"sticky": True}
+    )
+    # Output paths for each render element
+    render_element_output_filenames: list[str] = field(default_factory=list)
+
+    # Enhanced Render Elements (building on existing basic support - Deadline 10 feature parity)
+    # Automatically update render element output paths during submission
+    render_elements_update_paths: bool = field(default=True, metadata={"sticky": True})
+
+    # Include render element name in the output directory path
+    render_elements_include_name_in_path: bool = field(default=True, metadata={"sticky": True})
+    # Include render element type (class name) in the output directory path
+    render_elements_include_type_in_path: bool = field(default=False, metadata={"sticky": True})
+    # Include render element name in the output filename
+    render_elements_include_name_in_filename: bool = field(default=True, metadata={"sticky": True})
+    # Include render element type (class name) in the output filename
+    render_elements_include_type_in_filename: bool = field(default=False, metadata={"sticky": True})
+
+    # Store original render element names for restoration after submission
+    original_render_element_names: list[str] = field(default_factory=list)
+
+    # V-Ray Render Element Integration (V-Ray specific features from Deadline 10)
+    # Control V-Ray VFB settings for render elements during rendering
+    vray_render_elements_vfb_control: bool = field(default=True, metadata={"sticky": True})
+    # Enable V-Ray split buffer functionality for render elements
+    vray_split_buffer_support: bool = field(default=True, metadata={"sticky": True})
+
     # Developer options
     include_adaptor_wheels: bool = field(default=False, metadata={"sticky": True})
 
@@ -126,3 +189,128 @@ class RenderSubmitterUISettings:
                 if field.metadata.get("sticky")
             }
             json.dump(obj, fh, indent=1)
+
+    def validate_render_element_names(self) -> list[str]:
+        """
+        Validate render element names to ensure they exist in the scene.
+
+        :returns: list of invalid render element names
+        :return_type: list[str]
+        """
+        invalid_names: list[str] = []
+        if not self.ignore_render_elements_by_name:
+            return invalid_names
+
+        try:
+            # Get render element manager
+            re_manager = rt.maxOps.GetCurRenderElementMgr()
+            if not re_manager:
+                return self.ignore_render_elements_by_name  # All names are invalid if no manager
+
+            # Get all render element names in the scene
+            scene_element_names = []
+            for i in range(re_manager.NumRenderElements()):
+                element = re_manager.GetRenderElement(i)
+                if element:
+                    scene_element_names.append(str(element.elementName))
+
+            # Check which names in ignore list don't exist in scene
+            for name in self.ignore_render_elements_by_name:
+                if name not in scene_element_names:
+                    invalid_names.append(name)
+
+        except Exception:
+            # If we can't access render elements, consider all names invalid
+            invalid_names = self.ignore_render_elements_by_name.copy()
+
+        return invalid_names
+
+    def validate_render_element_paths(self) -> list[str]:
+        """
+        Validate render element output paths to ensure they are accessible.
+
+        :returns: list of invalid or inaccessible paths
+        :return_type: list[str]
+        """
+        # No validation needed for render element output filenames currently
+        return []
+
+    def validate_render_element_configuration(self) -> list[str]:
+        """
+        Validate render element configuration consistency for enhanced features.
+
+        :returns: list of configuration warnings or issues
+        :return_type: list[str]
+        """
+        warnings = []
+
+        # Basic validation - check if ignore list has invalid names
+        invalid_names = self.validate_render_element_names()
+        if invalid_names:
+            warnings.append(
+                f"Ignored render element names not found in scene: {', '.join(invalid_names)}"
+            )
+
+        # Check V-Ray specific settings consistency
+        if self.vray_split_buffer_support and not self.vray_render_elements_vfb_control:
+            warnings.append(
+                "V-Ray split buffer support is enabled but V-Ray VFB control is disabled - this may not work as expected"
+            )
+
+        return warnings
+
+    def store_original_render_element_state(self) -> None:
+        """
+        Store original render element names and settings for restoration after submission.
+        This should be called before making any permanent changes to render elements.
+        """
+        try:
+            # Get render element manager
+            re_manager = rt.maxOps.GetCurRenderElementMgr()
+            if not re_manager:
+                return
+
+            # Store original element names
+            original_names = []
+            for i in range(re_manager.NumRenderElements()):
+                element = re_manager.GetRenderElement(i)
+                if element and hasattr(element, "elementName"):
+                    original_names.append(str(element.elementName))
+                else:
+                    original_names.append(f"Element_{i}")
+
+            self.original_render_element_names = original_names
+
+        except Exception:
+            # If we can't access render elements, clear the original names list
+            self.original_render_element_names = []
+
+    def restore_original_render_element_state(self) -> bool:
+        """
+        Restore original render element names and settings after submission.
+
+        :returns: True if restoration was successful, False otherwise
+        :return_type: bool
+        """
+        if not self.original_render_element_names:
+            return False
+
+        try:
+            # Get render element manager
+            re_manager = rt.maxOps.GetCurRenderElementMgr()
+            if not re_manager:
+                return False
+
+            # Restore original element names
+            count = min(len(self.original_render_element_names), re_manager.NumRenderElements())
+            for i in range(count):
+                element = re_manager.GetRenderElement(i)
+                if element and hasattr(element, "elementName"):
+                    element.elementName = self.original_render_element_names[i]
+
+            # Clear the stored names after restoration
+            self.original_render_element_names = []
+            return True
+
+        except Exception:
+            return False

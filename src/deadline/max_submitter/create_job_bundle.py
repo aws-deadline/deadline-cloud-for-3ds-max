@@ -4,16 +4,25 @@
 3ds Max Deadline Cloud Submitter - Functions for generating the job template and parameter values files
 """
 
+import logging
 import os
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 import yaml
-from data_classes import RenderSubmitterUISettings, StateSetData
+from data_classes import (
+    RENDER_ELEMENT_PARAMS,
+    RENDER_ELEMENT_PARAM_MAPPING,
+    RenderSubmitterUISettings,
+    StateSetData,
+)
 from data_const import ALL_CAMERAS_STR, ALL_STATE_SETS_STR, ALL_STEREO_CAMERAS_STR
 from deadline.client.exceptions import DeadlineOperationError
 from utilities import max_utils
+from deadline.max_shared.utilities.max_utils import get_render_elements
+
+_logger = logging.getLogger(__name__)
 
 
 def get_job_template(
@@ -48,6 +57,180 @@ def get_job_template(
         job_template["jobEnvironments"].append(override_environment["environment"])
 
     return job_template
+
+
+def _create_job_bundle_render_element_props(
+    job_template: dict[str, Any], settings: RenderSubmitterUISettings
+) -> None:
+    """
+    Creates render element parameter definitions and adds them to the job template.
+
+    :param job_template: the job template to modify
+    :param settings: a RenderSubmitterUISettings object containing the latest UI settings
+    """
+    render_elements = get_render_elements()
+    if render_elements:
+        # Enabled to modify RenderElement settings at render time.
+        job_template["parameterDefinitions"].append(
+            {
+                "name": "RenderElementsModified",
+                "type": "STRING",
+                "userInterface": {
+                    "control": "CHECK_BOX",
+                    "label": "Modify Render Elements",
+                    "groupLabel": "Render Elements",
+                },
+                "description": "Enable or disable modification of render elements settings.",
+                "default": "true" if settings.enabled_modify_render_elements else "false",
+                "allowedValues": ["true", "false"],
+            }
+        )
+
+        # RenderElements parameter - whether to output render elements
+        job_template["parameterDefinitions"].append(
+            {
+                "name": "RenderElements",
+                "type": "STRING",
+                "userInterface": {
+                    "control": "CHECK_BOX",
+                    "label": "Output Render Elements",
+                    "groupLabel": "Render Elements",
+                },
+                "description": "Enable or disable render elements output.",
+                "default": "true",
+                "allowedValues": ["true", "false"],
+            }
+        )
+
+        # RenderElementsUpdatePaths parameter - whether to update render element paths
+        job_template["parameterDefinitions"].append(
+            {
+                "name": "RenderElementsUpdatePaths",
+                "type": "STRING",
+                "userInterface": {
+                    "control": "CHECK_BOX",
+                    "label": "Update Render Element Paths",
+                    "groupLabel": "Render Elements",
+                },
+                "description": "Automatically update render element output paths based on naming settings.",
+                "default": "true",
+                "allowedValues": ["true", "false"],
+            }
+        )
+
+        # RenderElementsIncludeNameInPath parameter - include element name in path
+        job_template["parameterDefinitions"].append(
+            {
+                "name": "RenderElementsIncludeNameInPath",
+                "type": "STRING",
+                "userInterface": {
+                    "control": "CHECK_BOX",
+                    "label": "Include Render Element Name in Path",
+                    "groupLabel": "Render Elements",
+                },
+                "description": "Add render element name as subdirectory in output path.",
+                "default": "true",
+                "allowedValues": ["true", "false"],
+            }
+        )
+
+        # RenderElementsIncludeTypeInPath parameter - include element type in path
+        job_template["parameterDefinitions"].append(
+            {
+                "name": "RenderElementsIncludeTypeInPath",
+                "type": "STRING",
+                "userInterface": {
+                    "control": "CHECK_BOX",
+                    "label": "Include Render Element Type in Path",
+                    "groupLabel": "Render Elements",
+                },
+                "description": "Add render element type as subdirectory in output path.",
+                "default": "false",
+                "allowedValues": ["true", "false"],
+            }
+        )
+
+        # RenderElementsIncludeNameInFilename parameter - include element name in filename
+        job_template["parameterDefinitions"].append(
+            {
+                "name": "RenderElementsIncludeNameInFilename",
+                "type": "STRING",
+                "userInterface": {
+                    "control": "CHECK_BOX",
+                    "label": "Include Render Element Name in Filename",
+                    "groupLabel": "Render Elements",
+                },
+                "description": "Add render element name to output filename.",
+                "default": "true",
+                "allowedValues": ["true", "false"],
+            }
+        )
+
+        # RenderElementsIncludeTypeInFilename parameter - include element type in filename
+        job_template["parameterDefinitions"].append(
+            {
+                "name": "RenderElementsIncludeTypeInFilename",
+                "type": "STRING",
+                "userInterface": {
+                    "control": "CHECK_BOX",
+                    "label": "Include Render Element Type in Filename",
+                    "groupLabel": "Render Elements",
+                },
+                "description": "Add render element type to output filename.",
+                "default": "false",
+                "allowedValues": ["true", "false"],
+            }
+        )
+
+        # VRayRenderElementsVFBControl parameter - V-Ray VFB control
+        job_template["parameterDefinitions"].append(
+            {
+                "name": "VRayRenderElementsVFBControl",
+                "type": "STRING",
+                "userInterface": {
+                    "control": "CHECK_BOX",
+                    "label": "V-Ray Render Elements VFB Control",
+                    "groupLabel": "Render Elements",
+                },
+                "description": "Automatically control V-Ray VFB settings for render elements during rendering.",
+                "default": "true",
+                "allowedValues": ["true", "false"],
+            }
+        )
+
+        # VRaySplitBufferSupport parameter - V-Ray split buffer support
+        job_template["parameterDefinitions"].append(
+            {
+                "name": "VRaySplitBufferSupport",
+                "type": "STRING",
+                "userInterface": {
+                    "control": "CHECK_BOX",
+                    "label": "V-Ray Split Buffer Support",
+                    "groupLabel": "Render Elements",
+                },
+                "description": "Enable V-Ray split buffer support for render elements.",
+                "default": "true",
+                "allowedValues": ["true", "false"],
+            }
+        )
+
+        # IgnoreRenderElementsByName parameter - list of render element names to ignore
+        if any(elem.name for elem in render_elements):
+            element_names = [""] + [elem.name for elem in render_elements if elem.name]
+            job_template["parameterDefinitions"].append(
+                {
+                    "name": "IgnoreRenderElementsByName",
+                    "type": "STRING",
+                    "userInterface": {
+                        "control": "DROPDOWN_LIST",
+                        "label": "Ignore Render Elements by Name",
+                        "groupLabel": "Render Elements",
+                    },
+                    "description": "List of render element names to ignore during rendering.",
+                    "default": "",
+                    "allowedValues": element_names,
+                }
+            )
 
 
 def _create_param_definitions(
@@ -106,6 +289,9 @@ def _create_param_definitions(
                 "allowedValues": cameras_in_scene,
             }
         )
+
+    # Add render elements parameters if render elements are present in the scene
+    _create_job_bundle_render_element_props(job_template, settings)
 
     return job_template
 
@@ -216,6 +402,13 @@ def _create_step_definitions(
         ):
             init_data["data"] += "camera: '{{Param.Camera}}'\n"
 
+        # Add render element parameters to init data
+        for param in RENDER_ELEMENT_PARAMS:
+            # Convert parameter name to snake_case for init data with proper mapping
+
+            init_data_key = RENDER_ELEMENT_PARAM_MAPPING.get(param, param.lower())
+            init_data["data"] += f"{init_data_key}: '{{{{Param.{param}}}}}'\n"
+
     return job_template
 
 
@@ -275,6 +468,9 @@ def get_parameters_values(
     :param state_sets: a list of StateSetData for the submitted state sets
     :param queue_parameters: the settings from the shared job settings tab
     """
+    # Validate render elements parameter consistency
+    _validate_render_elements_parameters(settings)
+
     parameter_values = _get_job_parameters(settings, state_sets)
     queue_parameters = _get_queue_parameters_for_bundle(
         settings, parameter_values, queue_parameters
@@ -358,6 +554,91 @@ def _get_job_parameters(
     ):
         parameter_values.append({"name": "Camera", "value": settings.camera_selection})
 
+    # Add render elements parameters if render elements are present in the scene
+    render_elements = get_render_elements()
+    if render_elements:
+        # Enabled to modify RenderElement settings at render time.
+        parameter_values.append(
+            {
+                "name": "RenderElementsModified",
+                "value": "true" if settings.enabled_modify_render_elements else "false",
+            }
+        )
+
+        # RenderElements parameter
+        parameter_values.append(
+            {"name": "RenderElements", "value": "true" if settings.render_elements else "false"}
+        )
+
+        # Enhanced Render Elements Parameter Values (Authentic Deadline 10 features)
+
+        # RenderElementsUpdatePaths parameter
+        parameter_values.append(
+            {
+                "name": "RenderElementsUpdatePaths",
+                "value": "true" if settings.render_elements_update_paths else "false",
+            }
+        )
+
+        # RenderElementsIncludeNameInPath parameter
+        parameter_values.append(
+            {
+                "name": "RenderElementsIncludeNameInPath",
+                "value": "true" if settings.render_elements_include_name_in_path else "false",
+            }
+        )
+
+        # RenderElementsIncludeTypeInPath parameter
+        parameter_values.append(
+            {
+                "name": "RenderElementsIncludeTypeInPath",
+                "value": "true" if settings.render_elements_include_type_in_path else "false",
+            }
+        )
+
+        # RenderElementsIncludeNameInFilename parameter
+        parameter_values.append(
+            {
+                "name": "RenderElementsIncludeNameInFilename",
+                "value": "true" if settings.render_elements_include_name_in_filename else "false",
+            }
+        )
+
+        # RenderElementsIncludeTypeInFilename parameter
+        parameter_values.append(
+            {
+                "name": "RenderElementsIncludeTypeInFilename",
+                "value": "true" if settings.render_elements_include_type_in_filename else "false",
+            }
+        )
+
+        # VRayRenderElementsVFBControl parameter
+        parameter_values.append(
+            {
+                "name": "VRayRenderElementsVFBControl",
+                "value": "true" if settings.vray_render_elements_vfb_control else "false",
+            }
+        )
+
+        # VRaySplitBufferSupport parameter
+        parameter_values.append(
+            {
+                "name": "VRaySplitBufferSupport",
+                "value": "true" if settings.vray_split_buffer_support else "false",
+            }
+        )
+
+        # IgnoreRenderElementsByName parameter
+        if settings.ignore_render_elements_by_name:
+            # Convert list to comma-separated string for OpenJD
+            ignore_names_str = ",".join(settings.ignore_render_elements_by_name)
+            parameter_values.append(
+                {"name": "IgnoreRenderElementsByName", "value": ignore_names_str}
+            )
+        elif any(elem.name for elem in render_elements):
+            # Add empty parameter if render elements exist but none are ignored
+            parameter_values.append({"name": "IgnoreRenderElementsByName", "value": ""})
+
     return parameter_values
 
 
@@ -401,6 +682,40 @@ def _get_queue_parameters_for_bundle(
             )
 
     return queue_parameters
+
+
+def _validate_render_elements_parameters(settings: RenderSubmitterUISettings) -> None:
+    """
+    Validates render elements parameter consistency to ensure settings are coherent.
+
+    :param settings: a RenderSubmitterUISettings object containing the latest UI settings
+    :raises DeadlineOperationError: if render elements parameters are inconsistent
+    """
+    # If render elements are disabled, ignore other settings
+    if not settings.render_elements:
+        return
+
+    # Validate that ignored render element names exist in the scene
+    if settings.ignore_render_elements_by_name:
+        try:
+            # Get current render elements from scene to validate ignore list
+            render_elements = get_render_elements()
+            scene_element_names = {elem.name for elem in render_elements if elem.name}
+
+            invalid_names = [
+                name
+                for name in settings.ignore_render_elements_by_name
+                if name not in scene_element_names
+            ]
+
+            if invalid_names:
+                raise DeadlineOperationError(
+                    f"The following render element names to ignore do not exist in the scene: "
+                    f"{', '.join(invalid_names)}"
+                )
+        except Exception as e:
+            # If validation fails, log warning but don't fail submission
+            _logger.warning(f"Could not validate render element names: {e}")
 
 
 def _check_multiples(state_sets: list[StateSetData], type_: str) -> bool:

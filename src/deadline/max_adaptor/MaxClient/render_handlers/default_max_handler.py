@@ -9,11 +9,15 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from typing import TYPE_CHECKING, Optional
 
 import pymxs  # noqa
 from pymxs import runtime as rt
 
 from deadline.max_adaptor.executable_handler import MaxExecutableHandler
+
+if TYPE_CHECKING:
+    from deadline.max_adaptor.MaxClient.render_element_manager import RenderElementManager
 
 logger = logging.getLogger(__name__)
 
@@ -34,29 +38,37 @@ class DefaultMaxHandler:
             "output_file_format": self.set_output_file_format,
             "state_set": self.set_state_set,
             "scene_file": self.set_scene_file,
-            # Render elements integration actions these setup the scene.
-            "enabled_modify_render_elements": self._no_op_action,
+            # Render elements integration actions
             "configure_render_elements": self.configure_render_elements,
             "cleanup_render_elements": self.cleanup_render_elements,
-            # Individual render element parameter actions.
-            # Currently the queue is populated but we do not take a specific action.
-            # This allows for customization for all derived renderers.
-            "render_elements_update_paths": self._no_op_action,
-            "render_elements_include_name_in_path": self._no_op_action,
-            "render_elements_include_type_in_path": self._no_op_action,
-            "render_elements_include_name_in_filename": self._no_op_action,
-            "render_elements_include_type_in_filename": self._no_op_action,
-            "vray_render_elements_vfb_control": self._no_op_action,
-            "vray_split_buffer_support": self._no_op_action,
-            "ignore_render_elements_by_name": self._no_op_action,
         }
         self.camera_node = None
         self.output_dir = None
         self.output_name = None
         self.output_format = None
         self._executable_handler: MaxExecutableHandler = MaxExecutableHandler()
-        # Initialize render element manager directly
-        self.render_element_manager = None
+        # Initialize render element manager as private attribute
+        self._render_element_manager: Optional["RenderElementManager"] = None
+
+    @property
+    def render_element_manager(self) -> Optional["RenderElementManager"]:
+        """
+        Lazy-loaded render element manager property.
+
+        Returns:
+            The render element manager instance, or None if not yet initialized.
+        """
+        return self._render_element_manager
+
+    @render_element_manager.setter
+    def render_element_manager(self, value: Optional["RenderElementManager"]) -> None:
+        """
+        Setter for the render element manager.
+
+        Args:
+            value: The render element manager instance to set.
+        """
+        self._render_element_manager = value
 
     def start_render(self, data: dict) -> None:
         """
@@ -364,14 +376,6 @@ class DefaultMaxHandler:
         except Exception as e:
             self.log_to_console(f"Error configuring render elements: {e}")
             raise RuntimeError(f"Render elements configuration failed: {e}")
-
-    def _no_op_action(self, data: dict) -> None:
-        """
-        No-operation action.
-        Useful for derived renderer customization.
-        """
-        # This is intentionally empty.
-        pass
 
     def cleanup_render_elements(self, data: dict) -> None:
         """

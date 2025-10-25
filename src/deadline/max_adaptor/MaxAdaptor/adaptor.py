@@ -37,6 +37,9 @@ _FIRST_MAX_ACTIONS = ["scene_file", "state_set"]  # Actions which must be queued
 # Render elements feature on/off control key
 _ENABLED_MODIFY_RENDER_ELEMENTS_KEY = "enabled_modify_render_elements"
 
+# Action constants
+_CONFIGURE_RENDER_ELEMENTS_ACTION = "configure_render_elements"
+
 # Render elements related keys
 _RENDER_ELEMENT_KEYS = {
     "render_elements",
@@ -51,15 +54,12 @@ _RENDER_ELEMENT_KEYS = {
 }
 
 # Base initialization keys
-_BASE_INIT_KEYS = {
+_MAX_INIT_KEYS = {
     "camera",
     "output_file_path",
     "output_file_name",
     "output_file_format",
 }
-
-# Combined initialization keys
-_MAX_INIT_KEYS = _BASE_INIT_KEYS | {_ENABLED_MODIFY_RENDER_ELEMENTS_KEY} | _RENDER_ELEMENT_KEYS
 
 
 def _check_for_exception(func: Callable) -> Callable:
@@ -323,7 +323,7 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
 
         # Only process render elements if modification is enabled from the submitter.
         if self.init_data.get(_ENABLED_MODIFY_RENDER_ELEMENTS_KEY, "false").lower() == "true":
-            # If any render element parameters are present, enqueue the configure_render_elements action
+            # If any render element parameters are present, enqueue the _CONFIGURE_RENDER_ELEMENTS_ACTION
             for key in _RENDER_ELEMENT_KEYS:
                 if key in self.init_data:
                     render_element_data[key] = self.init_data[key]
@@ -331,10 +331,10 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
 
             if has_render_element_config:
                 _logger.info(
-                    f"Queueing configure_render_elements action with data: {render_element_data}"
+                    f"Queueing {_CONFIGURE_RENDER_ELEMENTS_ACTION} action with data: {render_element_data}"
                 )
                 self._action_queue.enqueue_action(
-                    Action("configure_render_elements", render_element_data)
+                    Action(_CONFIGURE_RENDER_ELEMENTS_ACTION, render_element_data)
                 )
             else:
                 _logger.info("No render element configuration found in init_data")

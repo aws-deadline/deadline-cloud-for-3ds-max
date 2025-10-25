@@ -77,6 +77,35 @@ class RenderElementManager:
         self.cached_settings = {}
         self.is_configured = False
 
+    def _print_render_element_debug_info(self, render_elements: List[RenderElementInfo]) -> None:
+        """
+        Print debug information about render element manager and render elements.
+
+        Args:
+            render_elements: List of render elements to debug
+        """
+        # DEBUG: Print render element manager's available functions
+        self.logger.debug("=== DEBUG: Printing render element manager functions ===")
+        re_manager_props = [prop for prop in dir(self.re_manager) if not prop.startswith("_")]
+        self.logger.debug(f"DEBUG: re_manager type: {type(self.re_manager)}")
+        self.logger.debug(f"DEBUG: re_manager props: {re_manager_props}")
+
+        # DEBUG: Loop through all render elements and print available functions for element_object
+        self.logger.debug(
+            "=== DEBUG: Printing element_object functions for all render elements ==="
+        )
+        for i, element in enumerate(render_elements):
+            element_obj = element.element_object
+            if element_obj:
+                element_obj_props = [
+                    props for props in dir(element_obj) if not props.startswith("_")
+                ]
+                self.logger.debug(
+                    f"DEBUG: Element [{i}] '{element.name}' - element_object props: {element_obj_props}"
+                )
+            else:
+                self.logger.debug(f"DEBUG: Element [{i}] '{element.name}' - element_object is None")
+
     def configure_render_elements(self, data: Dict[str, Any]) -> RenderElementResult:
         """
         Comprehensive render element configuration matching Deadline 10.
@@ -91,8 +120,6 @@ class RenderElementManager:
             # Add explicit logging that should definitely appear
             print("=== RENDER ELEMENT MANAGER: Starting configuration ===", flush=True)
             try:
-                import pymxs
-
                 pymxs.runtime.logsystem.logEntry(
                     "=== RENDER ELEMENT MANAGER: Starting configuration ===", broadcast=True
                 )
@@ -114,37 +141,14 @@ class RenderElementManager:
             # At this point, re_manager is guaranteed to be not None
             assert self.re_manager is not None
 
-            # DEBUG: Print render element manager's available functions
-            self.logger.debug("=== DEBUG: Printing render element manager functions ===")
-            re_manager_methods = [
-                method for method in dir(self.re_manager) if not method.startswith("_")
-            ]
-            self.logger.debug(f"DEBUG: re_manager type: {type(self.re_manager)}")
-            self.logger.debug(f"DEBUG: re_manager methods: {re_manager_methods}")
-
             # Get current render elements from scene
             render_elements = get_render_elements()
             if not render_elements:
                 self.logger.info("No render elements found in scene")
                 return RenderElementResult(success=True, message="No render elements to configure")
 
-            # DEBUG: Loop through all render elements and print available functions for element_object
-            self.logger.debug(
-                "=== DEBUG: Printing element_object functions for all render elements ==="
-            )
-            for i, element in enumerate(render_elements):
-                element_obj = element.element_object
-                if element_obj:
-                    element_obj_methods = [
-                        method for method in dir(element_obj) if not method.startswith("_")
-                    ]
-                    self.logger.debug(
-                        f"DEBUG: Element [{i}] '{element.name}' - element_object methods: {element_obj_methods}"
-                    )
-                else:
-                    self.logger.debug(
-                        f"DEBUG: Element [{i}] '{element.name}' - element_object is None"
-                    )
+            # Print debug information about render elements
+            self._print_render_element_debug_info(render_elements)
 
             self.logger.info(f"Found {len(render_elements)} render elements in scene:")
             for i, element in enumerate(render_elements):
@@ -156,18 +160,8 @@ class RenderElementManager:
             self.original_state = store_original_render_element_state(render_elements)
             self.logger.debug(f"Stored original state for {len(render_elements)} render elements")
 
-            # Configure basic settings
-            elements_enabled = (
-                self._get_param_value(data, ["render_elements"], "true").lower() == "true"
-            )
-            self.logger.info(f"Setting render elements active: {elements_enabled}")
-
-            # Set render elements active using the confirmed working method
-            try:
-                self.re_manager.SetElementsActive(elements_enabled)
-            except Exception as e:
-                self.logger.error(f"Failed to set render elements active state: {e}")
-                # Continue execution as this might not be critical
+            # Configure render elements active state
+            elements_enabled = self._configure_render_elements_active(data)
 
             # Log all render element parameters received
             self.logger.info("Render element configuration parameters:")
@@ -183,12 +177,7 @@ class RenderElementManager:
             self._handle_ignore_settings(data, render_elements)
 
             # Update paths and filenames if requested
-            update_paths = (
-                self._get_param_value(data, ["render_elements_update_paths"], "true").lower()
-                == "true"
-            )
-            if update_paths:
-                self._update_paths_and_filenames(data, render_elements)
+            self._update_paths_and_filenames(data, render_elements)
 
             # Handle V-Ray specific settings
             self._configure_vray_settings(data, render_elements)
@@ -207,14 +196,12 @@ class RenderElementManager:
                 "=== RENDER ELEMENT MANAGER: Configuration completed successfully ===", flush=True
             )
             try:
-                import pymxs
-
                 pymxs.runtime.logsystem.logEntry(
                     "=== RENDER ELEMENT MANAGER: Configuration completed successfully ===",
                     broadcast=True,
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                self.logger.error(f"Failed to log success message to 3ds Max: {e}")
 
             return RenderElementResult(
                 success=True,
@@ -227,8 +214,6 @@ class RenderElementManager:
             # Add explicit error logging
             print(f"=== RENDER ELEMENT MANAGER: Configuration failed: {e} ===", flush=True)
             try:
-                import pymxs
-
                 pymxs.runtime.logsystem.logEntry(
                     f"=== RENDER ELEMENT MANAGER: Configuration failed: {e} ===", broadcast=True
                 )
@@ -237,6 +222,31 @@ class RenderElementManager:
 
             self.logger.error(f"Failed to configure render elements: {e}")
             return RenderElementResult(success=False, error=str(e))
+
+    def _configure_render_elements_active(self, data: Dict[str, Any]) -> bool:
+        """
+        Configure render elements active state.
+
+        Args:
+            data: Configuration parameters
+
+        Returns:
+            bool: True if render elements should be enabled, False otherwise
+        """
+        elements_enabled = (
+            self._get_param_value(data, ["render_elements"], "true").lower() == "true"
+        )
+        self.logger.info(f"Setting render elements active: {elements_enabled}")
+
+        # Set render elements active
+        assert self.re_manager is not None, "Render element manager must be initialized"
+        try:
+            self.re_manager.SetElementsActive(elements_enabled)
+        except Exception as e:
+            self.logger.error(f"Failed to set render elements active state: {e}")
+            # Continue execution as this might not be critical
+
+        return elements_enabled
 
     def _handle_ignore_settings(
         self, data: Dict[str, Any], render_elements: List[RenderElementInfo]
@@ -294,6 +304,13 @@ class RenderElementManager:
             data: Configuration parameters
             render_elements: List of render elements from scene
         """
+        # Check if path updates are requested
+        update_paths = (
+            self._get_param_value(data, ["render_elements_update_paths"], "true").lower() == "true"
+        )
+        if not update_paths:
+            return
+
         try:
             self.logger.info("Updating render element paths and filenames")
 

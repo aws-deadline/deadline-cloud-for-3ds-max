@@ -420,10 +420,6 @@ def configure_vray_render_elements(
 
     try:
         for element in render_elements:
-            # Skip disabled render elements
-            if not element.enabled:
-                continue
-
             element_obj = element.element_object
             if not element_obj:
                 continue

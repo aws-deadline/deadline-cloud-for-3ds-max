@@ -8,7 +8,6 @@ import logging
 import sys
 from typing import Callable, List, Optional
 
-import pymxs  # noqa
 from pymxs import runtime as rt
 
 from deadline.max_adaptor.executable_handler import MaxExecutableHandler, SupportedMaxExecutable
@@ -35,13 +34,9 @@ class ConsoleLogHandler(logging.Handler):
             # Send to console (stdout)
             self.log_to_console_func(msg)
             # Also send to Max.log file via logsystem
-            try:
-                import pymxs
+            import pymxs
 
-                pymxs.runtime.logsystem.logEntry(msg, broadcast=True)
-            except Exception:
-                # If pymxs is not available or fails, just continue
-                pass
+            pymxs.runtime.logsystem.logEntry(msg, broadcast=True)
         except Exception:
             # Avoid infinite recursion if logging fails
             pass

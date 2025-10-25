@@ -353,7 +353,11 @@ class DefaultMaxHandler:
                     RenderElementManager,
                 )
 
-                self.render_element_manager = RenderElementManager()
+                self.render_element_manager = RenderElementManager(
+                    output_file_path=self.output_dir,
+                    output_file_name=self.output_name,
+                    output_file_format=self.output_format,
+                )
 
             result = self.render_element_manager.configure_render_elements(data)
             if not result.success:

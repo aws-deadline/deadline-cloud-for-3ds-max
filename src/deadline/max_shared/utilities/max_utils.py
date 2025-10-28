@@ -397,7 +397,10 @@ def configure_vray_render_elements(
     Configures V-Ray specific render element settings.
 
     This function handles V-Ray VFB control and split buffer support
-    matching Deadline 10's V-Ray integration.
+    matching Deadline 10's V-Ray integration. The default output file type is PNG for V-Ray,
+    in case it is not specified in the bundle. The file format is usually configured from
+    the submitter, but the default is useful for any hand-crafted bundles missing the
+    file format specification.
 
     :param render_elements: list of RenderElementInfo objects
     :type render_elements: list[RenderElementInfo]
@@ -407,7 +410,7 @@ def configure_vray_render_elements(
     :type output_path: str
     :param output_name: base output filename for split buffer files
     :type output_name: str
-    :param output_file_format: output file format/extension for split buffer files
+    :param output_file_format: output file format/extension for split buffer files (default: .png)
     :type output_file_format: str
     :param ignore_list: list of render element names to ignore (disable)
     :type ignore_list: list[str]
@@ -707,10 +710,14 @@ def _configure_render_element_outputs_filename(
     ignore_list: list[str] = [],
 ) -> list[str]:
     """
-    Configure output filenames for standard (non-VRay) render elements.
+    Configure output filenames for standard (non-V-Ray) render elements.
 
     This function sets unique output filenames for each enabled render element
-    using standard 3ds Max naming conventions.
+    using standard 3ds Max naming conventions. The default output file type is EXR,
+    in case it is not specified in the bundle. The file format is usually configured from
+    the submitter, but the default is useful for any hand-crafted bundles missing the
+    file format specification.
+
 
     :param render_elements: list of RenderElementInfo objects
     :param output_path: base output directory path

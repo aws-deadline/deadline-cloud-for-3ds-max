@@ -39,7 +39,7 @@ class TestAdaptors:
         }
 
         run_adaptor_test(test_file_location / EXPECTED_JOB_BUNDLE_FOLDER / TEMPLATE, job_params)
-        are_images_similar(
+        assert are_images_similar(
             expected_image_directory=test_file_location / EXPECTED_OUTPUT_FOLDER,
             actual_image_directory=output_path,
             tolerance=2,

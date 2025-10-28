@@ -1,0 +1,13 @@
+assetReferences:
+  inputs:
+    directories: []
+    filenames:
+    - C:\Users\RDP\deadline-cloud-for-3ds-max\test\integ\test_scripts\re_disabled_test\scene\CEDFENCE.JPG
+    - C:\Users\RDP\deadline-cloud-for-3ds-max\test\integ\test_scripts\re_disabled_test\scene\GRYCON3.JPG
+    - C:\Users\RDP\deadline-cloud-for-3ds-max\test\integ\test_scripts\re_disabled_test\scene\OAKQRTRT.TGA
+    - C:\Users\RDP\deadline-cloud-for-3ds-max\test\integ\test_scripts\re_disabled_test\scene\elements.png
+    - C:\Users\RDP\deadline-cloud-for-3ds-max\test\integ\test_scripts\re_disabled_test\scene\fog.max
+  outputs:
+    directories:
+    - C:/Users/RDP/deadline-cloud-for-3ds-max/test/integ/test_scripts/re_disabled_test/scene/
+  referencedPaths: []

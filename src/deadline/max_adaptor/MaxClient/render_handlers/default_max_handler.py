@@ -9,11 +9,15 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from typing import TYPE_CHECKING, Optional
 
 import pymxs  # noqa
 from pymxs import runtime as rt
 
-from deadline.max_adaptor.executable_handler import MaxExecutableHandler, SupportedMaxExecutable
+from deadline.max_adaptor.executable_handler import MaxExecutableHandler
+
+if TYPE_CHECKING:
+    from deadline.max_adaptor.MaxClient.render_element_manager import RenderElementManager
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +38,37 @@ class DefaultMaxHandler:
             "output_file_format": self.set_output_file_format,
             "state_set": self.set_state_set,
             "scene_file": self.set_scene_file,
+            # Render elements integration actions
+            "configure_render_elements": self.configure_render_elements,
+            "cleanup_render_elements": self.cleanup_render_elements,
         }
         self.camera_node = None
         self.output_dir = None
         self.output_name = None
         self.output_format = None
         self._executable_handler: MaxExecutableHandler = MaxExecutableHandler()
+        # Initialize render element manager as private attribute
+        self._render_element_manager: Optional["RenderElementManager"] = None
+
+    @property
+    def render_element_manager(self) -> Optional["RenderElementManager"]:
+        """
+        Lazy-loaded render element manager property.
+
+        Returns:
+            The render element manager instance, or None if not yet initialized.
+        """
+        return self._render_element_manager
+
+    @render_element_manager.setter
+    def render_element_manager(self, value: Optional["RenderElementManager"]) -> None:
+        """
+        Setter for the render element manager.
+
+        Args:
+            value: The render element manager instance to set.
+        """
+        self._render_element_manager = value
 
     def start_render(self, data: dict) -> None:
         """
@@ -53,58 +82,76 @@ class DefaultMaxHandler:
          - If no camera was set (by init or run data)
          - If no correct output path was given (output_dir, output_name or output_format is missing)
         """
-        frame = data.get("frame")
-        if frame is None:
-            self.log_to_console("Error: MaxClient: start_render called without a frame number.")
-            raise RuntimeError("MaxClient: start_render called without a frame number.")
+        try:
+            frame = data.get("frame")
+            if frame is None:
+                self.log_to_console("Error: MaxClient: start_render called without a frame number.")
+                raise RuntimeError("MaxClient: start_render called without a frame number.")
 
-        if self.output_dir is None or self.output_name is None or self.output_format is None:
-            self.log_to_console(
-                "Error: MaxClient: start_render called without a valid output path. Output directory, name or format "
-                "is missing."
+            if self.output_dir is None or self.output_name is None or self.output_format is None:
+                self.log_to_console(
+                    "Error: MaxClient: start_render called without a valid output path. Output directory, name or format "
+                    "is missing."
+                )
+                raise RuntimeError(
+                    "MaxClient: start_render called without a valid output path. Output directory, name or "
+                    "format is missing."
+                )
+
+            # Check if render elements were configured during initialization
+            render_elements_configured = (
+                self.render_element_manager is not None
+                and self.render_element_manager.has_render_elements_configured()
             )
-            raise RuntimeError(
-                "MaxClient: start_render called without a valid output path. Output directory, name or "
-                "format is missing."
-            )
 
-        # Set the frame to render
-        rt.rendTimeType = 1  # Set to single frame
-        rt.sliderTime = frame
+            # Set the frame to render
+            rt.rendTimeType = 1  # Set to single frame
+            rt.sliderTime = frame
 
-        output_name = ""
-        camera = data.get("camera")
-        if camera is not None:
-            logger.debug("Setting camera with run data")
-            camera = self.get_camera_to_render(camera)
-            self.camera_node = rt.getNodeByName(camera)
-            # If camera gets set by run data, add the camera to the output name
-            output_name = self.output_name + "_" + camera
+            output_name = ""
+            camera = data.get("camera")
+            if camera is not None:
+                logger.debug("Setting camera with run data")
+                camera = self.get_camera_to_render(camera)
+                self.camera_node = rt.getNodeByName(camera)
+                # If camera gets set by run data, add the camera to the output name
+                output_name = self.output_name + "_" + camera
 
-        # Since camera can be set by both init and run data, this isn't a required parameter in either schema.
-        if self.camera_node is None:
-            self.log_to_console("Error: MaxClient: start_render called without a camera.")
-            raise RuntimeError("MaxClient: start_render called without a camera.")
+            # Since camera can be set by both init and run data, this isn't a required parameter in either schema.
+            if self.camera_node is None:
+                self.log_to_console("Error: MaxClient: start_render called without a camera.")
+                raise RuntimeError("MaxClient: start_render called without a camera.")
 
-        # Create output path to pass along with render
-        if not output_name:
-            output_name = self.reformat_framenumber_padding(self.output_name, frame)
-        else:
-            output_name = self.reformat_framenumber_padding(output_name, frame)
-        output_file = output_name + self.output_format
-        output_path = os.path.join(self.output_dir, output_file)
+            # Create output path to pass along with render
+            if not output_name:
+                output_name = self.reformat_framenumber_padding(self.output_name, frame)
+            else:
+                output_name = self.reformat_framenumber_padding(output_name, frame)
+            output_file = output_name + self.output_format
+            output_path = os.path.join(self.output_dir, output_file)
 
-        # Create the folder(s) if the directory doesn't exist
-        if not os.path.exists(self.output_dir):
-            os.makedirs(self.output_dir)
+            # Create the folder(s) if the directory doesn't exist
+            if not os.path.exists(self.output_dir):
+                os.makedirs(self.output_dir)
 
-        # Not sure if needed?
-        if os.path.exists(output_path):
-            os.remove(output_path)
+            # Not sure if needed?
+            if os.path.exists(output_path):
+                os.remove(output_path)
 
-        rt.render(camera=self.camera_node, outputFile=output_path)
+            rt.render(camera=self.camera_node, outputFile=output_path)
 
-        self.log_to_console(f"MaxClient: Finished Rendering Frame {frame}")
+            self.log_to_console(f"MaxClient: Finished Rendering Frame {frame}")
+
+        except Exception:
+            # Re-raise the exception after cleanup
+            raise
+        finally:
+            # Restore render elements after rendering if they were configured
+            if render_elements_configured:
+                try:
+                    self.cleanup_render_elements(data)
+                except Exception as e:
+                    self.log_to_console(f"Warning: Render elements cleanup failed: {e}")
 
     def reformat_framenumber_padding(self, name: str, number: int) -> str:
         """
@@ -280,10 +327,84 @@ class DefaultMaxHandler:
 
     def log_to_console(self, message: str) -> None:
         """
-        Handles logging to the stdout, based on which 3dsMax executable is being used.
-        :param message: The text to log to the stdout.
+        Handles logging to both stdout and Max.log file for better debugging.
+        :param message: The text to log to the stdout and Max.log.
         """
-        if self._executable_handler.is_executable_type(SupportedMaxExecutable.BATCH):
-            rt.logsystem.logEntry(message, broadcast=True)
-        else:
+        # When using 3dsmaxbatch (batch mode), log to Max.log file only
+        try:
+            # When using 3dsmax (interactive mode), print to stdout
             print(message, flush=True)
+            rt.logsystem.logEntry(message, broadcast=True)
+        except Exception:
+            # If logsystem fails, continue without breaking execution
+            pass
+
+    def configure_render_elements(self, data: dict) -> None:
+        """
+        Configure render elements using the render element manager directly.
+
+        :param data: The data containing render elements configuration
+        :raises: RuntimeError if configuration fails
+        """
+        try:
+            # Lazy initialize render element manager to avoid circular imports
+            if self.render_element_manager is None:
+                from deadline.max_adaptor.MaxClient.render_element_manager import (
+                    RenderElementManager,
+                )
+
+                self.render_element_manager = RenderElementManager()
+
+            result = self.render_element_manager.configure_render_elements(data)
+            if not result.success:
+                error_msg = result.error or "Unknown error"
+                self.log_to_console(f"Error: Render elements configuration failed: {error_msg}")
+                raise RuntimeError(f"Render elements configuration failed: {error_msg}")
+            else:
+                # Log success message
+                success_msg = result.message or "Render elements configured successfully"
+                self.log_to_console(f"Render elements configuration: {success_msg}")
+
+                # Log warnings if any
+                if result.warnings:
+                    for warning in result.warnings:
+                        self.log_to_console(f"Warning: {warning}")
+
+                # Log element count if available
+                if result.element_count is not None:
+                    self.log_to_console(f"Configured {result.element_count} render elements")
+        except Exception as e:
+            self.log_to_console(f"Error configuring render elements: {e}")
+            raise RuntimeError(f"Render elements configuration failed: {e}")
+
+    def cleanup_render_elements(self, data: dict) -> None:
+        """
+        Cleanup render elements after rendering completes.
+        Uses the render element manager's cached configuration.
+
+        :param data: The run data (not used for render elements cleanup)
+        """
+        # Check if render element manager exists and was configured
+        if (
+            self.render_element_manager is None
+            or not self.render_element_manager.has_render_elements_configured()
+        ):
+            self.log_to_console("No render element configuration found, skipping cleanup")
+            return
+
+        try:
+            self.log_to_console("Cleaning up render elements after rendering")
+            result = self.render_element_manager.restore_render_elements()
+            if result.success:
+                success_msg = result.message or "Render elements cleanup completed successfully"
+                self.log_to_console(f"Render elements cleanup: {success_msg}")
+
+                # Log warnings if any
+                if result.warnings:
+                    for warning in result.warnings:
+                        self.log_to_console(f"Warning: {warning}")
+            else:
+                error_msg = result.error or "Unknown error"
+                self.log_to_console(f"Warning: Render elements cleanup had issues: {error_msg}")
+        except Exception as e:
+            self.log_to_console(f"Warning: Error during render elements cleanup: {e}")

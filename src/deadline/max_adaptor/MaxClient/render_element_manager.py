@@ -5,6 +5,7 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 """
 
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -17,6 +18,8 @@ from deadline.max_shared.utilities.max_utils import (
     RenderElementInfo,
     RenderElementState,
     VRayRenderElementSettings,
+    _configure_render_element_outputs_filename,
+    _is_renderer_vray,
     configure_render_element_paths,
     configure_vray_render_elements,
     get_render_elements,
@@ -67,15 +70,34 @@ class RenderElementManager:
     - Original state storage and restoration
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        output_file_path: Optional[str] = None,
+        output_file_name: Optional[str] = None,
+        output_file_format: Optional[str] = None,
+    ) -> None:
         """
         Initialize the render element manager.
+
+        If any of the output_file_* parameters are None, they will default to the current
+        settings of the render element in the scene. Note that paths may not be path mapped
+        in this case. By default, the submitter always populates these values based on the scene.
+
+        Args:
+            output_file_path: Output directory path for split buffer
+            output_file_name: Output filename for split buffer
+            output_file_format: Output file format/extension
         """
         self.logger = logging.getLogger(__name__)
         self.re_manager: Optional[Any] = None
         self.original_state: Optional[RenderElementState] = None
-        self.cached_settings = {}
+        self.cached_settings: Dict[str, Any] = {}
         self.is_configured = False
+        self.output_file_path: Optional[str] = output_file_path
+        self.output_file_name: Optional[str] = output_file_name
+        self.output_file_format: Optional[str] = output_file_format
+        self.is_vray: bool = False
+        self.current_renderer: str = ""
 
     def _print_render_element_debug_info(self, render_elements: List[RenderElementInfo]) -> None:
         """
@@ -160,6 +182,11 @@ class RenderElementManager:
             self.original_state = store_original_render_element_state(render_elements)
             self.logger.debug(f"Stored original state for {len(render_elements)} render elements")
 
+            # Parse ignore list once for all operations
+            ignore_list = self._get_ignore_list(data)
+            if ignore_list:
+                self.logger.info(f"Ignoring render elements by name: {ignore_list}")
+
             # Configure render elements active state
             elements_enabled = self._configure_render_elements_active(data)
 
@@ -174,13 +201,35 @@ class RenderElementManager:
                 return RenderElementResult(success=True, message="Render elements disabled")
 
             # Handle ignore settings
-            self._handle_ignore_settings(data, render_elements)
+            self._handle_ignore_settings(data, render_elements, ignore_list)
 
-            # Update paths and filenames if requested
-            self._update_paths_and_filenames(data, render_elements)
+            # Detect renderer type and store as attributes
+            self.is_vray, self.current_renderer = _is_renderer_vray()
+            self.logger.info(
+                f"Detected renderer: '{self.current_renderer}' (V-Ray: {self.is_vray})"
+            )
 
-            # Handle V-Ray specific settings
-            self._configure_vray_settings(data, render_elements)
+            # Configure render element outputs based on renderer type
+            if self.is_vray:
+                # Handle V-Ray specific settings
+                self._configure_vray_settings(data, render_elements, ignore_list)
+            else:
+                # Configure standard render element outputs for non-VRay renderers
+                self.logger.info(
+                    f"Configuring standard render element outputs for '{self.current_renderer}'"
+                )
+
+                # Configure standard render element outputs
+                warnings = _configure_render_element_outputs_filename(
+                    render_elements,
+                    self.output_file_path,
+                    self.output_file_name,
+                    self.output_file_format,
+                    ignore_list,
+                )
+                if warnings:
+                    for warning in warnings:
+                        self.logger.warning(f"Standard render element configuration: {warning}")
 
             # Validate final configuration
             settings = self._convert_data_to_settings(data)
@@ -249,7 +298,7 @@ class RenderElementManager:
         return elements_enabled
 
     def _handle_ignore_settings(
-        self, data: Dict[str, Any], render_elements: List[RenderElementInfo]
+        self, data: Dict[str, Any], render_elements: List[RenderElementInfo], ignore_list: List[str]
     ) -> None:
         """
         Handle render element ignore settings.
@@ -259,15 +308,11 @@ class RenderElementManager:
             render_elements: List of render elements from scene
         """
         # Handle ignore by name list
-        ignore_names_str = self._get_param_value(data, ["ignore_render_elements_by_name"], "")
-        if ignore_names_str:
-            ignore_names = [name.strip() for name in ignore_names_str.split(",") if name.strip()]
-            self.logger.info(f"Ignoring render elements by name: {ignore_names}")
-
+        if ignore_list:
             disabled_count = 0
             for element in render_elements:
                 element_name = element.name
-                if element_name in ignore_names:
+                if element_name in ignore_list:
                     try:
                         # Disable the render element using the underlying pymxs object
                         element_obj = element.element_object
@@ -326,7 +371,7 @@ class RenderElementManager:
             raise
 
     def _configure_vray_settings(
-        self, data: Dict[str, Any], render_elements: List[RenderElementInfo]
+        self, data: Dict[str, Any], render_elements: List[RenderElementInfo], ignore_list: List[str]
     ) -> None:
         """
         Configure V-Ray specific render element settings.
@@ -351,15 +396,31 @@ class RenderElementManager:
 
             if vfb_control or split_buffer:
                 self.logger.info(
-                    f"Configuring V-Ray settings - VFB Control: {vfb_control}, Split Buffer: {split_buffer}"
+                    f"Configuring V-Ray settings for '{self.current_renderer}' - VFB Control: {vfb_control}, Split Buffer: {split_buffer}"
                 )
+                if split_buffer:
+                    if self.output_file_path and self.output_file_name:
+                        self.logger.info(
+                            f"Split buffer output: {os.path.join(self.output_file_path, self.output_file_name)}"
+                        )
+                    else:
+                        self.logger.warning(
+                            f"Split buffer enabled but missing output info - path: '{self.output_file_path}', name: '{self.output_file_name}'"
+                        )
 
                 vray_settings = VRayRenderElementSettings(
                     vray_render_elements_vfb_control=vfb_control,
                     vray_split_buffer_support=split_buffer,
                 )
 
-                vray_warnings = configure_vray_render_elements(render_elements, vray_settings)
+                vray_warnings = configure_vray_render_elements(
+                    render_elements,
+                    vray_settings,
+                    output_path=self.output_file_path,
+                    output_name=self.output_file_name,
+                    output_file_format=self.output_file_format,
+                    ignore_list=ignore_list,
+                )
                 if vray_warnings:
                     for warning in vray_warnings:
                         self.logger.warning(f"V-Ray configuration: {warning}")
@@ -438,6 +499,21 @@ class RenderElementManager:
             self.logger.error(f"Failed to restore render elements: {e}")
             return RenderElementResult(success=False, error=str(e))
 
+    def _get_ignore_list(self, data: Dict[str, Any]) -> List[str]:
+        """
+        Parse ignore render elements list from configuration data.
+
+        Args:
+            data: Configuration data dictionary
+
+        Returns:
+            List of render element names to ignore
+        """
+        ignore_names_str = self._get_param_value(data, ["ignore_render_elements_by_name"], "")
+        if ignore_names_str:
+            return [name.strip() for name in ignore_names_str.split(",") if name.strip()]
+        return []
+
     def _get_param_value(
         self, data: Dict[str, Any], param_names: List[str], default: str = ""
     ) -> str:
@@ -471,12 +547,8 @@ class RenderElementManager:
         Returns:
             RenderElementConfigurationSettings object compatible with shared utilities
         """
-        # Convert ignore render elements by name
-        ignore_names_str = self._get_param_value(data, ["ignore_render_elements_by_name"], "")
-        if ignore_names_str:
-            ignore_names = [name.strip() for name in ignore_names_str.split(",") if name.strip()]
-        else:
-            ignore_names = []
+        # Use the parsed ignore list
+        ignore_names = self._get_ignore_list(data)
 
         # Convert boolean settings
         render_elements_update_paths = (

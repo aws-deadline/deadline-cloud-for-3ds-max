@@ -402,12 +402,13 @@ def _create_step_definitions(
         ):
             init_data["data"] += "camera: '{{Param.Camera}}'\n"
 
-        # Add render element parameters to init data
-        for param in RENDER_ELEMENT_PARAMS:
-            # Convert parameter name to snake_case for init data with proper mapping
-
-            init_data_key = RENDER_ELEMENT_PARAM_MAPPING.get(param, param.lower())
-            init_data["data"] += f"{init_data_key}: '{{{{Param.{param}}}}}'\n"
+        # Add render element parameters to init data only if render elements exist
+        render_elements = get_render_elements()
+        if render_elements:
+            for param in RENDER_ELEMENT_PARAMS:
+                # Convert parameter name to snake_case for init data with proper mapping
+                init_data_key = RENDER_ELEMENT_PARAM_MAPPING.get(param, param.lower())
+                init_data["data"] += f"{init_data_key}: '{{{{Param.{param}}}}}'\n"
 
     return job_template
 

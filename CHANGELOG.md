@@ -1,3 +1,16 @@
+## 0.1.7 (2025-11-04)
+
+
+### Features
+* **render elements**: VRay split frame buffer and VFB fixes to support Render Elements (#167) ([`38356fa`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/38356fa07e0de4fbaf3fd047cf2c3e9ff985de31))
+* **render elements**: Adapter support for render elements. Apply settings from job template via pyxms (#162) ([`c0d7ab2`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/c0d7ab2eb5f91857e9bdcbe386da9bdd11e8294a))
+* Add new shared utilities class to support render element and general interaction with pyxms (#160) ([`cc2a1fe`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/cc2a1fe5f15f696f884a0461ed9c7fba0a3e8514))
+
+### Bug Fixes
+* Do not add render elements to init param if no render elements e… (#170) ([`e0024fe`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/e0024fef4fed3d2290a5622b7888a492e4354181))
+* Add sticky settings for various job settings (#165) ([`50520b1`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/50520b1afa7b46897a1c0ae22e73579e8d204b62))
+* Fix V_Ray renderer generally using "starts with" ([`872f453`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/872f45395eb2f180bfd4c41f595fb3e734fae6e4))
+
 ## 0.1.6 (2025-09-05)
 
 

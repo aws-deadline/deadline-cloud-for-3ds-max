@@ -4,6 +4,7 @@ from unittest.mock import patch, Mock
 
 import pytest
 from deadline.max_adaptor.MaxClient.render_handlers import DefaultMaxHandler
+from deadline.max_adaptor.MaxClient.render_element_manager import RenderElementResult
 from deadline.max_adaptor.executable_handler import MaxExecutableHandler
 
 
@@ -57,7 +58,7 @@ class TestDefaultMaxHandler:
 
         captured_result = capsys.readouterr()
         assert captured_result.out == f"{test_message_3dsmax}\n"
-        assert not mock_rt.logsystem.logEntry.called
+        assert mock_rt.logsystem.logEntry.called
 
         mock_executable_handler.return_value = True
         test_message_3dsmaxbatch: str = "3dsmaxbatch test message"
@@ -65,5 +66,84 @@ class TestDefaultMaxHandler:
         maxhandlerbase.log_to_console(test_message_3dsmaxbatch)
 
         captured_result = capsys.readouterr()
-        assert test_message_3dsmaxbatch not in captured_result.out
-        mock_rt.logsystem.logEntry.assert_called_once_with(test_message_3dsmaxbatch, broadcast=True)
+        assert test_message_3dsmaxbatch in captured_result.out
+
+    @patch("deadline.max_adaptor.MaxClient.render_element_manager.RenderElementManager")
+    def test_configure_render_elements_success(
+        self, mock_render_element_manager_class: Mock, maxhandlerbase: DefaultMaxHandler
+    ):
+        """Tests that configure_render_elements works correctly with render element manager"""
+        # GIVEN
+        mock_render_element_manager = Mock()
+        mock_render_element_manager.configure_render_elements.return_value = RenderElementResult(
+            success=True,
+            message="Success",
+        )
+        mock_render_element_manager_class.return_value = mock_render_element_manager
+
+        data = {"RenderElements": "true"}
+
+        # WHEN
+        maxhandlerbase.configure_render_elements(data)
+
+        # THEN
+        mock_render_element_manager.configure_render_elements.assert_called_once_with(data)
+        assert maxhandlerbase.render_element_manager == mock_render_element_manager
+
+    @patch("deadline.max_adaptor.MaxClient.render_element_manager.RenderElementManager")
+    def test_configure_render_elements_failure(
+        self, mock_render_element_manager_class: Mock, maxhandlerbase: DefaultMaxHandler
+    ):
+        """Tests that configure_render_elements handles failure correctly"""
+        # GIVEN
+        mock_render_element_manager = Mock()
+        mock_render_element_manager.configure_render_elements.return_value = RenderElementResult(
+            success=False,
+            error="Test error",
+        )
+        mock_render_element_manager_class.return_value = mock_render_element_manager
+
+        data = {"RenderElements": "true"}
+
+        # WHEN/THEN
+        with pytest.raises(RuntimeError, match="Render elements configuration failed: Test error"):
+            maxhandlerbase.configure_render_elements(data)
+
+    def test_cleanup_render_elements_no_manager(self, maxhandlerbase: DefaultMaxHandler):
+        """Tests that cleanup_render_elements handles missing render element manager gracefully"""
+        # GIVEN
+        data = {"RenderElements": "true"}
+
+        # WHEN/THEN - Should not raise exception
+        maxhandlerbase.cleanup_render_elements(data)
+
+    def test_cleanup_render_elements_not_configured(self, maxhandlerbase: DefaultMaxHandler):
+        """Tests that cleanup_render_elements handles unconfigured render elements gracefully"""
+        # GIVEN
+        mock_render_element_manager = Mock()
+        mock_render_element_manager.has_render_elements_configured.return_value = False
+        maxhandlerbase.render_element_manager = mock_render_element_manager
+
+        data = {"RenderElements": "true"}
+
+        # WHEN/THEN - Should not raise exception
+        maxhandlerbase.cleanup_render_elements(data)
+
+    def test_cleanup_render_elements_success(self, maxhandlerbase: DefaultMaxHandler):
+        """Tests that cleanup_render_elements calls render element manager correctly"""
+        # GIVEN
+        mock_render_element_manager = Mock()
+        mock_render_element_manager.has_render_elements_configured.return_value = True
+        mock_render_element_manager.restore_render_elements.return_value = RenderElementResult(
+            success=True,
+            message="Restored",
+        )
+        maxhandlerbase.render_element_manager = mock_render_element_manager
+
+        data = {"RenderElements": "true"}
+
+        # WHEN
+        maxhandlerbase.cleanup_render_elements(data)
+
+        # THEN
+        mock_render_element_manager.restore_render_elements.assert_called_once()

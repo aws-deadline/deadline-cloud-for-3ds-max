@@ -32,7 +32,20 @@ AWS Deadline Cloud officially supports rendering 3ds Max jobs using the followin
 * Chaos V-Ray 6 (CPU & GPU)
 * Chaos V-Ray 7 (CPU & GPU)
 * Maxon Redshift
-## Getting Started
+
+## Deadline Cloud Getting Started
+
+3ds Max integration for AWS Deadline Cloud's Service Managed Fleets (SMF) leverages the Host Configuration feature of Deadline Cloud. At instance boot up, 3ds Max, and renderers such as V-Ray are installed to the host.
+
+Please follow the README.md available at the Deadline Cloud Samples Github repository. [link](https://github.com/aws-deadline/deadline-cloud-samples/tree/mainline/host_configuration_scripts/3dsmax)
+
+Currently tested configurations:
+- 3dsmax 2024
+- 3dsmax 2025 + VRay
+- 3dsmax 2025 + VRay + tyFlow
+- Other examples to follow, or please request additional examples via the discussion forum.
+
+## Development Getting Started
 
 This 3ds Max integration for AWS Deadline Cloud has two components that you will need to install:
 

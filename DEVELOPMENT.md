@@ -106,34 +106,84 @@ your build of the adaptor for the one in the service.
 
 3. Open the 3ds Max integrated submitter, and in the Job-Specific Settings tab, enable the option 'Include Adaptor Wheels'. This option is only visible when the environment variable `DEADLINE_ENABLE_DEVELOPER_OPTIONS` is set to `true`. Then submit your test job.
 
-### Intergration Test Workflow
+### Integration Test Workflow
 Integration tests are located under `test/integ` directory of this repository. If you are adding
 or modifying functionality, then you will want to be writing one or more integ tests to demonstrate that your
 logic behaves as expected and that future changes do not accidentally break your change.
 
 To run the integ tests, you need to:
-1. Add 3dsMax python executable to the PATH:
+1. Add 3dsMax and 3dsMax python executable to the PATH:
    
-   For example, default path of 3dsMax python on Windows is 
+   For example, default path of 3dsMax python on Windows is:
 
 ```
-C:\Program Files\Autodesk\3ds Max 2024\Python
+C:\Program Files\Autodesk\3ds Max 2026\Python
+```
+
+In Powershell, you can set:
+
+```powershell
+$env:PATH = "C:\Program Files\Autodesk\3ds Max 2026;C:\Program Files\Autodesk\3ds Max 2026\Python;" + $env:PATH
 ```
 2. Run command to install pip to this python executable:
-```
+
+```powershell
 python -m ensurepip
 ```
-3. Set the `3DSMAX_EXECUTABLE` environment variable to use `3dsmaxbatch`
+
+3. Set the `3DSMAX_EXECUTABLE` environment variable to use `3dsmaxbatch`:
+
+```powershell
+$env:3DSMAX_EXECUTABLE = "3dsmaxbatch"
+```
+
+#### To run tests with 3ds Max's Python
+
+4. Install all integration tests dependency to 3ds Max's Python:
+
+```powershell
+& "C:\Program Files\Autodesk\3ds Max 2026\Python\python.exe" -m pip install -r requirements-integ-testing.txt
+& "C:\Program Files\Autodesk\3ds Max 2026\Python\python.exe" -m pip install "numpy<2"
+```
+
+5. Run submitter tests:
+
+```powershell
+& "C:\Program Files\Autodesk\3ds Max 2026\Python\python.exe" -m pytest test/integ -m submitter -o addopts="" -v
+```
+
+6. Run adaptor tests:
+
+```powershell
+& "C:\Program Files\Autodesk\3ds Max 2026\Python\python.exe" -m pytest test/integ -m adaptor -o addopts="" -v
+```
+
+#### To run tests with hatch
+
+This method is not recommended. Hatch uses Python 3.12 for testing, which causes conflicts with 3dsmax. To use hatch's integ test environment, downgrade the environment to 3.x to match 3ds Max. For example for 3ds Max 2026, downgrade hatch's integration environment to 3.11.
 
 4. Use hatch to run all integ tests:
-```
+
+```bash
 hatch run integ:test
 ```
+
 5. (Optional) Use hatch to run submitter tests:
-```
+
+```bash
 hatch run integ:test_submitters
 ```
+
 6. (Optional) Use hatch to run adaptor tests:
-```
+
+```bash
 hatch run integ:test_adaptors
+```
+
+### Common Problems encountered while running integration tests
+
+1. PyWin32 issues when running integration tests. Pywin32 is used to bind Python to native Win32 API. To resolve this issue, please register the PyWin32 DLLs as suggested [here](https://github.com/mhammond/pywin32?tab=readme-ov-file#installing-via-pip) This must be done in an elevated shell with CAUTION:
+
+```powershell
+python -m pywin32_postinstall -install
 ```

@@ -11,4 +11,6 @@ on:
 jobs:
   Analysis:
     name: Analysis
-    uses: aws-deadline/.github/.github/workflows/reusable_codeql.yml@mainline
+    uses: aws-deadline/.github/.github/workflows/reusable_codeql.yml@mainline    
+    permissions:
+      security-events: write

@@ -81,9 +81,14 @@ class MaxClient(ClientInterface):
         # Set up logger interceptor when renderer is set
         self.logger_interceptor.setup()
 
-        render_handler = get_render_handler(renderer["renderer"])
-
-        self.actions.update(render_handler.action_dict)
+        try:
+            render_handler = get_render_handler(renderer["renderer"])
+            self.actions.update(render_handler.action_dict)
+        except Exception as e:
+            # Log the error and close Max to ensure clean exit
+            logger.error(f"Failed to initialize renderer: {e}")
+            self.close()
+            raise
 
     def close(self, args: Optional[dict] = None) -> None:
         # Tear down logger interceptor before closing

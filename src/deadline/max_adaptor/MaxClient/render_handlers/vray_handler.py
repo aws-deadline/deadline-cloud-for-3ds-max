@@ -4,7 +4,10 @@
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 """
 
+import math
+import os
 import sys
+from typing import Any
 
 from pymxs import runtime as rt
 
@@ -18,12 +21,50 @@ sys.stderr = sys.__stderr__
 class VrayHandler(DefaultMaxHandler):
     """Render Handler for V-Ray"""
 
-    def __init__(self, gpu):
+    def __init__(self, gpu: bool) -> None:
         """
         Initializes the V-Ray and V-Ray Handler
         """
         super().__init__()
         self.gpu: bool = gpu
+        self._validate_vray_environment()
+
+    def _validate_vray_environment(self) -> None:
+        """
+        Validates that required VRay environment variables are set.
+        Raises RuntimeError with actionable message if variables are missing.
+        """
+        # Get 3ds Max year using the same formula as max_render_submitter.py
+        max_version: Any = rt.maxVersion()
+        # Convert to int to handle both real values and mock objects
+        version_major: int = int(max_version[0])
+        year: int = 2000 + math.ceil(version_major / 1000.0) - 2
+
+        # Define required environment variables
+        required_vars: list[str] = [
+            f"VRAY_FOR_3DSMAX{year}_MAIN",
+            f"VRAY_FOR_3DSMAX{year}_PLUGINS",
+            f"VRAY_MDL_PATH_3DSMAX{year}",
+        ]
+
+        # Check for missing variables
+        missing_vars: list[str] = [var for var in required_vars if var not in os.environ]
+
+        if missing_vars:
+            error_msg = (
+                f"V-Ray renderer detected, but required environment variables are missing.\n"
+                f"Please set the following variables in to the system environment variables:\n"
+                f"{os.linesep.join(f'  - {var}' for var in missing_vars)}"
+            )
+            print(error_msg, flush=True)
+            raise RuntimeError(error_msg)
+        else:
+            # Print confirmation that VRay environment is properly configured
+            success_msg = (
+                f"V-Ray environment validated successfully for 3ds Max {year}:\n"
+                f"{os.linesep.join(f'  - {var}: {os.environ[var]}' for var in required_vars)}"
+            )
+            print(success_msg, flush=True)
 
     def check_renderer(self) -> None:
         """

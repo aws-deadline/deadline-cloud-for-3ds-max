@@ -238,15 +238,15 @@ class SceneSettingsWidget(QWidget):
         self.render_elements_widget.validation_changed.connect(
             self._on_render_elements_validation_changed
         )
-        lyt.addWidget(self.render_elements_widget, 12, 0, 4, 5)
+        lyt.addWidget(self.render_elements_widget, 12, 0, 5, 5)
 
         if self.developer_options:
             self.include_adaptor_wheels = QCheckBox(
                 "Developer Option: Include Adaptor Wheels", self
             )
-            lyt.addWidget(self.include_adaptor_wheels, 16, 0)
+            lyt.addWidget(self.include_adaptor_wheels, 17, 0)
 
-        lyt.addItem(QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding), 17, 0)
+        lyt.addItem(QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding), 18, 0)
 
         self._fill_cameras_box(0)
 

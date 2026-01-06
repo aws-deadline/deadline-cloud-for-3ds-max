@@ -92,6 +92,51 @@ class RenderElementState:
         self.vray_vfb_states = []
 
 
+# V-Ray RT class IDs (GPU renderer)
+_VRAY_RT_CLASS_IDS: list[str] = [
+    "#(1770671000, 1323107829)",
+    "#(1770671000L, 1323107829L)",
+]
+
+
+def _is_vray_rt() -> bool:
+    """
+    Check if current renderer is V-Ray RT (GPU).
+
+    Uses both class ID detection (reliable) and name-based detection (fallback).
+
+    :returns: True if V-Ray RT, False otherwise
+    :return_type: bool
+    """
+    renderer: Any = rt.renderers.current
+    renderer_class_id: str = str(renderer.classid)
+    renderer_name: str = str(renderer)
+
+    # Primary: Class ID detection (most reliable)
+    class_id_match: bool = any(class_id in renderer_class_id for class_id in _VRAY_RT_CLASS_IDS)
+
+    # Fallback: Name-based detection
+    name_match: bool = "V_Ray_GPU" in renderer_name
+
+    return class_id_match or name_match
+
+
+def _get_vray_rt_settings() -> Optional[Any]:
+    """
+    Get the V-Ray RT settings object if current renderer is V-Ray RT.
+
+    V-Ray RT (GPU) uses nested V_Ray_settings object.
+    Standard V-Ray uses direct renderer access.
+
+    :returns: V_Ray_settings object for V-Ray RT, None for standard V-Ray
+    :return_type: Optional[Any]
+    """
+    if _is_vray_rt():
+        renderer: Any = rt.renderers.current
+        return renderer.V_Ray_settings
+    return None
+
+
 def get_render_elements() -> list[RenderElementInfo]:
     """
     Gets all render elements present in the max scene with their properties.
@@ -385,6 +430,48 @@ def configure_render_element_paths(
     return warnings
 
 
+def set_vray_output_path(
+    output_path: str,
+    output_name: str,
+    output_format: str = ".exr",
+) -> list[str]:
+    """
+    Set V-Ray split buffer output path for both standard V-Ray and V-Ray RT.
+
+    Only sets the output path (output_splitfilename).
+    Split buffer flags are controlled by configure_vray_render_elements().
+
+    :param output_path: base output directory path
+    :type output_path: str
+    :param output_name: base output filename
+    :type output_name: str
+    :param output_format: output file format/extension (default: .exr)
+    :type output_format: str
+    :returns: list of warning messages
+    :return_type: list[str]
+    """
+    warnings: list[str] = []
+    split_filepath: str = os.path.join(output_path, f"{output_name}{output_format}")
+
+    try:
+        # Always set for standard V-Ray
+        rt.renderers.current.output_splitfilename = split_filepath
+
+        # Also set for V-Ray RT if applicable
+        vray_rt_settings: Optional[Any] = _get_vray_rt_settings()
+        if vray_rt_settings is not None:
+            vray_rt_settings.output_splitfilename = split_filepath
+
+        _logger.info(f"V-Ray output path set to: {split_filepath}")
+
+    except Exception as e:
+        error_msg: str = f"Failed to set V-Ray output path: {e}"
+        _logger.error(error_msg)
+        warnings.append(error_msg)
+
+    return warnings
+
+
 def configure_vray_render_elements(
     render_elements: list[RenderElementInfo],
     settings: VRayRenderElementSettings,
@@ -442,7 +529,14 @@ def configure_vray_render_elements(
         # Configure global V-Ray VFB control if enabled
         if vfb_control:
             try:
+                # Always set for standard V-Ray
                 rt.renderers.current.output_on = False
+
+                # Also set for V-Ray RT if applicable
+                vray_rt_settings: Optional[Any] = _get_vray_rt_settings()
+                if vray_rt_settings is not None:
+                    vray_rt_settings.output_on = False
+
                 _logger.info(
                     "Disabled V-Ray VFB (output_on = False) - render elements will use 3ds Max framebuffer"
                 )
@@ -452,6 +546,7 @@ def configure_vray_render_elements(
         # Configure split buffer if enabled
         if split_buffer:
             try:
+                # Always set for standard V-Ray
                 rt.renderers.current.output_splitgbuffer = True
 
                 # Set the base filename for split files (critical for split buffer to work)
@@ -480,8 +575,37 @@ def configure_vray_render_elements(
                         f"Split buffer enabled but missing: {', '.join(missing_params)} - split files may not save correctly"
                     )
 
+                # Always set for standard V-Ray
                 rt.renderers.current.output_splitRGB = True
                 rt.renderers.current.output_splitAlpha = True
+
+                # Set output_splitbitmap to enable render elements to inherit the output path
+                # This is required for V-Ray render elements (like LightMix) to save correctly
+                # The bitmap needs to be created with the split filename
+                try:
+                    if output_path and output_name:
+                        # Create a bitmap for the split output
+                        split_bitmap = rt.bitmap(1, 1, filename=base_filepath)
+                        rt.renderers.current.output_splitbitmap = split_bitmap
+                        _logger.info(f"V-Ray output_splitbitmap set to: {base_filepath}")
+                except Exception as bitmap_e:
+                    _logger.warning(f"Could not set output_splitbitmap: {bitmap_e}")
+
+                # Also set for V-Ray RT if applicable
+                vray_rt_split_settings: Optional[Any] = _get_vray_rt_settings()
+                if vray_rt_split_settings is not None:
+                    vray_rt_split_settings.output_splitgbuffer = True
+                    vray_rt_split_settings.output_splitRGB = True
+                    vray_rt_split_settings.output_splitAlpha = True
+                    # Set output_splitbitmap for V-Ray RT as well
+                    try:
+                        if output_path and output_name:
+                            split_bitmap_rt = rt.bitmap(1, 1, filename=base_filepath)
+                            vray_rt_split_settings.output_splitbitmap = split_bitmap_rt
+                    except Exception as bitmap_rt_e:
+                        _logger.warning(
+                            f"Could not set output_splitbitmap for V-Ray RT: {bitmap_rt_e}"
+                        )
 
                 _logger.info("V-Ray split buffer configured")
             except Exception as e:

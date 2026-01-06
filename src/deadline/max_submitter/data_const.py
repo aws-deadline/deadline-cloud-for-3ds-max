@@ -50,6 +50,48 @@ ALLOWED_EXTENSIONS = [
     ["V-Ray Image Format (*.vrimg)", ".vrimg"],
 ]
 
+# Render Elements Preset Configurations
+# Each preset defines the render element settings values
+RENDER_ELEMENTS_PRESETS: dict[str, dict[str, bool]] = {
+    "Default": {
+        "enabled_modify_render_elements": False,
+        "render_elements": True,
+        "render_elements_update_paths": True,
+        "render_elements_include_name_in_path": True,
+        "render_elements_include_type_in_path": False,
+        "render_elements_include_name_in_filename": True,
+        "render_elements_include_type_in_filename": False,
+        "vray_render_elements_vfb_control": True,
+        "vray_split_buffer_support": True,
+    },
+    "VRay with 3dsMax Render Buffer": {
+        # Uses 3ds Max framebuffer (disables V-Ray VFB)
+        # Split buffer enabled for render element output
+        "enabled_modify_render_elements": True,
+        "render_elements": True,
+        "render_elements_update_paths": True,
+        "render_elements_include_name_in_path": True,
+        "render_elements_include_type_in_path": False,
+        "render_elements_include_name_in_filename": True,
+        "render_elements_include_type_in_filename": False,
+        "vray_render_elements_vfb_control": True,  # Disables V-Ray VFB (output_on = False)
+        "vray_split_buffer_support": True,  # Enables split buffer for render elements
+    },
+    "VRay Render Buffer": {
+        # Uses V-Ray VFB (frame buffer) for output
+        # Split buffer enabled for render elements to save to individual files
+        "enabled_modify_render_elements": True,
+        "render_elements": True,
+        "render_elements_update_paths": True,
+        "render_elements_include_name_in_path": True,
+        "render_elements_include_type_in_path": False,
+        "render_elements_include_name_in_filename": True,
+        "render_elements_include_type_in_filename": False,
+        "vray_render_elements_vfb_control": False,  # Keeps V-Ray VFB enabled (output_on = True)
+        "vray_split_buffer_support": True,  # Enables split buffer for render elements
+    },
+}
+
 # Materials allowed for custom override on submit
 SCENE_TWEAKS_MATS = [
     "Standard Grayscale Material",

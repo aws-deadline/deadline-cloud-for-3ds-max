@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 import pymxs  # noqa
 from pymxs import runtime as rt
@@ -49,6 +49,9 @@ class DefaultMaxHandler:
         self._executable_handler: MaxExecutableHandler = MaxExecutableHandler()
         # Initialize render element manager as private attribute
         self._render_element_manager: Optional["RenderElementManager"] = None
+        # Path mapping function injected by MaxClient
+        # Uses Callable type since map_path comes from ClientInterface
+        self.map_path: Optional[Callable[[str], str]] = None
 
     @property
     def render_element_manager(self) -> Optional["RenderElementManager"]:
@@ -304,7 +307,7 @@ class DefaultMaxHandler:
 
         self.check_renderer()
 
-    def set_scene_file(self, data: dict):
+    def set_scene_file(self, data: dict) -> None:
         """
         Opens a scene file in 3dsMax in quiet mode. This means that any popups after start up get ignored
         (e.g. missing XRefs) so they don't halt the adaptor.
@@ -321,9 +324,21 @@ class DefaultMaxHandler:
         try:
             rt.SetQuietMode(True)
             rt.loadMaxFile(file_path, quiet=True)
+
+            # Apply path mapping after scene load
+            if self.map_path is not None:
+                self._apply_path_mapping()
+
         except Exception:
             self.log_to_console(f"Error: while opening '{file_path}'")
             raise RuntimeError(f"Error: while opening '{file_path}'")
+
+    def _apply_path_mapping(self) -> None:
+        """
+        Applies path mapping to scene assets after scene load.
+        Override in subclasses to handle renderer-specific assets.
+        """
+        pass  # Base implementation does nothing
 
     def log_to_console(self, message: str) -> None:
         """

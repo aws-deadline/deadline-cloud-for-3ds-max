@@ -13,6 +13,7 @@ from qtpy.QtCore import Qt, Signal  # type: ignore
 from qtpy.QtWidgets import (  # type: ignore
     QCheckBox,
     QComboBox,
+    QFrame,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -20,6 +21,7 @@ from qtpy.QtWidgets import (  # type: ignore
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -76,17 +78,18 @@ class RenderElementsWidget(QWidget):
 
     def _build_render_elements_ui(self):
         """
-        Build the authentic Deadline 10 render elements UI with single unified group box.
+        Build the authentic Deadline 10 render elements UI with collapsible advanced settings.
         """
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
 
         # Single unified group box matching Deadline 10
         render_elements_group = QGroupBox("Render Elements")
-        layout = QGridLayout(render_elements_group)
+        group_layout = QVBoxLayout(render_elements_group)
         main_layout.addWidget(render_elements_group)
 
-        # Row 0: Preset Configuration dropdown (inside render elements group)
+        # Top section: Preset Configuration (always visible)
+        preset_layout = QHBoxLayout()
         preset_label = QLabel("Preset Configurations:")
         self.preset_combo = QComboBox()
         for preset_name in RENDER_ELEMENTS_PRESETS.keys():
@@ -97,53 +100,73 @@ class RenderElementsWidget(QWidget):
             "VRay with 3dsMax Render Buffer: Uses 3ds Max framebuffer for V-Ray render elements.\n"
             "VRay Render Buffer: Uses V-Ray's native VFB for render element output."
         )
-        layout.addWidget(preset_label, 0, 0)
-        layout.addWidget(self.preset_combo, 0, 1)
+        preset_layout.addWidget(preset_label)
+        preset_layout.addWidget(self.preset_combo, 1)
+        group_layout.addLayout(preset_layout)
 
-        # Row 1: Modify Render Elements checkbox (main control)
+        # Collapsible toggle button
+        self.toggle_button = QToolButton()
+        self.toggle_button.setStyleSheet("QToolButton { border: none; }")
+        self.toggle_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.toggle_button.setArrowType(Qt.RightArrow)
+        self.toggle_button.setText("Advanced Settings")
+        self.toggle_button.setCheckable(True)
+        self.toggle_button.setChecked(False)
+        group_layout.addWidget(self.toggle_button)
+
+        # Collapsible content frame
+        self.collapsible_frame = QFrame()
+        self.collapsible_frame.setFrameShape(QFrame.NoFrame)
+        self.collapsible_frame.setVisible(False)
+        self.collapsible_frame.setMaximumHeight(0)
+        layout = QGridLayout(self.collapsible_frame)
+        layout.setContentsMargins(10, 5, 0, 0)
+        group_layout.addWidget(self.collapsible_frame)
+
+        # Row 0: Modify Render Elements checkbox (main control)
         self.modify_render_elements_checkbox = QCheckBox("Modify Render Elements")
         self.modify_render_elements_checkbox.setChecked(False)  # Default unchecked
         self.modify_render_elements_checkbox.setToolTip(
             "Enable or disable modification of render elements settings. "
             "When unchecked, all render elements setting changes on the worker will be disabled."
         )
-        layout.addWidget(self.modify_render_elements_checkbox, 1, 0, 1, 2)
+        layout.addWidget(self.modify_render_elements_checkbox, 0, 0, 1, 2)
 
-        # Row 2: Output Render Elements checkbox
+        # Row 1: Output Render Elements checkbox
         self.render_elements_checkbox = QCheckBox("Output Render Elements")
         self.render_elements_checkbox.setToolTip(
             "Enable or disable render elements output during rendering"
         )
-        layout.addWidget(self.render_elements_checkbox, 2, 0, 1, 2)
+        layout.addWidget(self.render_elements_checkbox, 1, 0, 1, 2)
 
-        # Row 3: Update Render Element Paths checkbox
+        # Row 2: Update Render Element Paths checkbox
         self.update_paths_checkbox = QCheckBox("Update Render Element Paths")
         self.update_paths_checkbox.setToolTip(
             "Automatically update render element output paths based on naming settings"
         )
-        layout.addWidget(self.update_paths_checkbox, 3, 0, 1, 2)
+        layout.addWidget(self.update_paths_checkbox, 2, 0, 1, 2)
 
-        # Row 4: Path naming options
+        # Row 3: Path naming options
         self.include_name_in_path_checkbox = QCheckBox("Include Render Element Name in Path")
         self.include_name_in_path_checkbox.setToolTip(
             "Add render element name as subdirectory in output path"
         )
-        layout.addWidget(self.include_name_in_path_checkbox, 4, 0)
+        layout.addWidget(self.include_name_in_path_checkbox, 3, 0)
 
         self.include_type_in_path_checkbox = QCheckBox("Include Render Element Type in Path")
         self.include_type_in_path_checkbox.setToolTip(
             "Add render element type as subdirectory in output path"
         )
-        layout.addWidget(self.include_type_in_path_checkbox, 4, 1)
+        layout.addWidget(self.include_type_in_path_checkbox, 3, 1)
 
-        # Row 5: Filename naming options
+        # Row 4: Filename naming options
         self.include_name_in_filename_checkbox = QCheckBox(
             "Include Render Element Name in Filename"
         )
         self.include_name_in_filename_checkbox.setToolTip(
             "Add render element name to output filename"
         )
-        layout.addWidget(self.include_name_in_filename_checkbox, 5, 0)
+        layout.addWidget(self.include_name_in_filename_checkbox, 4, 0)
 
         self.include_type_in_filename_checkbox = QCheckBox(
             "Include Render Element Type in Filename"
@@ -151,34 +174,34 @@ class RenderElementsWidget(QWidget):
         self.include_type_in_filename_checkbox.setToolTip(
             "Add render element type to output filename"
         )
-        layout.addWidget(self.include_type_in_filename_checkbox, 5, 1)
+        layout.addWidget(self.include_type_in_filename_checkbox, 4, 1)
 
-        # Row 6: V-Ray specific options
+        # Row 5: V-Ray specific options
         self.vray_vfb_control_checkbox = QCheckBox("V-Ray Render Elements VFB Control")
         self.vray_vfb_control_checkbox.setToolTip(
             "Automatically control V-Ray VFB settings for render elements during rendering"
         )
-        layout.addWidget(self.vray_vfb_control_checkbox, 6, 0)
+        layout.addWidget(self.vray_vfb_control_checkbox, 5, 0)
 
         self.vray_split_buffer_checkbox = QCheckBox("V-Ray Split Buffer Support")
         self.vray_split_buffer_checkbox.setToolTip(
             "Enable V-Ray split buffer support for render elements"
         )
-        layout.addWidget(self.vray_split_buffer_checkbox, 6, 1)
+        layout.addWidget(self.vray_split_buffer_checkbox, 5, 1)
 
-        # Row 7: Ignore by Name section
+        # Row 6: Ignore by Name section
         ignore_label = QLabel("Ignore Render Elements by Name:")
-        layout.addWidget(ignore_label, 7, 0, 1, 2)
+        layout.addWidget(ignore_label, 6, 0, 1, 2)
 
-        # Row 8: Ignore elements list
+        # Row 7: Ignore elements list
         self.ignore_elements_list = QListWidget()
         self.ignore_elements_list.setMaximumHeight(80)
         self.ignore_elements_list.setToolTip(
             "List of render element names to ignore during rendering"
         )
-        layout.addWidget(self.ignore_elements_list, 8, 0, 1, 2)
+        layout.addWidget(self.ignore_elements_list, 7, 0, 1, 2)
 
-        # Row 9: Ignore list management buttons
+        # Row 8: Ignore list management buttons
         ignore_buttons_layout = QHBoxLayout()
         self.add_ignore_btn = QPushButton("Add Element")
         self.add_ignore_btn.setToolTip("Add selected detected element to ignore list")
@@ -191,30 +214,30 @@ class RenderElementsWidget(QWidget):
 
         ignore_buttons_widget = QWidget()
         ignore_buttons_widget.setLayout(ignore_buttons_layout)
-        layout.addWidget(ignore_buttons_widget, 9, 0, 1, 2)
+        layout.addWidget(ignore_buttons_widget, 8, 0, 1, 2)
 
-        # Row 10: Detected elements list
+        # Row 9: Detected elements list
         detected_label = QLabel("Detected Render Elements:")
-        layout.addWidget(detected_label, 10, 0, 1, 2)
+        layout.addWidget(detected_label, 9, 0, 1, 2)
 
         self.detected_elements_list = QListWidget()
         self.detected_elements_list.setMaximumHeight(120)
         self.detected_elements_list.setToolTip(
             "List of render elements detected in the current scene"
         )
-        layout.addWidget(self.detected_elements_list, 11, 0, 1, 2)
+        layout.addWidget(self.detected_elements_list, 10, 0, 1, 2)
 
-        # Row 12: Refresh button
+        # Row 11: Refresh button
         self.refresh_elements_btn = QPushButton("Refresh Detected Elements")
         self.refresh_elements_btn.setToolTip("Refresh the list of detected render elements")
-        layout.addWidget(self.refresh_elements_btn, 12, 0, 1, 2)
+        layout.addWidget(self.refresh_elements_btn, 11, 0, 1, 2)
 
-        # Row 13: Validation feedback
+        # Row 12: Validation feedback
         self.validation_feedback_label = QLabel("")
         self.validation_feedback_label.setStyleSheet("color: red;")
         self.validation_feedback_label.setWordWrap(True)
         self.validation_feedback_label.setMinimumHeight(40)
-        layout.addWidget(self.validation_feedback_label, 13, 0, 1, 2)
+        layout.addWidget(self.validation_feedback_label, 12, 0, 1, 2)
 
         # Store all controllable widgets for easy enable/disable
         self._controllable_widgets = [
@@ -236,10 +259,16 @@ class RenderElementsWidget(QWidget):
             self.validation_feedback_label,
         ]
 
+        # Store the content height for animation
+        self._content_height = 0
+
     def _connect_signals(self):
         """
         Connect all widget signals to their respective handlers.
         """
+        # Collapsible toggle button
+        self.toggle_button.clicked.connect(self._toggle_advanced_settings)
+
         # Preset configuration dropdown
         self.preset_combo.currentIndexChanged.connect(self._on_preset_changed)
 
@@ -272,6 +301,25 @@ class RenderElementsWidget(QWidget):
         """
         # Trigger the main control handler to set initial state
         self._on_modify_render_elements_changed(self.modify_render_elements_checkbox.checkState())
+
+    def _toggle_advanced_settings(self, checked: bool) -> None:
+        """
+        Toggle the visibility of the advanced settings section with animation.
+
+        :param checked: whether the toggle button is checked (expanded)
+        :type checked: bool
+        """
+        if checked:
+            self.toggle_button.setArrowType(Qt.DownArrow)
+            self.collapsible_frame.setVisible(True)
+            # Calculate content height if not set
+            if self._content_height == 0:
+                self._content_height = self.collapsible_frame.sizeHint().height()
+            self.collapsible_frame.setMaximumHeight(self._content_height + 100)
+        else:
+            self.toggle_button.setArrowType(Qt.RightArrow)
+            self.collapsible_frame.setMaximumHeight(0)
+            self.collapsible_frame.setVisible(False)
 
     def _on_preset_changed(self, index: int) -> None:
         """

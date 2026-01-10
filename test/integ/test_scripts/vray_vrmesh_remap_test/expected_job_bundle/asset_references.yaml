@@ -1,0 +1,17 @@
+assetReferences:
+  inputs:
+    directories: []
+    filenames:
+    - C:\Users\RDP\deadline-cloud-for-3ds-max\RE_OUT\vray-back.png
+    - C:\Users\RDP\deadline-cloud-for-3ds-max\RE_OUT\vray-noise.png
+    - C:\Users\RDP\deadline-cloud-for-3ds-max\RE_OUT\vray.png
+    - C:\Users\RDP\deadline-cloud-for-3ds-max\test\integ\test_scripts\vray_vrmesh_test\scene\Bench.vrmesh
+    - C:\Users\RDP\deadline-cloud-for-3ds-max\test\integ\test_scripts\vray_vrmesh_test\scene\CEDFENCE.JPG
+    - C:\Users\RDP\deadline-cloud-for-3ds-max\test\integ\test_scripts\vray_vrmesh_test\scene\GRYCON3.JPG
+    - C:\Users\RDP\deadline-cloud-for-3ds-max\test\integ\test_scripts\vray_vrmesh_test\scene\OAKQRTRT.TGA
+    - C:\Users\RDP\deadline-cloud-for-3ds-max\test\integ\test_scripts\vray_vrmesh_test\scene\fog.max
+  outputs:
+    directories:
+    - ../../../../../RE_OUT
+    - C:/Users/RDP/deadline-cloud-for-3ds-max/test/integ/test_scripts/vray_vrmesh_test/scene/
+  referencedPaths: []

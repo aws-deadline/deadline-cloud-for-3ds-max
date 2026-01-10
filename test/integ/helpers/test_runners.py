@@ -8,10 +8,10 @@ import os
 import sys
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 
-def run_command(args: list[str]) -> subprocess.CompletedProcess[bytes]:
+def run_command(args: List[str]) -> subprocess.CompletedProcess[bytes]:
     """
     Helper function to log, run command and also print out output, error for better debug
     """
@@ -90,9 +90,21 @@ def run_submitter_test(
     return run_command(args)
 
 
-def run_adaptor_test(template_path: Path, job_params: dict[str, Any]) -> None:
+def run_adaptor_test(
+    template_path: Path,
+    job_params: Dict[str, Any],
+    path_mapping_rules: Optional[Dict[str, Any]] = None,
+) -> None:
     """
     Function to use openjd CLI "run" command to run the 3dsmax adaptor to render image
+    with optional path mapping rules.
+
+    Args:
+        template_path: Path to the job template YAML file.
+        job_params: Dictionary of job parameters to pass to the template.
+        path_mapping_rules: Optional path mapping rules dictionary conforming to
+            the pathmapping-1.0 schema. If provided, these rules will be passed
+            to openjd to remap asset paths during rendering.
     """
     # Add the Scripts directory to PATH so openjd command can be found
     scripts_dir = os.path.join(os.path.split(sys.executable)[0])
@@ -111,15 +123,20 @@ def run_adaptor_test(template_path: Path, job_params: dict[str, Any]) -> None:
     }
 
     for step in template["steps"]:
-        output = run_command(
-            [
-                "openjd",
-                "run",
-                str(template_path),
-                "--step",
-                step["name"],
-                "--job-param",
-                json.dumps(filtered_params),
-            ]
-        )
+        command = [
+            "openjd",
+            "run",
+            str(template_path),
+            "--step",
+            step["name"],
+            "--job-param",
+            json.dumps(filtered_params),
+        ]
+
+        # Add path mapping rules if provided
+        if path_mapping_rules:
+            command.extend(["--path-mapping-rules", json.dumps(path_mapping_rules)])
+            print(f"\nPath Mapping Rules:\n{json.dumps(path_mapping_rules, indent=2)}")
+
+        output = run_command(command)
         assert output.returncode == 0

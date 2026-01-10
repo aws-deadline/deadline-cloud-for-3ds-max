@@ -6,6 +6,7 @@ param(
     [string]$WheelPath = "",
     [string]$MaxVersion = "2026",
     [int]$Step = 0,
+    [string]$PathMappingFile = "",
     [switch]$SkipInstall,
     [switch]$ShowOutput,
     [switch]$Help
@@ -28,6 +29,7 @@ if ($Help) {
     Write-Host "  -WheelPath       Path to the wheel file to install" -ForegroundColor Cyan
     Write-Host "  -MaxVersion      3ds Max version (default: 2026)" -ForegroundColor Cyan
     Write-Host "  -Step            Step number to run (default: 0)" -ForegroundColor Cyan
+    Write-Host "  -PathMappingFile Path to JSON file with path mapping rules (optional)" -ForegroundColor Cyan
     Write-Host "  -SkipInstall     Skip wheel installation (optional)" -ForegroundColor Cyan
     Write-Host "  -ShowOutput      Show detailed output (optional)" -ForegroundColor Cyan
     Write-Host ""
@@ -302,6 +304,20 @@ function Build-TestCommand {
     
     # Use the 3dsmax-openjd wrapper script with file references, run via 3ds Max Python
     $testCommand = "`"$MaxPythonPath`" -m deadline.max_adaptor.MaxAdaptor run --init-data file://$initDataFile --run-data file://$runDataFile"
+    
+    # Add path mapping rules if provided
+    if (-not [string]::IsNullOrEmpty($PathMappingFile)) {
+        if (Test-Path $PathMappingFile) {
+            $absolutePathMappingFile = (Resolve-Path $PathMappingFile).Path
+            $testCommand += " --path-mapping-rules file://$absolutePathMappingFile"
+            Write-Host "`nPath Mapping Rules File: $absolutePathMappingFile" -ForegroundColor Yellow
+            $pathMappingContent = Get-Content $PathMappingFile -Raw
+            Write-Host $pathMappingContent -ForegroundColor Gray
+        } else {
+            Write-Error "Path mapping file not found: $PathMappingFile"
+            return $null
+        }
+    }
     
     Write-Host "Scene File: $sceneFile" -ForegroundColor Cyan
     Write-Host "Frame: $($runData | ConvertFrom-Json | Select-Object -ExpandProperty frame)" -ForegroundColor Cyan

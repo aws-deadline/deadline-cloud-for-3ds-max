@@ -98,7 +98,7 @@ steps:
             filename: start.bat
             type: TEXT
             data: |
-              3dsmax-openjd daemon start --connection-file {{Session.WorkingDirectory}}/connection.json --init-data file://{{Env.File.initData}}
+              3dsmax-openjd daemon start --connection-file {{Session.WorkingDirectory}}/connection.json --init-data file://{{Env.File.initData}} --path-mapping-rules file://{{Session.PathMappingRulesFile}}
           - name: runStop
             filename: stop.bat
             type: TEXT

@@ -6,6 +6,7 @@ param(
     [string]$WheelPath = "",
     [string]$MaxVersion = "2026",
     [int]$Step = 0,
+    [string]$PathMappingFile = "",
     [switch]$SkipInstall,
     [switch]$ShowOutput,
     [switch]$Help
@@ -28,6 +29,7 @@ if ($Help) {
     Write-Host "  -WheelPath       Path to the wheel file to install" -ForegroundColor Cyan
     Write-Host "  -MaxVersion      3ds Max version (default: 2026)" -ForegroundColor Cyan
     Write-Host "  -Step            Step number to run (default: 0)" -ForegroundColor Cyan
+    Write-Host "  -PathMappingFile Path to JSON file with path mapping rules (optional)" -ForegroundColor Cyan
     Write-Host "  -SkipInstall     Skip wheel installation (optional)" -ForegroundColor Cyan
     Write-Host "  -ShowOutput      Show detailed output (optional)" -ForegroundColor Cyan
     Write-Host ""
@@ -364,6 +366,21 @@ function Build-TestCommand {
     # Build openjd run command with JSON file references using 3ds Max Python
     $stepName = $selectedStep.name
     $testCommand = "`"$MaxPythonPath`" -m openjd run `"$templateFile`" --step `"$stepName`" --job-param `"file://$runnerJobParamsFile`" --tasks `"file://$taskParamsFile`""
+    
+    # Add path mapping rules if provided
+    if (-not [string]::IsNullOrEmpty($PathMappingFile)) {
+        if (Test-Path $PathMappingFile) {
+            $pathMappingContent = Get-Content $PathMappingFile -Raw
+            # Escape for command line - convert to single line and escape quotes
+            $pathMappingJson = $pathMappingContent -replace "`r`n", "" -replace "`n", "" -replace '"', '\"'
+            $testCommand += " --path-mapping-rules `"$pathMappingJson`""
+            Write-Host "`nPath Mapping Rules File: $PathMappingFile" -ForegroundColor Yellow
+            Write-Host $pathMappingContent -ForegroundColor Gray
+        } else {
+            Write-Error "Path mapping file not found: $PathMappingFile"
+            return $null
+        }
+    }
     
     # Print parameter information to console
     Write-Host "`nComplete Job Parameters JSON ($jobParamsFile):" -ForegroundColor Yellow

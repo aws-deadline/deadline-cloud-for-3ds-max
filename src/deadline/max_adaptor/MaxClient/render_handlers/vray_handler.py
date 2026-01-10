@@ -117,9 +117,14 @@ class VrayHandler(DefaultMaxHandler):
         TODO: Add support for VRayFur (fur/hair geometry files)
         TODO: Add support for VRayScene (V-Ray scene files .vrscene)
         """
+        self.log_to_console("VrayHandler._apply_path_mapping called")
         if self.map_path is None:
+            self.log_to_console("VrayHandler._apply_path_mapping: map_path is None, skipping")
             return
 
+        self.log_to_console(
+            "VrayHandler._apply_path_mapping: map_path is set, applying VRay proxy path mapping"
+        )
         self._apply_vray_proxy_path_mapping()
 
     def _apply_vray_proxy_path_mapping(self) -> None:

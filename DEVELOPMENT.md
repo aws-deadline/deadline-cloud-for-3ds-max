@@ -106,6 +106,17 @@ your build of the adaptor for the one in the service.
 
 3. Open the 3ds Max integrated submitter, and in the Job-Specific Settings tab, enable the option 'Include Adaptor Wheels'. This option is only visible when the environment variable `DEADLINE_ENABLE_DEVELOPER_OPTIONS` is set to `true`. Then submit your test job.
 
+#### Adaptor Schema Files
+
+The adaptor uses two JSON schema files to define the contract between the 3ds Max submitter (running on artist workstations)
+and the 3ds Max adaptor (running on cloud render workers):
+
+- `src/deadline/max_adaptor/MaxAdaptor/schemas/init_data.schema.json` - Defines the initialization data passed once when the adaptor starts
+- `src/deadline/max_adaptor/MaxAdaptor/schemas/run_data.schema.json` - Defines the per-task data passed for each frame/task to render
+
+**Important:** Whenever you modify either of these schema files, you **must** also update the `integration_data_interface_version`
+in `src/deadline/max_adaptor/MaxAdaptor/adaptor.py` following semantic versioning.
+
 ### Integration Test Workflow
 Integration tests are located under `test/integ` directory of this repository. If you are adding
 or modifying functionality, then you will want to be writing one or more integ tests to demonstrate that your

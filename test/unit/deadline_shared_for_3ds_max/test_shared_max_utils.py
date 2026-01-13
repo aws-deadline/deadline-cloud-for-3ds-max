@@ -565,12 +565,11 @@ def test_set_vray_output_path_standard_vray(mock_rt: MagicMock) -> None:
     output_format: str = ".exr"
 
     # WHEN - Set V-Ray output path
-    warnings: list[str] = set_vray_output_path(output_path, output_name, output_format)
+    set_vray_output_path(output_path, output_name, output_format)
 
     # THEN - Should set path on standard renderer only
     expected_path: str = f"C:/output{os.sep}test_render.exr"
     assert mock_renderer.output_splitfilename == expected_path
-    assert warnings == []
 
 
 @patch("deadline.max_shared.utilities.max_utils.rt")
@@ -591,13 +590,38 @@ def test_set_vray_output_path_vray_rt(mock_rt: MagicMock) -> None:
     output_format: str = ".png"
 
     # WHEN - Set V-Ray output path
-    warnings: list[str] = set_vray_output_path(output_path, output_name, output_format)
+    set_vray_output_path(output_path, output_name, output_format)
 
     # THEN - Should set path on both standard renderer and RT settings
     expected_path: str = f"C:/output{os.sep}test_render.png"
     assert mock_renderer.output_splitfilename == expected_path
     assert mock_vray_settings.output_splitfilename == expected_path
-    assert warnings == []
+
+
+@patch("deadline.max_shared.utilities.max_utils.rt")
+def test_set_vray_output_path_raises_on_failure(mock_rt: MagicMock) -> None:
+    """Test set_vray_output_path raises RuntimeError when setting path fails."""
+    import pytest
+
+    from deadline.max_shared.utilities.max_utils import set_vray_output_path
+
+    # GIVEN - Mock renderer that raises exception when setting output_splitfilename
+    mock_renderer = MagicMock()
+    mock_renderer.classid = "#(1941615238, 2012806412)"
+    mock_renderer.__str__.return_value = "V_Ray_6"  # type: ignore[attr-defined]
+    type(mock_renderer).output_splitfilename = property(
+        fget=lambda self: None,
+        fset=MagicMock(side_effect=Exception("V-Ray API error")),
+    )
+    mock_rt.renderers.current = mock_renderer
+
+    output_path: str = "C:/output"
+    output_name: str = "test_render"
+    output_format: str = ".exr"
+
+    # WHEN/THEN - Should raise RuntimeError
+    with pytest.raises(RuntimeError, match="Failed to set V-Ray output path"):
+        set_vray_output_path(output_path, output_name, output_format)
 
 
 @patch("deadline.max_shared.utilities.max_utils.rt")

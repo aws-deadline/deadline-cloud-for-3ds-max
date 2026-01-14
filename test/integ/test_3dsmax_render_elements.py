@@ -28,9 +28,10 @@ class TestRenderElementsAdaptors:
     @pytest.mark.parametrize(
         "bundle_dir,scene_max,max_diff_files",
         [
-            ("vray_re_test", "fog.max", 3),
+            ("vray_re_test", "fog.max", 6),
             ("re_enabled_test", "fog.max", 0),
             ("re_disabled_test", "fog.max", 0),
+            ("lightmix", "scene.max", 4),
         ],
     )
     def test_render_element_scene_adaptor(

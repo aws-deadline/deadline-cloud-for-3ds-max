@@ -542,3 +542,148 @@ def test_configure_render_element_outputs_filename_with_special_characters(mock_
 
     for i, expected_filename in enumerate(expected_filenames):
         mock_re_manager.SetRenderElementFilename.assert_any_call(i, expected_filename)
+
+
+# ============================================================================
+# V-Ray RT Tests
+# ============================================================================
+
+
+@patch("deadline.max_shared.utilities.max_utils.rt")
+def test_set_vray_output_path_standard_vray(mock_rt: MagicMock) -> None:
+    """Test set_vray_output_path sets path for standard V-Ray only."""
+    from deadline.max_shared.utilities.max_utils import set_vray_output_path
+
+    # GIVEN - Mock standard V-Ray renderer
+    mock_renderer = MagicMock()
+    mock_renderer.classid = "#(1941615238, 2012806412)"
+    mock_renderer.__str__.return_value = "V_Ray_6"  # type: ignore[attr-defined]
+    mock_rt.renderers.current = mock_renderer
+
+    output_path: str = "C:/output"
+    output_name: str = "test_render"
+    output_format: str = ".exr"
+
+    # WHEN - Set V-Ray output path
+    set_vray_output_path(output_path, output_name, output_format)
+
+    # THEN - Should set path on standard renderer only
+    expected_path: str = f"C:/output{os.sep}test_render.exr"
+    assert mock_renderer.output_splitfilename == expected_path
+
+
+@patch("deadline.max_shared.utilities.max_utils.rt")
+def test_set_vray_output_path_vray_rt(mock_rt: MagicMock) -> None:
+    """Test set_vray_output_path sets path for both standard V-Ray and V-Ray RT."""
+    from deadline.max_shared.utilities.max_utils import set_vray_output_path
+
+    # GIVEN - Mock V-Ray RT renderer
+    mock_renderer = MagicMock()
+    mock_renderer.classid = "#(1770671000, 1323107829)"
+    mock_renderer.__str__.return_value = "V_Ray_GPU_6"  # type: ignore[attr-defined]
+    mock_vray_settings = MagicMock()
+    mock_renderer.V_Ray_settings = mock_vray_settings
+    mock_rt.renderers.current = mock_renderer
+
+    output_path: str = "C:/output"
+    output_name: str = "test_render"
+    output_format: str = ".png"
+
+    # WHEN - Set V-Ray output path
+    set_vray_output_path(output_path, output_name, output_format)
+
+    # THEN - Should set path on both standard renderer and RT settings
+    expected_path: str = f"C:/output{os.sep}test_render.png"
+    assert mock_renderer.output_splitfilename == expected_path
+    assert mock_vray_settings.output_splitfilename == expected_path
+
+
+@patch("deadline.max_shared.utilities.max_utils.rt")
+def test_set_vray_output_path_raises_on_failure(mock_rt: MagicMock) -> None:
+    """Test set_vray_output_path raises RuntimeError when setting path fails."""
+    import pytest
+
+    from deadline.max_shared.utilities.max_utils import set_vray_output_path
+
+    # GIVEN - Mock renderer that raises exception when setting output_splitfilename
+    mock_renderer = MagicMock()
+    mock_renderer.classid = "#(1941615238, 2012806412)"
+    mock_renderer.__str__.return_value = "V_Ray_6"  # type: ignore[attr-defined]
+    type(mock_renderer).output_splitfilename = property(
+        fget=lambda self: None,
+        fset=MagicMock(side_effect=Exception("V-Ray API error")),
+    )
+    mock_rt.renderers.current = mock_renderer
+
+    output_path: str = "C:/output"
+    output_name: str = "test_render"
+    output_format: str = ".exr"
+
+    # WHEN/THEN - Should raise RuntimeError
+    with pytest.raises(RuntimeError, match="Failed to set V-Ray output path"):
+        set_vray_output_path(output_path, output_name, output_format)
+
+
+@patch("deadline.max_shared.utilities.max_utils.rt")
+def test_configure_vray_render_elements_sets_rt_settings(mock_rt: MagicMock) -> None:
+    """Test configure_vray_render_elements sets both standard and RT settings."""
+    from deadline.max_shared.utilities.max_utils import (
+        configure_vray_render_elements,
+        VRayRenderElementSettings,
+    )
+
+    # GIVEN - Mock V-Ray RT renderer
+    mock_renderer = MagicMock()
+    mock_renderer.classid = "#(1770671000, 1323107829)"
+    mock_renderer.__str__.return_value = "V_Ray_GPU_6"  # type: ignore[attr-defined]
+    mock_renderer.output_on = True
+    mock_renderer.output_splitgbuffer = False
+    mock_renderer.output_splitRGB = False
+    mock_renderer.output_splitAlpha = False
+
+    mock_vray_settings = MagicMock()
+    mock_vray_settings.output_on = True
+    mock_vray_settings.output_splitgbuffer = False
+    mock_vray_settings.output_splitRGB = False
+    mock_vray_settings.output_splitAlpha = False
+    mock_renderer.V_Ray_settings = mock_vray_settings
+
+    mock_rt.renderers.current = mock_renderer
+
+    # Mock render element manager
+    mock_re_manager = Mock()
+    mock_rt.maxOps.GetCurRenderElementMgr.return_value = mock_re_manager
+
+    # Create VRay render element
+    vray_element = _create_mock_vray_render_element(
+        "VRayDiffuseFilter", "VRayDiffuseFilter", True, 0
+    )
+
+    settings = VRayRenderElementSettings(
+        vray_render_elements_vfb_control=True,
+        vray_split_buffer_support=True,
+    )
+
+    # WHEN - Configure VRay render elements
+    warnings: list[str] = configure_vray_render_elements(
+        [vray_element],
+        settings,
+        output_path="C:/output",
+        output_name="test",
+        output_file_format=".png",
+    )
+
+    # THEN - Both standard and RT settings should be configured
+    assert mock_renderer.output_on is False
+    assert mock_vray_settings.output_on is False
+
+    assert mock_renderer.output_splitgbuffer is True
+    assert mock_vray_settings.output_splitgbuffer is True
+
+    assert mock_renderer.output_splitRGB is True
+    assert mock_vray_settings.output_splitRGB is True
+
+    assert mock_renderer.output_splitAlpha is True
+    assert mock_vray_settings.output_splitAlpha is True
+
+    assert isinstance(warnings, list)

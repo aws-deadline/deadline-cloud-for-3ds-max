@@ -92,6 +92,49 @@ class RenderElementState:
         self.vray_vfb_states = []
 
 
+# V-Ray RT class IDs (GPU renderer)
+_VRAY_RT_CLASS_IDS: list[str] = [
+    "#(1770671000, 1323107829)",
+    "#(1770671000L, 1323107829L)",
+]
+
+
+def _is_vray_rt() -> bool:
+    """
+    Check if current renderer is V-Ray RT (GPU).
+
+    Uses both class ID detection (reliable) and name-based detection (fallback).
+
+    :returns: True if V-Ray RT, False otherwise
+    """
+    renderer: Any = rt.renderers.current
+    renderer_class_id: str = str(renderer.classid)
+    renderer_name: str = str(renderer)
+
+    # Primary: Class ID detection (most reliable)
+    class_id_match: bool = any(class_id in renderer_class_id for class_id in _VRAY_RT_CLASS_IDS)
+
+    # Fallback: Name-based detection
+    name_match: bool = "V_Ray_GPU" in renderer_name
+
+    return class_id_match or name_match
+
+
+def _get_vray_rt_settings() -> Optional[Any]:
+    """
+    Get the V-Ray RT settings object if current renderer is V-Ray RT.
+
+    V-Ray RT (GPU) uses nested V_Ray_settings object.
+    Standard V-Ray uses direct renderer access.
+
+    :returns: V_Ray_settings object for V-Ray RT, None for standard V-Ray
+    """
+    if _is_vray_rt():
+        renderer: Any = rt.renderers.current
+        return renderer.V_Ray_settings
+    return None
+
+
 def get_render_elements() -> list[RenderElementInfo]:
     """
     Gets all render elements present in the max scene with their properties.
@@ -101,7 +144,6 @@ def get_render_elements() -> list[RenderElementInfo]:
     index tracking for later manipulation.
 
     :returns: a list of RenderElementInfo objects containing render element information
-    :return_type: list[RenderElementInfo]
     """
     render_elements: list[RenderElementInfo] = []
 
@@ -169,9 +211,7 @@ def validate_render_element_paths(render_elements: list[RenderElementInfo]) -> l
     sanity check system for render elements.
 
     :param render_elements: list of RenderElementInfo objects from get_render_elements()
-    :type render_elements: list[RenderElementInfo]
     :returns: list of warning messages for render elements with path issues
-    :return_type: list[str]
     """
     warnings: list[str] = []
 
@@ -214,7 +254,6 @@ def get_render_elements_output_directories() -> set[str]:
     and the adaptor (for directory creation and validation).
 
     :returns: set of directory paths where render elements will be output
-    :return_type: set[str]
     """
     output_dirs: set[str] = set()
 
@@ -245,9 +284,7 @@ def purify_render_element_name(element_name: str) -> str:
     consistent naming between GUI submission and render execution.
 
     :param element_name: original render element name
-    :type element_name: str
     :returns: purified element name safe for file paths
-    :return_type: str
     """
     if not element_name:
         return "Element"
@@ -274,9 +311,7 @@ def get_render_element_by_name(element_name: str) -> Optional[RenderElementInfo]
     Gets a specific render element by name.
 
     :param element_name: name of the render element to find
-    :type element_name: str
     :returns: RenderElementInfo object or None if not found
-    :return_type: RenderElementInfo or None
     """
     render_elements: list[RenderElementInfo] = get_render_elements()
 
@@ -297,11 +332,8 @@ def validate_render_element_configuration(
     to ensure consistency between GUI configuration and render execution.
 
     :param render_elements: list of RenderElementInfo objects
-    :type render_elements: list[RenderElementInfo]
     :param settings: render element configuration settings
-    :type settings: RenderElementConfigurationSettings
     :returns: list of validation warnings
-    :return_type: list[str]
     """
     warnings: list[str] = []
 
@@ -336,11 +368,8 @@ def configure_render_element_paths(
     Deadline 10's path management system, including name/type inclusion options.
 
     :param render_elements: list of RenderElementInfo objects
-    :type render_elements: list[RenderElementInfo]
     :param settings: render element configuration settings
-    :type settings: RenderElementConfigurationSettings
     :returns: list of configuration warnings
-    :return_type: list[str]
     """
     warnings: list[str] = []
 
@@ -385,6 +414,41 @@ def configure_render_element_paths(
     return warnings
 
 
+def set_vray_output_path(
+    output_path: str,
+    output_name: str,
+    output_format: str = ".exr",
+) -> None:
+    """
+    Set V-Ray split buffer output path for both standard V-Ray and V-Ray RT.
+
+    Only sets the output path (output_splitfilename).
+    Split buffer flags are controlled by configure_vray_render_elements().
+
+    :param output_path: base output directory path
+    :param output_name: base output filename
+    :param output_format: output file format/extension (default: .exr)
+    :raises RuntimeError: if V-Ray output path cannot be set
+    """
+    split_filepath: str = os.path.join(output_path, f"{output_name}{output_format}")
+
+    try:
+        # Always set for standard V-Ray
+        rt.renderers.current.output_splitfilename = split_filepath
+
+        # Also set for V-Ray RT if applicable
+        vray_rt_settings: Optional[Any] = _get_vray_rt_settings()
+        if vray_rt_settings is not None:
+            vray_rt_settings.output_splitfilename = split_filepath
+
+        _logger.info(f"V-Ray output path set to: {split_filepath}")
+
+    except Exception as e:
+        error_msg: str = f"Failed to set V-Ray output path: {e}"
+        _logger.error(error_msg)
+        raise RuntimeError(error_msg) from e
+
+
 def configure_vray_render_elements(
     render_elements: list[RenderElementInfo],
     settings: VRayRenderElementSettings,
@@ -403,19 +467,12 @@ def configure_vray_render_elements(
     file format specification.
 
     :param render_elements: list of RenderElementInfo objects
-    :type render_elements: list[RenderElementInfo]
     :param settings: V-Ray render element settings
-    :type settings: VRayRenderElementSettings
     :param output_path: output directory path for split buffer files
-    :type output_path: str
     :param output_name: base output filename for split buffer files
-    :type output_name: str
     :param output_file_format: output file format/extension for split buffer files (default: .png)
-    :type output_file_format: str
     :param ignore_list: list of render element names to ignore (disable)
-    :type ignore_list: list[str]
     :returns: list of configuration warnings
-    :return_type: list[str]
     """
     warnings: list[str] = []
 
@@ -442,7 +499,14 @@ def configure_vray_render_elements(
         # Configure global V-Ray VFB control if enabled
         if vfb_control:
             try:
+                # Always set for standard V-Ray
                 rt.renderers.current.output_on = False
+
+                # Also set for V-Ray RT if applicable
+                vray_rt_settings: Optional[Any] = _get_vray_rt_settings()
+                if vray_rt_settings is not None:
+                    vray_rt_settings.output_on = False
+
                 _logger.info(
                     "Disabled V-Ray VFB (output_on = False) - render elements will use 3ds Max framebuffer"
                 )
@@ -452,6 +516,7 @@ def configure_vray_render_elements(
         # Configure split buffer if enabled
         if split_buffer:
             try:
+                # Always set for standard V-Ray
                 rt.renderers.current.output_splitgbuffer = True
 
                 # Set the base filename for split files (critical for split buffer to work)
@@ -480,8 +545,37 @@ def configure_vray_render_elements(
                         f"Split buffer enabled but missing: {', '.join(missing_params)} - split files may not save correctly"
                     )
 
+                # Always set for standard V-Ray
                 rt.renderers.current.output_splitRGB = True
                 rt.renderers.current.output_splitAlpha = True
+
+                # Set output_splitbitmap to enable render elements to inherit the output path
+                # This is required for V-Ray render elements (like LightMix) to save correctly
+                # The bitmap needs to be created with the split filename
+                try:
+                    if output_path and output_name:
+                        # Create a bitmap for the split output
+                        split_bitmap = rt.bitmap(1, 1, filename=base_filepath)
+                        rt.renderers.current.output_splitbitmap = split_bitmap
+                        _logger.info(f"V-Ray output_splitbitmap set to: {base_filepath}")
+                except Exception as bitmap_e:
+                    _logger.warning(f"Could not set output_splitbitmap: {bitmap_e}")
+
+                # Also set for V-Ray RT if applicable
+                vray_rt_split_settings: Optional[Any] = _get_vray_rt_settings()
+                if vray_rt_split_settings is not None:
+                    vray_rt_split_settings.output_splitgbuffer = True
+                    vray_rt_split_settings.output_splitRGB = True
+                    vray_rt_split_settings.output_splitAlpha = True
+                    # Set output_splitbitmap for V-Ray RT as well
+                    try:
+                        if output_path and output_name:
+                            split_bitmap_rt = rt.bitmap(1, 1, filename=base_filepath)
+                            vray_rt_split_settings.output_splitbitmap = split_bitmap_rt
+                    except Exception as bitmap_rt_e:
+                        _logger.warning(
+                            f"Could not set output_splitbitmap for V-Ray RT: {bitmap_rt_e}"
+                        )
 
                 _logger.info("V-Ray split buffer configured")
             except Exception as e:
@@ -604,9 +698,7 @@ def store_original_render_element_state(
     to enable restoration after rendering completes.
 
     :param render_elements: list of RenderElementInfo objects
-    :type render_elements: list[RenderElementInfo]
     :returns: RenderElementState object containing original state information
-    :return_type: RenderElementState
     """
     original_state = RenderElementState()
 
@@ -650,9 +742,7 @@ def restore_original_render_element_state(original_state: RenderElementState) ->
     using previously stored state information.
 
     :param original_state: RenderElementState object containing original state information
-    :type original_state: RenderElementState
     :returns: list of restoration warnings
-    :return_type: list[str]
     """
     warnings: list[str] = []
 
@@ -794,7 +884,6 @@ def _is_renderer_vray() -> tuple[bool, str]:
     matches the V-Ray pattern used throughout the Deadline integration.
 
     :returns: tuple of (is_vray, renderer_name)
-    :return_type: tuple[bool, str]
     """
     try:
         current_renderer = str(rt.renderers.current)
@@ -819,15 +908,10 @@ def _build_render_element_path(
     based on Deadline 10's path building logic.
 
     :param base_path: original base path
-    :type base_path: str
     :param element_name: render element name
-    :type element_name: str
     :param element_type: render element type
-    :type element_type: str
     :param settings: render element configuration settings
-    :type settings: RenderElementConfigurationSettings
     :returns: constructed path
-    :return_type: str
     """
     try:
         path_obj: Path = Path(base_path)
@@ -880,7 +964,6 @@ def detect_missing_render_elements() -> list[MissingRenderElementInfo]:
     matching Deadline 10's missing element detection system.
 
     :returns: list of typed dictionaries containing missing element information
-    :return_type: list[MissingRenderElementInfo]
     """
     missing_elements: list[MissingRenderElementInfo] = []
 
@@ -920,9 +1003,7 @@ def validate_render_element_names(render_elements: list[RenderElementInfo]) -> l
     render element name checking system.
 
     :param render_elements: list of RenderElementInfo objects
-    :type render_elements: list[RenderElementInfo]
     :returns: list of validation warnings
-    :return_type: list[str]
     """
     warnings: list[str] = []
 
@@ -971,9 +1052,7 @@ def resolve_duplicate_render_element_names(render_elements: list[RenderElementIn
     duplicate name handling system.
 
     :param render_elements: list of RenderElementInfo objects
-    :type render_elements: list[RenderElementInfo]
     :returns: dictionary mapping original names to suggested unique names
-    :return_type: dict[str, str]
     """
     name_resolutions: dict[str, str] = {}
     name_counts: dict[str, int] = {}
@@ -1017,11 +1096,8 @@ def preview_render_element_paths(
     matching Deadline 10's path preview functionality.
 
     :param render_elements: list of RenderElementInfo objects
-    :type render_elements: list[RenderElementInfo]
     :param settings: render element configuration settings
-    :type settings: RenderElementConfigurationSettings
     :returns: dictionary mapping element names to preview paths
-    :return_type: dict[str, str]
     """
     path_previews: dict[str, str] = {}
 
@@ -1073,9 +1149,7 @@ def analyze_render_element_compatibility(
     renderer-specific render element validation.
 
     :param render_elements: list of RenderElementInfo objects
-    :type render_elements: list[RenderElementInfo]
     :returns: typed dictionary containing compatibility analysis
-    :return_type: RenderElementCompatibilityAnalysis
     """
     analysis: RenderElementCompatibilityAnalysis = {
         "total_elements": len(render_elements),
@@ -1154,7 +1228,6 @@ def get_render_element_statistics() -> RenderElementStatistics:
     render element reporting system.
 
     :returns: typed dictionary containing render element statistics
-    :return_type: RenderElementStatistics
     """
     stats: RenderElementStatistics = {
         "total_elements": 0,

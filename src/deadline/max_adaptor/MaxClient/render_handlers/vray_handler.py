@@ -11,6 +11,8 @@ from typing import Any
 
 from pymxs import runtime as rt
 
+from deadline.max_shared.utilities.max_utils import set_vray_output_path
+
 from .default_max_handler import DefaultMaxHandler
 
 # Re-assign sys stdout and stderr to print in the console instead of the Max Listener
@@ -102,3 +104,19 @@ class VrayHandler(DefaultMaxHandler):
             if "V_Ray" not in current_renderer or "V_Ray_GPU" in current_renderer:
                 # Set to most recent version of V-Ray
                 rt.renderers.current = vray()
+
+    def start_render(self, data: dict) -> None:
+        """
+        Override to set V-Ray output path before rendering.
+
+        Always sets V-Ray output path for both standard V-Ray and V-Ray RT.
+        """
+        # Always set V-Ray output path
+        if self.output_dir and self.output_name:
+            set_vray_output_path(
+                output_path=self.output_dir,
+                output_name=self.output_name,
+                output_format=self.output_format or ".exr",
+            )
+
+        super().start_render(data)

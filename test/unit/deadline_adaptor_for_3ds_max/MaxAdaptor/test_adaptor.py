@@ -2,13 +2,58 @@
 
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 from unittest.mock import Mock, PropertyMock, patch
 
 import jsonschema  # type: ignore
 import pytest
+from openjd.adaptor_runtime.adaptors import SemanticVersion
 from deadline.max_adaptor.MaxAdaptor import MaxAdaptor
 from deadline.max_adaptor.MaxAdaptor.adaptor import _FIRST_MAX_ACTIONS, MaxNotRunningError
+
+# Test data that exercises ALL properties in init_data schema
+# If the schema changes (properties added/removed/modified), this test data
+# must be updated AND the integration_data_interface_version must be bumped
+EXPECTED_INIT_DATA_PROPERTIES = {
+    "camera": "Camera001",
+    "output_file_path": "/path/to/output",
+    "output_file_name": "output_###",
+    "output_file_format": ".jpg",
+    "state_set": "State01",
+    "renderer": "Default_Scanline_Renderer",
+    "scene_file": "/path/to/scene.max",
+    "strict_error_checking": True,
+    "enabled_modify_render_elements": "false",
+    "render_elements": "false",
+    "render_elements_update_paths": "false",
+    "render_elements_include_name_in_path": "false",
+    "render_elements_include_type_in_path": "false",
+    "render_elements_include_name_in_filename": "false",
+    "render_elements_include_type_in_filename": "false",
+    "vray_render_elements_vfb_control": "false",
+    "vray_split_buffer_support": "false",
+    "ignore_render_elements_by_name": "element1,element2",
+}
+
+# Required fields for init_data schema
+EXPECTED_INIT_DATA_REQUIRED = ["renderer", "scene_file"]
+
+# Test data that exercises ALL properties in run_data schema
+# If the schema changes (properties added/removed/modified), this test data
+# must be updated AND the integration_data_interface_version must be bumped
+EXPECTED_RUN_DATA_PROPERTIES = {
+    "frame": 1,
+    "camera": "Camera001",
+}
+
+# Required fields for run_data schema
+EXPECTED_RUN_DATA_REQUIRED = ["frame"]
+
+# Expected version - must be bumped when schemas change
+EXPECTED_SCHEMA_VERSION_MAJOR = 0
+EXPECTED_SCHEMA_VERSION_MINOR = 1
 
 
 @pytest.fixture
@@ -41,6 +86,110 @@ def run_data() -> dict:
         dict: A run_data dictionary
     """
     return {"frame": 42}
+
+
+class TestMaxAdaptor_semantic_version:
+    def test_semantic_version(self, init_data: dict) -> None:
+        """Tests that the adaptor semantic version is in the expected format"""
+        adaptor = MaxAdaptor(init_data)
+        assert adaptor.integration_data_interface_version == SemanticVersion(major=0, minor=1)
+
+    def test_if_init_data_and_run_data_schema_are_changed_schema_version_is_bumped(
+        self, init_data: dict
+    ) -> None:
+        """
+        Test to validate that if the init data or run data schema are changed, we also bump the
+        integration_data_interface_version. We load the schema files and validate expected test data
+        that we define as EXPECTED_INIT_DATA_PROPERTIES and EXPECTED_RUN_DATA_PROPERTIES
+        """
+        adaptor = MaxAdaptor(init_data)
+        semantic_version = adaptor.integration_data_interface_version
+
+        root_directory_path = Path(__file__).parent.parent.parent.parent.parent
+        schema_path = root_directory_path.joinpath(
+            "src", "deadline", "max_adaptor", "MaxAdaptor", "schemas"
+        )
+        init_data_path = schema_path.joinpath("init_data.schema.json")
+        run_data_path = schema_path.joinpath("run_data.schema.json")
+
+        # Load actual schemas
+        with init_data_path.open() as init_data_schema_file:
+            init_data_schema = json.load(init_data_schema_file)
+
+        with run_data_path.open() as run_data_schema_file:
+            run_data_schema = json.load(run_data_schema_file)
+
+        # Validate that our test data covers all schema properties
+        init_schema_properties = set(init_data_schema.get("properties", {}).keys())
+        expected_init_properties = set(EXPECTED_INIT_DATA_PROPERTIES.keys())
+
+        run_schema_properties = set(run_data_schema.get("properties", {}).keys())
+        expected_run_properties = set(EXPECTED_RUN_DATA_PROPERTIES.keys())
+
+        # Check init_data schema properties
+        assert init_schema_properties == expected_init_properties, (
+            f"If the init_data.schema.json is changed, the integration_data_interface_version must be bumped. "
+            f"Schema properties have changed - "
+            f"Missing in test: {init_schema_properties - expected_init_properties}. "
+            f"Extra in test: {expected_init_properties - init_schema_properties}. "
+        )
+
+        # Check run_data schema properties
+        assert run_schema_properties == expected_run_properties, (
+            f"If the run_data.schema.json is changed, the integration_data_interface_version must be bumped. "
+            f"Schema properties have changed - "
+            f"Missing in test: {run_schema_properties - expected_run_properties}. "
+            f"Extra in test: {expected_run_properties - run_schema_properties}. "
+        )
+
+        # Check init_data required fields
+        init_schema_required = set(init_data_schema.get("required", []))
+        expected_init_required = set(EXPECTED_INIT_DATA_REQUIRED)
+        assert init_schema_required == expected_init_required, (
+            f"If the init_data.schema.json is changed, the integration_data_interface_version must be bumped. "
+            f"Schema required fields have changed - "
+            f"Missing in test: {init_schema_required - expected_init_required}. "
+            f"Extra in test: {expected_init_required - init_schema_required}. "
+        )
+
+        # Check run_data required fields
+        run_schema_required = set(run_data_schema.get("required", []))
+        expected_run_required = set(EXPECTED_RUN_DATA_REQUIRED)
+        assert run_schema_required == expected_run_required, (
+            f"If the run_data.schema.json is changed, the integration_data_interface_version must be bumped. "
+            f"Schema required fields have changed - "
+            f"Missing in test: {run_schema_required - expected_run_required}. "
+            f"Extra in test: {expected_run_required - run_schema_required}. "
+        )
+
+        # Validate test data against schemas using jsonschema
+        try:
+            jsonschema.validate(EXPECTED_INIT_DATA_PROPERTIES, init_data_schema)
+        except jsonschema.ValidationError as e:
+            pytest.fail(
+                f"If the init_data.schema.json is changed, the integration_data_interface_version must be bumped. "
+                f"Schema validation failed: {e.message}. "
+            )
+
+        try:
+            jsonschema.validate(EXPECTED_RUN_DATA_PROPERTIES, run_data_schema)
+        except jsonschema.ValidationError as e:
+            pytest.fail(
+                f"If the run_data.schema.json is changed, the integration_data_interface_version must be bumped. "
+                f"Schema validation failed: {e.message}. "
+            )
+
+        # Verify version matches expected version
+        assert semantic_version.major == EXPECTED_SCHEMA_VERSION_MAJOR, (
+            f"If the init_data.schema.json or run_data.schema.json is changed, "
+            f"the integration_data_interface_version must be bumped. "
+            f"Expected major version {EXPECTED_SCHEMA_VERSION_MAJOR}, got {semantic_version.major}. "
+        )
+        assert semantic_version.minor == EXPECTED_SCHEMA_VERSION_MINOR, (
+            f"If the init_data.schema.json or run_data.schema.json is changed, "
+            f"the integration_data_interface_version must be bumped. "
+            f"Expected minor version {EXPECTED_SCHEMA_VERSION_MINOR}, got {semantic_version.minor}. "
+        )
 
 
 class TestMaxAdaptor_on_start:

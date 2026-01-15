@@ -6,6 +6,35 @@ inclusion: manual
 
 This guide covers how to research and validate design decisions for 3ds Max and V-Ray features.
 
+## 3ds Max Documentation Sources
+
+**Note**: If Kiro cannot fetch these URLs, ask the user to provide an HTML copy or suggest using scraper tools like Firecrawl.
+
+### Official Autodesk Documentation
+
+1. **MAXScript Reference**
+   - Search: "3ds Max MAXScript [topic]"
+   - URL: https://help.autodesk.com/view/MAXDEV/2026/ENU/?guid=GUID-6FC81BE7-58FF-4C63-8362-0BDCFA9F904C
+   - Covers: All MAXScript functions, objects, and properties
+
+2. **3ds Max Python API (pymxs)**
+   - URL: https://help.autodesk.com/view/MAXDEV/2026/ENU/?guid=MAXDEV_Python_using_pymxs_pymxs_module_html
+   - Covers: pymxs module and Python bindings for MAXScript
+
+### V-Ray Documentation
+
+1. **V-Ray MAXScript Reference**
+   - URL: https://support.chaos.com/hc/en-us/articles/4411319570577-Using-MAXScript-with-V-Ray
+   - Covers: All V-Ray-specific properties and methods
+
+2. **V-Ray Render Elements**
+   - URL: https://documentation.chaos.com/space/VMAX/113588095/Render+Elements
+   - Covers: LightMix, cryptomatte, AOVs, etc.
+
+3. **V-Ray Frame Buffer (VFB)**
+   - URL: https://documentation.chaos.com/space/VMAX/113578174/V-Ray+Frame+Buffer
+   - Covers: VFB settings, output options
+
 ## Key Insight: MAXScript = pymxs
 
 **All MAXScript methods documented for 3ds Max work in pymxs!**
@@ -22,40 +51,6 @@ re_mgr.AddRenderElement(rt.VRayLightSelect())
 ```
 
 Reference: [GitHub Discussion #164](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/discussions/164)
-
-## 3ds Max Documentation Sources
-
-### Official Autodesk Documentation
-
-1. **MAXScript Reference**
-   - Search: "3ds Max MAXScript [topic]"
-   - URL pattern: `help.autodesk.com/view/3DSMAX/[version]/ENU/?guid=...`
-   - Covers: All MAXScript functions, objects, and properties
-
-2. **pymxs Python API**
-   - Search: "3ds Max pymxs [topic]"
-   - Key concepts:
-     - `pymxs.runtime` (aliased as `rt`) provides MAXScript access
-     - Most MAXScript translates directly to pymxs
-     - Use `rt.execute()` for complex MAXScript strings
-
-3. **3ds Max Python API**
-   - Search: "3ds Max Python API [topic]"
-   - Covers: Native Python bindings (separate from pymxs)
-
-### V-Ray Documentation
-
-1. **V-Ray MAXScript Reference**
-   - URL: `docs.chaos.com/display/VMAX/MAXScript`
-   - Covers: All V-Ray-specific properties and methods
-
-2. **V-Ray Render Elements**
-   - URL: `docs.chaos.com/display/VMAX/Render+Elements`
-   - Covers: LightMix, cryptomatte, AOVs, etc.
-
-3. **V-Ray Frame Buffer (VFB)**
-   - URL: `docs.chaos.com/display/VMAX/V-Ray+Frame+Buffer`
-   - Covers: VFB settings, output options
 
 ## Key MAXScript/pymxs Patterns
 
@@ -148,7 +143,15 @@ element.vrayVFB = False
 
 ## Deadline 10 Code Reference
 
-### Key Files to Reference
+**Important**: Do not try to find the Deadline 10 code. Ask the user if it's available as part of the design process.
+
+> "Does the Deadline 10 implementation for [specific feature] exist? If so, could you provide the relevant code from:
+> - `3dsmax/plugins/3dsmax/3dsmax.py`
+> - `3dsmax/plugins/3dsmax/customize.ms`
+> 
+> Specifically, I'm looking for how [feature] was implemented."
+
+### Key Files to Reference (if provided)
 
 1. **Plugin Execution**: `3dsmax/plugins/3dsmax/3dsmax.py`
    - `SetVraySplitBufferFile()` - Split buffer path setting
@@ -163,15 +166,6 @@ element.vrayVFB = False
 3. **Submission Logic**: `3dsmax/submission/3dsmax/Main/SubmitMaxToDeadline_Functions.ms`
    - Job info parameter writing
    - Scene analysis and validation
-
-### If Code Not Available
-
-Ask the user:
-> "I need to reference the Deadline 10 implementation for [specific feature]. Could you provide the relevant code from:
-> - `3dsmax/plugins/3dsmax/3dsmax.py` (lines X-Y)
-> - `3dsmax/plugins/3dsmax/customize.ms` (function name)
-> 
-> Specifically, I'm looking for how [feature] was implemented."
 
 ## Internet Research Guidelines
 
@@ -188,19 +182,6 @@ Ask the user:
 - `"V-Ray" "MAXScript" "[feature]" site:forums.chaosgroup.com`
 - `"pymxs" "[topic]" site:stackoverflow.com`
 - `"3ds Max" "[error message]"`
-
-### Evaluating Sources
-
-**Prefer:**
-- Official documentation
-- Autodesk/Chaos Group forums (official responses)
-- Stack Overflow (high-voted answers)
-- Recent posts (within 2-3 years)
-
-**Be cautious with:**
-- Old forum posts (API may have changed)
-- Unofficial tutorials (may have errors)
-- AI-generated content (may hallucinate)
 
 ## Knowledge Gap Protocol
 
@@ -224,19 +205,3 @@ When you encounter a knowledge gap:
    > - Option B: [description]
    > 
    > Which approach would you prefer, or do you have more information?"
-
-## Version Compatibility Notes
-
-### V-Ray Version Differences
-
-- Property names may change between versions (e.g., `output_rawFileName` vs `output_rawFilename`)
-- New features may not exist in older versions
-- Class IDs are generally stable
-
-### 3ds Max Version Differences
-
-- pymxs availability (2017+)
-- Python version (3.7+ in recent versions)
-- API changes between major versions
-
-Always note which versions your design targets and any version-specific handling needed.

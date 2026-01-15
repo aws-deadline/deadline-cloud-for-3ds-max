@@ -403,6 +403,9 @@ def configure_render_element_paths(
             # Update render element path
             try:
                 re_manager.SetRenderElementFilename(element_index, new_path)
+                # Update the RenderElementInfo object so validation uses the correct path
+                element.output_filename = new_path
+                element.has_output_path = True
                 _logger.debug(f"Updated render element '{element_name}' path to: {new_path}")
             except Exception as e:
                 warnings.append(f"Failed to update path for render element '{element_name}': {e}")
@@ -606,6 +609,9 @@ def configure_vray_render_elements(
                         if element.enabled and element.name not in ignore_list:
                             try:
                                 re_manager.SetRenderElementFilename(element.index, base_filename)
+                                # Update the RenderElementInfo object so validation uses the correct path
+                                element.output_filename = base_filename
+                                element.has_output_path = True
                                 filename_set_count += 1
                                 _logger.debug(
                                     f"Set V-Ray split buffer base filename for '{element.name}': {base_filename}"
@@ -857,6 +863,9 @@ def _configure_render_element_outputs_filename(
 
                 # Set the render element filename
                 re_manager.SetRenderElementFilename(element.index, full_path)
+                # Update the RenderElementInfo object so validation uses the correct path
+                element.output_filename = full_path
+                element.has_output_path = True
                 filename_set_count += 1
                 _logger.debug(
                     f"Set standard render element filename for '{element.name}': {full_path}"

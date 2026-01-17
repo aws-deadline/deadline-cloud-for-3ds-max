@@ -4,7 +4,7 @@ parameterValues:
 - name: Frames
   value: '0'
 - name: OutputFilePath
-  value: C:/Users/RDP/deadline-cloud-for-3ds-max/test/integ/test_scripts/vray_re_test/expected_images
+  value: C:/Users/RDP/deadline-cloud-for-3ds-max/test/integ/test_scripts/vray_re_test/output_images
 - name: OutputFileName
   value: State01_fog
 - name: OutputFileFormat

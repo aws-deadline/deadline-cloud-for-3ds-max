@@ -280,10 +280,13 @@ def test_configure_vray_render_elements(
         expected_base_path = os.path.join(output_path, f"{output_name}{output_format}")
         assert mock_renderer.output_splitfilename == expected_base_path
 
-        # Verify filenames were set for all enabled elements
+        # Verify filenames were set for all enabled elements with unique names
         assert mock_re_manager.SetRenderElementFilename.call_count == 5
         for i, element in enumerate(vray_elements):
-            mock_re_manager.SetRenderElementFilename.assert_any_call(i, expected_base_path)
+            expected_element_path = os.path.join(
+                output_path, f"{output_name}_{element.name}{output_format}"
+            )
+            mock_re_manager.SetRenderElementFilename.assert_any_call(i, expected_element_path)
 
 
 @patch("deadline.max_shared.utilities.max_utils.rt")

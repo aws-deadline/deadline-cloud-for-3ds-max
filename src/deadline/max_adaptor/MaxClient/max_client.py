@@ -23,6 +23,9 @@ try:
     from max_adaptor.MaxClient.render_handlers import (  # type: ignore[import]
         get_render_handler,
     )
+    from max_adaptor.MaxClient.render_handlers.default_max_handler import (  # type: ignore[import]
+        DefaultMaxHandler,
+    )
     from max_adaptor.MaxClient.render_element_manager import (  # type: ignore[import]
         RenderElementManager,
     )
@@ -34,6 +37,9 @@ except (ImportError, ModuleNotFoundError):
     from deadline.max_adaptor.MaxClient.render_handlers import (  # type: ignore[import]
         get_render_handler,
     )
+    from deadline.max_adaptor.MaxClient.render_handlers.default_max_handler import (  # type: ignore[import]
+        DefaultMaxHandler,
+    )
     from deadline.max_adaptor.MaxClient.render_element_manager import (  # type: ignore[import]
         RenderElementManager,
     )
@@ -41,6 +47,7 @@ except (ImportError, ModuleNotFoundError):
         LoggerInterceptor,
     )
     from openjd.adaptor_runtime_client import ClientInterface  # type: ignore[import]
+
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +66,9 @@ class MaxClient(ClientInterface):
         # Initialize logger interceptor for render element logging
         self.logger_interceptor = LoggerInterceptor()
 
+        # Store handler reference for injecting map_path
+        self._render_handler: Optional[DefaultMaxHandler] = None
+
         # List of actions that can be performed by the action queue
         self.actions.update(
             {
@@ -72,7 +82,7 @@ class MaxClient(ClientInterface):
             }
         )
 
-    def set_renderer(self, renderer: dict):
+    def set_renderer(self, renderer: dict) -> None:
         """
         Determines which render handler to use.
         """
@@ -82,7 +92,12 @@ class MaxClient(ClientInterface):
         self.logger_interceptor.setup()
 
         try:
-            render_handler = get_render_handler(renderer["renderer"])
+            render_handler: DefaultMaxHandler = get_render_handler(renderer["renderer"])
+            self._render_handler = render_handler
+
+            # Inject map_path function into handler for path mapping
+            render_handler.map_path = self.map_path
+
             self.actions.update(render_handler.action_dict)
         except Exception as e:
             # Log the error and close Max to ensure clean exit

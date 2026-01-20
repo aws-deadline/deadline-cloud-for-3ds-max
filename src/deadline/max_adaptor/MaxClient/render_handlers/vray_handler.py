@@ -105,6 +105,65 @@ class VrayHandler(DefaultMaxHandler):
                 # Set to most recent version of V-Ray
                 rt.renderers.current = vray()
 
+    def _apply_path_mapping(self) -> None:
+        """
+        Applies path mapping to V-Ray specific assets.
+
+        Currently handles:
+        - VRayProxy objects (.vrmesh files)
+
+        TODO: Add support for VRayHDRI (HDR environment maps)
+        TODO: Add support for VRayMesh (V-Ray mesh export files)
+        TODO: Add support for VRayFur (fur/hair geometry files)
+        TODO: Add support for VRayScene (V-Ray scene files .vrscene)
+        """
+        if self.map_path is None:
+            return
+
+        self._apply_vray_proxy_path_mapping()
+
+    def _apply_vray_proxy_path_mapping(self) -> None:
+        """
+        Applies path mapping to all VRayProxy objects in the scene.
+        """
+        # Check if VRayProxy class exists
+        if not hasattr(rt, "VRayProxy"):
+            self.log_to_console("VRayProxy class not found - V-Ray may not be loaded")
+            return
+
+        # rt.objects returns pymxs objects (dynamically typed)
+        proxies: list[Any] = [obj for obj in rt.objects if rt.classOf(obj) == rt.VRayProxy]
+
+        if not proxies:
+            self.log_to_console("No VRayProxy objects found in scene")
+            return
+
+        mapped_count: int = 0
+        for proxy in proxies:
+            original_path: Any = getattr(proxy, "fileName", None)
+            if not original_path:
+                continue
+
+            original_path_str: str = str(original_path)
+
+            # Use the injected map_path function (guaranteed non-None by caller)
+            assert self.map_path is not None  # For mypy
+            self.log_to_console(f"Requesting Path Mapping for path '{original_path_str}'.")
+            mapped_path: str = self.map_path(original_path_str)
+            self.log_to_console(f"Mapped path '{original_path_str}' to '{mapped_path}'.")
+
+            if mapped_path != original_path_str:
+                try:
+                    proxy.fileName = mapped_path
+                    mapped_count += 1
+                    self.log_to_console(
+                        f"Remapped VRayProxy '{proxy.name}': {original_path_str} -> {mapped_path}"
+                    )
+                except Exception as e:
+                    self.log_to_console(f"Warning: Failed to remap VRayProxy '{proxy.name}': {e}")
+
+        self.log_to_console(f"VRMesh path mapping complete: {mapped_count} proxies remapped")
+
     def start_render(self, data: dict) -> None:
         """
         Override to set V-Ray output path before rendering.

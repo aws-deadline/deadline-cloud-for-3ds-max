@@ -30,3 +30,9 @@ venv/
 # macOS
 .DS_STORE
 
+
+# Backup files
+*.bak
+
+# Temp folder
+tmp/

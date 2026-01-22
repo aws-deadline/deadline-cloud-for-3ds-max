@@ -376,9 +376,14 @@ class RenderElementManager:
         """
         Configure V-Ray specific render element settings.
 
+        For raw output formats (.vrimg, .exr), render elements are bundled into a single
+        multichannel file by V-Ray, so individual render element filename configuration
+        is skipped. The raw output path is configured in VrayHandler.start_render().
+
         Args:
             data: Configuration parameters
             render_elements: List of render elements from scene
+            ignore_list: List of render element names to ignore
         """
         try:
             # Check if V-Ray VFB control is enabled

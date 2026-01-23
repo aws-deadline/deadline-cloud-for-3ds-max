@@ -98,7 +98,10 @@ def on_create_job_bundle_callback(
                 output_dir = os.path.split(rt.rendOutputFilename)[0]
                 output_file = os.path.split(rt.rendOutputFilename)[1]
                 output_file_name = Path(output_file).stem
-                output_file_format = os.path.splitext(output_file)[1]
+                # Use UI override if provided, otherwise fall back to render setup extension
+                output_file_format = (
+                    settings.output_ext if settings.output_ext else os.path.splitext(output_file)[1]
+                )
             # If it isn't, use the UI fields data
             else:
                 output_dir = settings.output_path
@@ -137,7 +140,10 @@ def on_create_job_bundle_callback(
             output_dir = os.path.split(rt.rendOutputFilename)[0]
             output_file = os.path.split(rt.rendOutputFilename)[1]
             output_file_name = Path(output_file).stem
-            output_file_format = os.path.splitext(output_file)[1]
+            # Use UI override if provided, otherwise fall back to render setup extension
+            output_file_format = (
+                settings.output_ext if settings.output_ext else os.path.splitext(output_file)[1]
+            )
         # If it isn't, use the UI fields data
         else:
             output_dir = settings.output_path

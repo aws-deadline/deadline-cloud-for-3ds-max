@@ -4,7 +4,7 @@ parameterValues:
 - name: Frames
   value: '0'
 - name: OutputFilePath
-  value: C:/Users/RDP/deadline-cloud-for-3ds-max/test/integ/test_scripts/lightmix/expected_images
+  value: C:/Users/RDP/deadline-cloud-for-3ds-max/test/integ/test_scripts/lightmix/output_images
 - name: OutputFileFormat
   value: .png
 - name: ImageWidth

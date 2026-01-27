@@ -135,6 +135,37 @@ def _get_vray_rt_settings() -> Optional[Any]:
     return None
 
 
+def _set_vray_property(prop_name: str, value: Any, warnings: list[str]) -> None:
+    """
+    Set a V-Ray property on the appropriate renderer object.
+
+    V-Ray CPU and GPU have different property access patterns:
+    - V-Ray GPU: Properties must be set on vray_rt_settings (nested V_Ray_settings object)
+    - V-Ray CPU: Properties must be set on rt.renderers.current directly
+
+    This function automatically detects the renderer type and sets properties
+    on the correct object, avoiding MAXScript errors from setting on the wrong object.
+
+    :param prop_name: name of the V-Ray property to set
+    :param value: value to set for the property
+    :param warnings: list to append warning messages to
+    """
+    vray_rt_settings = _get_vray_rt_settings()
+
+    try:
+        if vray_rt_settings is not None:
+            # V-Ray GPU - set on vray_rt_settings only
+            setattr(vray_rt_settings, prop_name, value)
+            _logger.debug(f"[_set_vray_property] Set vray_rt_settings.{prop_name} = {value}")
+        # V-Ray CPU - set on rt.renderers.current
+        setattr(rt.renderers.current, prop_name, value)
+        _logger.debug(f"[_set_vray_property] Set rt.renderers.current.{prop_name} = {value}")
+    except Exception as e:
+        warning_msg = f"Failed to set V-Ray property {prop_name}: {e}"
+        _logger.warning(f"[_set_vray_property] {warning_msg}")
+        warnings.append(warning_msg)
+
+
 def get_render_elements() -> list[RenderElementInfo]:
     """
     Gets all render elements present in the max scene with their properties.
@@ -306,22 +337,6 @@ def purify_render_element_name(element_name: str) -> str:
     return purified_name
 
 
-def get_render_element_by_name(element_name: str) -> Optional[RenderElementInfo]:
-    """
-    Gets a specific render element by name.
-
-    :param element_name: name of the render element to find
-    :returns: RenderElementInfo object or None if not found
-    """
-    render_elements: list[RenderElementInfo] = get_render_elements()
-
-    for element in render_elements:
-        if element.name == element_name:
-            return element
-
-    return None
-
-
 def validate_render_element_configuration(
     render_elements: list[RenderElementInfo], settings: RenderElementConfigurationSettings
 ) -> list[str]:
@@ -434,22 +449,348 @@ def set_vray_output_path(
     :raises RuntimeError: if V-Ray output path cannot be set
     """
     split_filepath: str = os.path.join(output_path, f"{output_name}{output_format}")
+    warnings: list[str] = []
+
+    _logger.debug(
+        f"[set_vray_output_path] Attempting to set output_splitfilename = {split_filepath}"
+    )
+    _set_vray_property("output_splitfilename", split_filepath, warnings)
+
+    if warnings:
+        error_msg: str = f"[set_vray_output_path] Failed to set V-Ray output path: {warnings}"
+        _logger.error(error_msg)
+        raise RuntimeError(error_msg)
+
+    _logger.info(f"[set_vray_output_path] V-Ray output path set to: {split_filepath}")
+
+
+def _configure_split_buffer_settings(
+    output_path: Optional[str],
+    output_name: Optional[str],
+    output_file_format: str,
+    warnings: list[str],
+) -> Optional[str]:
+    """
+    Configure V-Ray split buffer settings for both CPU and GPU renderers.
+
+    This helper function sets up the split buffer flags and filename that are
+    common to both V-Ray VFB and 3dsMax framebuffer modes.
+
+    D10 Pattern:
+    - output_splitgbuffer = True (enable split buffer)
+    - output_splitRGB = True (save RGB channels)
+    - output_splitAlpha = True (save Alpha channel)
+    - output_splitfilename = path (base filename for split files)
+
+    NOTE: output_saveRawFile is for saving raw .vrimg files, NOT for split buffer.
+
+    :param output_path: output directory path for split buffer files
+    :param output_name: base output filename for split buffer files
+    :param output_file_format: output file format/extension
+    :param warnings: list to append warning messages to
+    :returns: the base filepath if successfully configured, None otherwise
+    """
+    # D10: Enable split buffer flag only
+    _set_vray_property("output_splitgbuffer", True, warnings)
+
+    # Enable split RGB to save render elements to separate files
+    # This is required for V-Ray to actually output the render element files
+    _set_vray_property("output_splitRGB", True, warnings)
+    _set_vray_property("output_splitAlpha", True, warnings)
+    # NOTE: output_saveRawFile is for saving raw .vrimg files, NOT for split buffer output
+
+    base_filepath: Optional[str] = None
+
+    # Set the base filename for split files
+    if output_path and output_name:
+        base_name, _ = os.path.splitext(output_name)
+        extension = (
+            output_file_format if output_file_format.startswith(".") else f".{output_file_format}"
+        )
+        base_filepath = os.path.join(output_path, f"{base_name}{extension}")
+
+        _logger.debug(
+            "[_configure_split_buffer_settings] Setting output_splitfilename "
+            "via _set_vray_property"
+        )
+        _set_vray_property("output_splitfilename", base_filepath, warnings)
+        _logger.info(
+            f"[_configure_split_buffer_settings] V-Ray split buffer filename set to: "
+            f"{base_filepath}"
+        )
+
+        # Explicitly unset output_splitbitmap to ensure clean state
+        # _set_vray_property("output_splitbitmap", rt.undefined, warnings)
+        # rt.renderers.current.output_splitbitmap = rt.undefined
+        # rt.renderers.current.V_Ray_settings.output_splitbitmap = rt.undefined
+        _logger.info("[_configure_split_buffer_settings] V-Ray output_splitbitmap set to undefined")
+    else:
+        missing_params = []
+        if not output_path:
+            missing_params.append("output_file_path")
+        if not output_name:
+            missing_params.append("output_file_name (check template has this defined)")
+        warnings.append(
+            f"Split buffer enabled but missing: {', '.join(missing_params)} - split files may not save correctly"
+        )
+
+    return base_filepath
+
+
+def _configure_render_element_filenames(
+    render_elements: list[RenderElementInfo],
+    base_filepath: Optional[str],
+    ignore_list: list[str],
+    warnings: list[str],
+) -> None:
+    """
+    Configure filenames for render elements (D10 pattern).
+
+    Sets a UNIQUE output filename for each render element by appending the
+    element name to the base filename. Does NOT modify the element's enabled state.
+
+    D10 Pattern:
+    - Skip ignored elements (by name)
+    - Skip disabled elements (read but don't modify enabled state)
+    - Use SetRenderElementFilename() to set paths with unique names per element
+    - Use SetElementsActive(True) to enable RE output
+    - Does NOT use SetOutputEnabled()
+
+    :param render_elements: list of RenderElementInfo objects
+    :param base_filepath: base filepath for output (e.g., "C:/output/render.png")
+    :param ignore_list: list of render element names to ignore
+    :param warnings: list to append warning messages to
+    """
+    if not base_filepath:
+        warnings.append("Render element filename setup skipped: Missing output path or name")
+        return
 
     try:
-        # Always set for standard V-Ray
-        rt.renderers.current.output_splitfilename = split_filepath
+        re_manager = rt.maxOps.GetCurRenderElementMgr()
+        if not re_manager:
+            warnings.append("Render element filename setup failed: No render element manager")
+            return
 
-        # Also set for V-Ray RT if applicable
-        vray_rt_settings: Optional[Any] = _get_vray_rt_settings()
-        if vray_rt_settings is not None:
-            vray_rt_settings.output_splitfilename = split_filepath
+        # Parse base filepath into components for building unique filenames
+        base_dir = os.path.dirname(base_filepath)
+        base_name_with_ext = os.path.basename(base_filepath)
+        base_name, extension = os.path.splitext(base_name_with_ext)
 
-        _logger.info(f"V-Ray output path set to: {split_filepath}")
+        filename_set_count = 0
+        for element in render_elements:
+            # D10 pattern: Skip ignored elements (by name)
+            if element.name in ignore_list:
+                _logger.debug(f"Skipping ignored render element: {element.name}")
+                continue
+
+            # D10 does NOT skip disabled elements - it sets filenames for ALL elements
+            # Users may enable elements later, and V-Ray VFB needs all paths configured
+
+            try:
+                # Create unique filename per element: basename_elementname.ext
+                purified_name = purify_render_element_name(element.name)
+                unique_filename = f"{base_name}_{purified_name}{extension}"
+                unique_filepath = os.path.join(base_dir, unique_filename)
+
+                re_manager.SetRenderElementFilename(element.index, unique_filepath)
+                # Update in-memory element info for later validation
+                element.output_filename = unique_filepath.replace("\\", "/")
+                element.has_output_path = True
+                filename_set_count += 1
+                _logger.debug(f"Set filename for '{element.name}': {unique_filepath}")
+            except Exception as e:
+                warnings.append(f"Failed to set filename for '{element.name}': {e}")
+
+        # D10: Enable render element output via SetElementsActive(True)
+        # This is CRITICAL - without this, render elements won't be saved to files
+        try:
+            re_manager.SetElementsActive(True)
+            _logger.info("Render element manager: SetElementsActive(True)")
+        except Exception as e:
+            _logger.warning(f"Could not call SetElementsActive: {e}")
+
+        _logger.info(f"Set filenames for {filename_set_count} render elements")
+    except Exception as e:
+        warnings.append(f"Failed to configure render element filenames: {e}")
+
+
+def _configure_per_element_settings(
+    render_elements: list[RenderElementInfo],
+    vfb_control: bool,
+    ignore_list: list[str],
+    warnings: list[str],
+) -> None:
+    """
+    Configure per-element settings for render elements.
+
+    This function handles enabling/disabling render elements based on VFB control
+    and ignore list, and sets the vrayVFB property on each element.
+
+    :param render_elements: list of RenderElementInfo objects
+    :param vfb_control: whether VFB control is enabled
+    :param ignore_list: list of render element names to ignore
+    :param warnings: list to append warning messages to
+    """
+    enabled_count = 0
+    disabled_count = 0
+
+    for element in render_elements:
+        element_obj = element.element_object
+        if not element_obj:
+            continue
+
+        element_name: str = element.name
+        should_ignore = element_name in ignore_list
+
+        # Skip Missing_Render_Element_Plug_in
+        element_type = str(rt.classof(element_obj))
+        if element_type == "Missing_Render_Element_Plug_in":
+            continue
+
+        # Automatically enable/disable render elements based on VFB control and ignore list
+        if vfb_control:
+            try:
+                if should_ignore:
+                    element_obj.enabled = False
+                    element.enabled = False
+                    disabled_count += 1
+                    _logger.info(f"Disabled render element (ignored): {element_name}")
+                else:
+                    element_obj.enabled = True
+                    element.enabled = True
+                    enabled_count += 1
+                    _logger.debug(f"Enabled render element: {element_name}")
+            except Exception as e:
+                warnings.append(f"Failed to set enabled state for '{element_name}': {e}")
+
+        # Configure V-Ray VFB control per element
+        if hasattr(element_obj, "vrayVFB"):
+            try:
+                # Set vrayVFB based on vfb_control setting
+                element_obj.vrayVFB = not vfb_control
+                _logger.debug(f"Set V-Ray VFB for '{element_name}': {not vfb_control}")
+            except Exception as e:
+                warnings.append(f"Failed to configure V-Ray VFB for '{element_name}': {e}")
+
+    if vfb_control:
+        _logger.info(
+            f"V-Ray VFB Control: Enabled {enabled_count} render elements, disabled {disabled_count}"
+        )
+
+
+def _dump_vray_settings_to_file(
+    output_path: Optional[str], render_elements: list[RenderElementInfo]
+) -> None:
+    """
+    Dump V-Ray renderer settings to a debug file for troubleshooting.
+
+    This function writes the current V-Ray renderer settings and render element
+    configuration to a text file at the output path for debugging purposes.
+
+    :param output_path: output directory path where debug file will be written
+    :param render_elements: list of RenderElementInfo objects
+    """
+    if not output_path:
+        _logger.debug("[_dump_vray_settings_to_file] No output path provided, skipping debug dump")
+        return
+
+    debug_filepath = os.path.join(output_path, "vray_settings_debug.txt")
+
+    try:
+        lines: list[str] = []
+        renderer = rt.renderers.current
+        renderer_name = str(renderer)
+
+        lines.append("=" * 60)
+        lines.append("V-Ray Settings Debug Dump")
+        lines.append("=" * 60)
+        lines.append(f"Current Renderer: {renderer_name}")
+        lines.append(f"Is V-Ray RT (GPU): {_is_vray_rt()}")
+        lines.append("")
+
+        vray_settings = [
+            "output_on",
+            "output_splitgbuffer",
+            "output_splitRGB",
+            "output_splitAlpha",
+            "output_splitfilename",
+            "output_splitbitmap",
+            "output_saveRawFile",
+        ]
+
+        # Dump renderer.current settings
+        lines.append("-" * 40)
+        lines.append("renderers.current Settings:")
+        lines.append("-" * 40)
+        for setting in vray_settings:
+            try:
+                value = getattr(renderer, setting)
+                lines.append(f"  {setting}: {value}")
+            except Exception as e:
+                lines.append(f"  {setting}: <not available> ({e})")
+
+        # Dump vray_rt_settings (GPU) if available
+        vray_rt_settings = _get_vray_rt_settings()
+        if vray_rt_settings:
+            lines.append("")
+            lines.append("-" * 40)
+            lines.append("V-Ray RT Settings (vray_rt_settings):")
+            lines.append("-" * 40)
+            for setting in vray_settings:
+                try:
+                    value = getattr(vray_rt_settings, setting)
+                    lines.append(f"  {setting}: {value}")
+                except Exception as e:
+                    lines.append(f"  {setting}: <not available> ({e})")
+
+        # Render Element Manager
+        lines.append("")
+        lines.append("-" * 40)
+        lines.append("Render Element Manager:")
+        lines.append("-" * 40)
+
+        re_manager = rt.maxOps.GetCurRenderElementMgr()
+        if re_manager:
+            num_elements = re_manager.NumRenderElements()
+            lines.append(f"  Number of render elements: {num_elements}")
+            try:
+                lines.append(f"  Elements active: {re_manager.GetElementsActive()}")
+            except Exception:
+                lines.append("  Elements active: <not available>")
+
+            lines.append("")
+            lines.append("  Render Elements:")
+            for element in render_elements:
+                element_obj = element.element_object
+                vray_vfb = "N/A"
+                if element_obj and hasattr(element_obj, "vrayVFB"):
+                    try:
+                        vray_vfb = element_obj.vrayVFB
+                    except Exception:
+                        _logger.info(
+                            f"Failed to get vrayVFB property for render element: {element.name}"
+                        )
+
+                lines.append(f"    [{element.index}] {element.name}")
+                lines.append(f"        type: {element.type}")
+                lines.append(f"        enabled: {element.enabled}, vrayVFB: {vray_vfb}")
+                lines.append(f"        output: {element.output_filename}")
+        else:
+            lines.append("  No render element manager found")
+
+        lines.append("")
+        lines.append("=" * 60)
+        lines.append("End of Debug Dump")
+        lines.append("=" * 60)
+
+        # Write to file
+        with open(debug_filepath, "w") as f:
+            f.write("\n".join(lines))
+
+        _logger.info(f"[_dump_vray_settings_to_file] Debug dump written to: {debug_filepath}")
 
     except Exception as e:
-        error_msg: str = f"Failed to set V-Ray output path: {e}"
-        _logger.error(error_msg)
-        raise RuntimeError(error_msg) from e
+        _logger.warning(f"[_dump_vray_settings_to_file] Failed to write debug dump: {e}")
 
 
 def configure_vray_render_elements(
@@ -457,7 +798,7 @@ def configure_vray_render_elements(
     settings: VRayRenderElementSettings,
     output_path: Optional[str] = None,
     output_name: Optional[str] = None,
-    output_file_format: Optional[str] = ".png",
+    output_file_format: str = ".png",
     ignore_list: list[str] = [],
 ) -> list:
     """
@@ -501,195 +842,39 @@ def configure_vray_render_elements(
     try:
         # Configure global V-Ray VFB control if enabled
         if vfb_control:
-            try:
-                # Always set for standard V-Ray
-                rt.renderers.current.output_on = False
-
-                # Also set for V-Ray RT if applicable
-                vray_rt_settings: Optional[Any] = _get_vray_rt_settings()
-                if vray_rt_settings is not None:
-                    vray_rt_settings.output_on = False
-
-                _logger.info(
-                    "Disabled V-Ray VFB (output_on = False) - render elements will use 3ds Max framebuffer"
-                )
-            except Exception as e:
-                warnings.append(f"Failed to configure global V-Ray VFB control: {e}")
+            _set_vray_property("output_on", False, warnings)
+            _logger.info(
+                "Disabled V-Ray VFB (output_on = False) - render elements will use 3ds Max framebuffer"
+            )
 
         # Configure split buffer if enabled
+        base_filepath: Optional[str] = None
         if split_buffer:
-            try:
-                # Always set for standard V-Ray
-                rt.renderers.current.output_splitgbuffer = True
+            base_filepath = _configure_split_buffer_settings(
+                output_path, output_name, output_file_format, warnings
+            )
+        elif output_path and output_name:
+            # Build base_filepath without configuring split buffer
+            base_name, _ = os.path.splitext(output_name)
+            extension = (
+                output_file_format
+                if output_file_format and output_file_format.startswith(".")
+                else f".{output_file_format}" if output_file_format else ""
+            )
+            base_filepath = os.path.join(output_path, f"{base_name}{extension}")
 
-                # Set the base filename for split files (critical for split buffer to work)
-                if output_path and output_name:
-                    # Prepare base filename with format extension
-                    base_name, _ = os.path.splitext(output_name)
-                    assert (
-                        output_file_format is not None
-                    )  # Should never be None due to default value
-                    extension = (
-                        output_file_format
-                        if output_file_format.startswith(".")
-                        else f".{output_file_format}"
-                    )
-                    filename_with_format = f"{base_name}{extension}"
-                    base_filepath = os.path.join(output_path, filename_with_format)
-                    rt.renderers.current.output_splitfilename = base_filepath
-                    _logger.info(f"V-Ray split buffer filename set to: {base_filepath}")
-                else:
-                    missing_params = []
-                    if not output_path:
-                        missing_params.append("output_file_path")
-                    if not output_name:
-                        missing_params.append("output_file_name (check template has this defined)")
-                    warnings.append(
-                        f"Split buffer enabled but missing: {', '.join(missing_params)} - split files may not save correctly"
-                    )
-
-                # Always set for standard V-Ray
-                rt.renderers.current.output_splitRGB = True
-                rt.renderers.current.output_splitAlpha = True
-
-                # Set output_splitbitmap to enable render elements to inherit the output path
-                # This is required for V-Ray render elements (like LightMix) to save correctly
-                # The bitmap needs to be created with the split filename
-                try:
-                    if output_path and output_name:
-                        # Create a bitmap for the split output
-                        split_bitmap = rt.bitmap(1, 1, filename=base_filepath)
-                        rt.renderers.current.output_splitbitmap = split_bitmap
-                        _logger.info(f"V-Ray output_splitbitmap set to: {base_filepath}")
-                except Exception as bitmap_e:
-                    _logger.warning(f"Could not set output_splitbitmap: {bitmap_e}")
-
-                # Also set for V-Ray RT if applicable
-                vray_rt_split_settings: Optional[Any] = _get_vray_rt_settings()
-                if vray_rt_split_settings is not None:
-                    vray_rt_split_settings.output_splitgbuffer = True
-                    vray_rt_split_settings.output_splitRGB = True
-                    vray_rt_split_settings.output_splitAlpha = True
-                    # Set output_splitbitmap for V-Ray RT as well
-                    try:
-                        if output_path and output_name:
-                            split_bitmap_rt = rt.bitmap(1, 1, filename=base_filepath)
-                            vray_rt_split_settings.output_splitbitmap = split_bitmap_rt
-                    except Exception as bitmap_rt_e:
-                        _logger.warning(
-                            f"Could not set output_splitbitmap for V-Ray RT: {bitmap_rt_e}"
-                        )
-
-                _logger.info("V-Ray split buffer configured")
-            except Exception as e:
-                warnings.append(f"Failed to configure V-Ray split buffer: {e}")
-
-        # Configure split buffer filenames - set same base filename for all render elements
-        if split_buffer:
-            try:
-                re_manager = rt.maxOps.GetCurRenderElementMgr()
-                if re_manager and output_path and output_name:
-                    # Prepare base filename with format extension
-                    base_name, _ = os.path.splitext(output_name)
-                    assert (
-                        output_file_format is not None
-                    )  # Should never be None due to default value
-                    extension = (
-                        output_file_format
-                        if output_file_format.startswith(".")
-                        else f".{output_file_format}"
-                    )
-                    filename_with_format = f"{base_name}{extension}"
-                    base_filename = os.path.join(output_path, filename_with_format)
-
-                    # Set the SAME base filename for ALL enabled render elements
-                    # V-Ray VFB will automatically append layer names during rendering
-                    filename_set_count = 0
-                    for element in render_elements:
-                        if element.enabled and element.name not in ignore_list:
-                            try:
-                                re_manager.SetRenderElementFilename(element.index, base_filename)
-                                # Update the RenderElementInfo object so validation uses the correct path
-                                element.output_filename = base_filename
-                                element.has_output_path = True
-                                filename_set_count += 1
-                                _logger.debug(
-                                    f"Set V-Ray split buffer base filename for '{element.name}': {base_filename}"
-                                )
-                            except Exception as e:
-                                warnings.append(
-                                    f"Failed to set split buffer filename for '{element.name}': {e}"
-                                )
-
-                    _logger.info(
-                        f"V-Ray split buffer: Set base filename for {filename_set_count} render elements"
-                    )
-                else:
-                    if not re_manager:
-                        warnings.append(
-                            "V-Ray split buffer filename setup failed: No render element manager"
-                        )
-                    if not (output_path and output_name):
-                        warnings.append(
-                            "V-Ray split buffer filename setup skipped: Missing output path or name"
-                        )
-            except Exception as e:
-                warnings.append(f"Failed to configure V-Ray split buffer filenames: {e}")
+        # Configure render element filenames
+        _configure_render_element_filenames(render_elements, base_filepath, ignore_list, warnings)
 
         # Configure per-element settings
-        enabled_count = 0
-        disabled_count = 0
-
-        for element in render_elements:
-            element_obj = element.element_object
-            if not element_obj:
-                continue
-
-            element_name: str = element.name
-            should_ignore = element_name in ignore_list
-
-            # Skip V-Ray VFB specific elements (matching Deadline 10 pattern)
-            element_type = str(rt.classof(element_obj))
-            if element_type in ["VRayOptionRE", "VRayAlpha"]:
-                _logger.debug(f"Skipping V-Ray VFB element: {element_name} ({element_type})")
-                continue
-
-            # Automatically enable/disable render elements based on VFB control and ignore list
-            if vfb_control:
-                try:
-                    if should_ignore:
-                        element_obj.enabled = False
-                        # Also update our wrapper to keep it in sync
-                        element.enabled = False
-                        disabled_count += 1
-                        _logger.info(f"Disabled render element (ignored): {element_name}")
-                    else:
-                        element_obj.enabled = True
-                        # Also update our wrapper to keep it in sync
-                        element.enabled = True
-                        enabled_count += 1
-                        _logger.debug(f"Enabled render element: {element_name}")
-                except Exception as e:
-                    warnings.append(f"Failed to set enabled state for '{element_name}': {e}")
-
-            # Configure V-Ray VFB control per element
-            if hasattr(element_obj, "vrayVFB"):
-                try:
-                    # Disable VFB for render elements when VFB control is enabled
-                    element_obj.vrayVFB = not vfb_control
-                    _logger.debug(f"Set V-Ray VFB for '{element_name}': {not vfb_control}")
-                except Exception as e:
-                    warnings.append(f"Failed to configure V-Ray VFB for '{element_name}': {e}")
-
-        # Log summary of enabled/disabled elements
-        if vfb_control:
-            _logger.info(
-                f"V-Ray VFB Control: Enabled {enabled_count} render elements, disabled {disabled_count}"
-            )
+        _configure_per_element_settings(render_elements, vfb_control, ignore_list, warnings)
 
     except Exception as e:
         _logger.error(f"Error configuring V-Ray render elements: {e}")
         warnings.append(f"V-Ray configuration failed: {e}")
+
+    # Dump V-Ray settings to debug file at output path
+    _dump_vray_settings_to_file(output_path, render_elements)
 
     return warnings
 
@@ -1051,238 +1236,3 @@ def validate_render_element_names(render_elements: list[RenderElementInfo]) -> l
             )
 
     return warnings
-
-
-def resolve_duplicate_render_element_names(render_elements: list[RenderElementInfo]) -> dict:
-    """
-    Resolves duplicate render element names by suggesting unique alternatives.
-
-    This function provides name resolution suggestions matching Deadline 10's
-    duplicate name handling system.
-
-    :param render_elements: list of RenderElementInfo objects
-    :returns: dictionary mapping original names to suggested unique names
-    """
-    name_resolutions: dict[str, str] = {}
-    name_counts: dict[str, int] = {}
-
-    # Count occurrences of each name
-    for element in render_elements:
-        element_name: str = element.name
-        if element_name:
-            name_counts[element_name] = name_counts.get(element_name, 0) + 1
-
-    # Generate unique names for duplicates
-    name_counters: dict[str, int] = {}
-    for element in render_elements:
-        element_name = element.name
-        if not element_name:
-            continue
-
-        # If name appears multiple times, generate unique variant
-        if name_counts[element_name] > 1:
-            counter: int = name_counters.get(element_name, 0) + 1
-            name_counters[element_name] = counter
-
-            if counter == 1:
-                # First occurrence keeps original name
-                continue
-            else:
-                # Subsequent occurrences get numbered suffix
-                unique_name: str = f"{element_name}_{counter}"
-                name_resolutions[element_name] = unique_name
-
-    return name_resolutions
-
-
-def preview_render_element_paths(
-    render_elements: list[RenderElementInfo], settings: RenderElementConfigurationSettings
-) -> dict:
-    """
-    Previews render element output paths based on current settings.
-
-    This function generates path previews without modifying the scene,
-    matching Deadline 10's path preview functionality.
-
-    :param render_elements: list of RenderElementInfo objects
-    :param settings: render element configuration settings
-    :returns: dictionary mapping element names to preview paths
-    """
-    path_previews: dict[str, str] = {}
-
-    if not render_elements or not settings.render_elements_update_paths:
-        return path_previews
-
-    try:
-        for element in render_elements:
-            element_name: str = element.name
-            element_type: str = element.type
-            base_path: str = element.output_filename
-
-            if not element_name or not base_path:
-                continue
-
-            # Generate preview path using the same logic as actual path building
-            preview_path: str = _build_render_element_path(
-                base_path, element_name, element_type, settings
-            )
-
-            path_previews[element_name] = preview_path
-
-    except Exception as e:
-        _logger.error(f"Error generating render element path previews: {e}")
-
-    return path_previews
-
-
-class RenderElementCompatibilityAnalysis(TypedDict):
-    """Type definition for render element compatibility analysis results."""
-
-    total_elements: int
-    vray_elements: int
-    corona_elements: int
-    arnold_elements: int
-    mental_ray_elements: int
-    standard_elements: int
-    unknown_elements: int
-    compatibility_warnings: list[str]
-
-
-def analyze_render_element_compatibility(
-    render_elements: list[RenderElementInfo],
-) -> RenderElementCompatibilityAnalysis:
-    """
-    Analyzes render element compatibility with different renderers.
-
-    This function provides compatibility analysis matching Deadline 10's
-    renderer-specific render element validation.
-
-    :param render_elements: list of RenderElementInfo objects
-    :returns: typed dictionary containing compatibility analysis
-    """
-    analysis: RenderElementCompatibilityAnalysis = {
-        "total_elements": len(render_elements),
-        "vray_elements": 0,
-        "corona_elements": 0,
-        "arnold_elements": 0,
-        "mental_ray_elements": 0,
-        "standard_elements": 0,
-        "unknown_elements": 0,
-        "compatibility_warnings": [],
-    }
-
-    try:
-        # Get current renderer
-        current_renderer: str = str(rt.renderers.current)
-
-        for element in render_elements:
-            element_type: str = element.type.lower()
-            element_name: str = element.name
-
-            # Categorize by renderer type
-            if "vray" in element_type:
-                analysis["vray_elements"] += 1
-                if "vray" not in current_renderer.lower():
-                    analysis["compatibility_warnings"].append(
-                        f"V-Ray render element '{element_name}' may not work with current renderer: {current_renderer}"
-                    )
-            elif "corona" in element_type:
-                analysis["corona_elements"] += 1
-                if "corona" not in current_renderer.lower():
-                    analysis["compatibility_warnings"].append(
-                        f"Corona render element '{element_name}' may not work with current renderer: {current_renderer}"
-                    )
-            elif "arnold" in element_type or "ai" in element_type:
-                analysis["arnold_elements"] += 1
-                if "arnold" not in current_renderer.lower():
-                    analysis["compatibility_warnings"].append(
-                        f"Arnold render element '{element_name}' may not work with current renderer: {current_renderer}"
-                    )
-            elif "mental" in element_type or "mr" in element_type:
-                analysis["mental_ray_elements"] += 1
-            elif any(std in element_type for std in ["beauty", "alpha", "z", "material"]):
-                analysis["standard_elements"] += 1
-            else:
-                analysis["unknown_elements"] += 1
-
-        _logger.debug(f"Render element compatibility analysis completed: {analysis}")
-
-    except Exception as e:
-        _logger.error(f"Error analyzing render element compatibility: {e}")
-        analysis["compatibility_warnings"].append(f"Compatibility analysis failed: {e}")
-
-    return analysis
-
-
-class RenderElementStatistics(TypedDict):
-    """Type definition for render element statistics results."""
-
-    total_elements: int
-    enabled_elements: int
-    disabled_elements: int
-    elements_with_paths: int
-    elements_without_paths: int
-    vray_vfb_enabled: int
-    missing_elements: int
-    unique_output_directories: int
-    duplicate_names: int
-    name_validation_issues: int
-
-
-def get_render_element_statistics() -> RenderElementStatistics:
-    """
-    Gets comprehensive statistics about render elements in the scene.
-
-    This function provides detailed statistics matching Deadline 10's
-    render element reporting system.
-
-    :returns: typed dictionary containing render element statistics
-    """
-    stats: RenderElementStatistics = {
-        "total_elements": 0,
-        "enabled_elements": 0,
-        "disabled_elements": 0,
-        "elements_with_paths": 0,
-        "elements_without_paths": 0,
-        "vray_vfb_enabled": 0,
-        "missing_elements": 0,
-        "unique_output_directories": 0,
-        "duplicate_names": 0,
-        "name_validation_issues": 0,
-    }
-
-    try:
-        render_elements: list[RenderElementInfo] = get_render_elements()
-        missing_elements: list[MissingRenderElementInfo] = detect_missing_render_elements()
-        name_warnings: list[str] = validate_render_element_names(render_elements)
-        output_dirs: set[str] = get_render_elements_output_directories()
-
-        stats["total_elements"] = len(render_elements)
-        stats["missing_elements"] = len(missing_elements)
-        stats["unique_output_directories"] = len(output_dirs)
-        stats["name_validation_issues"] = len(name_warnings)
-
-        # Count duplicate names
-        element_names: list[str] = [elem.name for elem in render_elements]
-        stats["duplicate_names"] = len(element_names) - len(set(element_names))
-
-        for element in render_elements:
-            if element.enabled:
-                stats["enabled_elements"] += 1
-            else:
-                stats["disabled_elements"] += 1
-
-            if element.has_output_path:
-                stats["elements_with_paths"] += 1
-            else:
-                stats["elements_without_paths"] += 1
-
-            if element.vray_vfb:
-                stats["vray_vfb_enabled"] += 1
-
-        _logger.info(f"Render element statistics: {stats}")
-
-    except Exception as e:
-        _logger.error(f"Error getting render element statistics: {e}")
-
-    return stats

@@ -418,7 +418,7 @@ class RenderElementManager:
                     vray_settings,
                     output_path=self.output_file_path,
                     output_name=self.output_file_name,
-                    output_file_format=self.output_file_format,
+                    output_file_format=self.output_file_format or ".png",
                     ignore_list=ignore_list,
                 )
                 if vray_warnings:

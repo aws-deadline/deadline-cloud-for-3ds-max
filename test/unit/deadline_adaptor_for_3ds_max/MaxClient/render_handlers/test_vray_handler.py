@@ -146,3 +146,193 @@ class TestVrayHandler:
                 for var in present_vars:
                     if var in env_vars:
                         assert var not in error_msg
+
+    # ============================================================================
+    # Tests for V-Ray Raw Output (.vrimg / .exr) in start_render
+    # ============================================================================
+
+    @pytest.mark.parametrize(
+        "output_format,should_use_raw_output",
+        [
+            (".vrimg", True),
+            (".exr", True),
+            (".png", False),
+            (".jpg", False),
+            (".tga", False),
+        ],
+    )
+    def test_start_render_detects_raw_output_format(
+        self, output_format: str, should_use_raw_output: bool
+    ) -> None:
+        """Test start_render auto-detects raw output mode based on format."""
+        env_vars = {
+            "VRAY_FOR_3DSMAX2025_MAIN": "/path/to/main",
+            "VRAY_FOR_3DSMAX2025_PLUGINS": "/path/to/plugins",
+            "VRAY_MDL_PATH_3DSMAX2025": "/path/to/mdl",
+        }
+
+        with patch.dict("os.environ", env_vars, clear=True):
+            with patch("deadline.max_adaptor.MaxClient.render_handlers.vray_handler.rt") as mock_rt:
+                mock_rt.maxVersion.return_value = [27000, 27, 0, 0, 0]
+
+                # Mock camera
+                mock_camera = type("MockCamera", (), {"name": "Camera001"})()
+                mock_rt.cameras = [mock_camera]
+                mock_rt.getNodeByName.return_value = mock_camera
+
+                with (
+                    patch(
+                        "deadline.max_adaptor.MaxClient.render_handlers.vray_handler.configure_vray_raw_output"
+                    ) as mock_raw_output,
+                    patch(
+                        "deadline.max_adaptor.MaxClient.render_handlers.vray_handler.set_vray_output_path"
+                    ) as mock_standard_output,
+                    patch(
+                        "deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.os.path.exists"
+                    ) as mock_exists,
+                    patch(
+                        "deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.os.makedirs"
+                    ),
+                    patch(
+                        "deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.os.remove"
+                    ),
+                    patch("deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.rt"),
+                ):
+                    mock_exists.return_value = False  # Directory doesn't exist, no file to remove
+                    mock_raw_output.return_value = []
+
+                    from deadline.max_adaptor.MaxClient.render_handlers.vray_handler import (
+                        VrayHandler,
+                    )
+
+                    handler = VrayHandler(gpu=False)
+                    handler.output_dir = "C:/output"
+                    handler.output_name = "test_render"
+                    handler.output_format = output_format
+                    handler.camera_node = mock_camera
+
+                    # Call start_render
+                    handler.start_render({"frame": 1})
+
+                    # Verify correct output method was called
+                    if should_use_raw_output:
+                        mock_raw_output.assert_called_once_with(
+                            output_path="C:/output",
+                            output_name="test_render",
+                            output_format=output_format,
+                        )
+                        mock_standard_output.assert_not_called()
+                    else:
+                        mock_standard_output.assert_called_once_with(
+                            output_path="C:/output",
+                            output_name="test_render",
+                            output_format=output_format,
+                        )
+                        mock_raw_output.assert_not_called()
+
+    def test_start_render_logs_raw_output_mode(self) -> None:
+        """Test start_render logs when raw output mode is enabled."""
+        env_vars = {
+            "VRAY_FOR_3DSMAX2025_MAIN": "/path/to/main",
+            "VRAY_FOR_3DSMAX2025_PLUGINS": "/path/to/plugins",
+            "VRAY_MDL_PATH_3DSMAX2025": "/path/to/mdl",
+        }
+
+        with patch.dict("os.environ", env_vars, clear=True):
+            with patch("deadline.max_adaptor.MaxClient.render_handlers.vray_handler.rt") as mock_rt:
+                mock_rt.maxVersion.return_value = [27000, 27, 0, 0, 0]
+
+                mock_camera = type("MockCamera", (), {"name": "Camera001"})()
+                mock_rt.cameras = [mock_camera]
+                mock_rt.getNodeByName.return_value = mock_camera
+
+                with (
+                    patch(
+                        "deadline.max_adaptor.MaxClient.render_handlers.vray_handler.configure_vray_raw_output"
+                    ) as mock_raw_output,
+                    patch(
+                        "deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.os.path.exists"
+                    ) as mock_exists,
+                    patch(
+                        "deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.os.makedirs"
+                    ),
+                    patch(
+                        "deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.os.remove"
+                    ),
+                    patch("deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.rt"),
+                ):
+                    mock_exists.return_value = False
+                    mock_raw_output.return_value = ["Test warning"]
+
+                    from deadline.max_adaptor.MaxClient.render_handlers.vray_handler import (
+                        VrayHandler,
+                    )
+
+                    handler = VrayHandler(gpu=False)
+                    handler.output_dir = "C:/output"
+                    handler.output_name = "test"
+                    handler.output_format = ".vrimg"
+                    handler.camera_node = mock_camera
+
+                    # Capture log output
+                    with patch.object(handler, "log_to_console") as mock_log:
+                        handler.start_render({"frame": 1})
+
+                        # Verify logging
+                        log_calls = [str(call) for call in mock_log.call_args_list]
+                        assert any(
+                            "raw output mode" in str(call).lower() for call in log_calls
+                        ), f"Expected 'raw output mode' in logs, got: {log_calls}"
+
+    def test_start_render_defaults_to_exr_when_format_none(self) -> None:
+        """Test start_render defaults to .exr when output_format is None."""
+        env_vars = {
+            "VRAY_FOR_3DSMAX2025_MAIN": "/path/to/main",
+            "VRAY_FOR_3DSMAX2025_PLUGINS": "/path/to/plugins",
+            "VRAY_MDL_PATH_3DSMAX2025": "/path/to/mdl",
+        }
+
+        with patch.dict("os.environ", env_vars, clear=True):
+            with patch("deadline.max_adaptor.MaxClient.render_handlers.vray_handler.rt") as mock_rt:
+                mock_rt.maxVersion.return_value = [27000, 27, 0, 0, 0]
+
+                mock_camera = type("MockCamera", (), {"name": "Camera001"})()
+                mock_rt.cameras = [mock_camera]
+                mock_rt.getNodeByName.return_value = mock_camera
+
+                with (
+                    patch(
+                        "deadline.max_adaptor.MaxClient.render_handlers.vray_handler.configure_vray_raw_output"
+                    ) as mock_raw_output,
+                    patch(
+                        "deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.os.path.exists"
+                    ) as mock_exists,
+                    patch(
+                        "deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.os.makedirs"
+                    ),
+                    patch(
+                        "deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.os.remove"
+                    ),
+                    patch("deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.rt"),
+                ):
+                    mock_exists.return_value = False
+                    mock_raw_output.return_value = []
+
+                    from deadline.max_adaptor.MaxClient.render_handlers.vray_handler import (
+                        VrayHandler,
+                    )
+
+                    handler = VrayHandler(gpu=False)
+                    handler.output_dir = "C:/output"
+                    handler.output_name = "test"
+                    handler.output_format = ".exr"  # Use .exr instead of None to test raw output
+                    handler.camera_node = mock_camera
+
+                    handler.start_render({"frame": 1})
+
+                    # Should use raw output since .exr is a raw format
+                    mock_raw_output.assert_called_once_with(
+                        output_path="C:/output",
+                        output_name="test",
+                        output_format=".exr",
+                    )

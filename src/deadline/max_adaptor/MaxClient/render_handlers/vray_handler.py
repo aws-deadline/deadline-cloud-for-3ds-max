@@ -11,7 +11,11 @@ from typing import Any
 
 from pymxs import runtime as rt
 
-from deadline.max_shared.utilities.max_utils import set_vray_output_path
+from deadline.max_shared.utilities.max_utils import (
+    configure_vray_raw_output,
+    is_vray_raw_output_format,
+    set_vray_output_path,
+)
 
 from .default_max_handler import DefaultMaxHandler
 
@@ -169,18 +173,33 @@ class VrayHandler(DefaultMaxHandler):
 
         self.log_to_console(f"VRMesh path mapping complete: {mapped_count} proxies remapped")
 
-    def start_render(self, data: dict) -> None:
+    def start_render(self, data: dict[str, Any]) -> None:
         """
         Override to set V-Ray output path before rendering.
 
-        Always sets V-Ray output path for both standard V-Ray and V-Ray RT.
+        Automatically uses raw output pipeline for .vrimg and .exr formats,
+        which stores all render elements in a single multichannel container file.
+        For other formats, uses standard V-Ray split buffer output.
         """
-        # Always set V-Ray output path
         if self.output_dir and self.output_name:
-            set_vray_output_path(
-                output_path=self.output_dir,
-                output_name=self.output_name,
-                output_format=self.output_format or ".exr",
-            )
+            output_format = self.output_format or ".exr"
+
+            # Auto-detect raw output mode based on format
+            if is_vray_raw_output_format(output_format):
+                self.log_to_console(f"V-Ray raw output mode enabled for format: {output_format}")
+                warnings = configure_vray_raw_output(
+                    output_path=self.output_dir,
+                    output_name=self.output_name,
+                    output_format=output_format,
+                )
+                for warning in warnings:
+                    self.log_to_console(f"Warning: {warning}")
+            else:
+                # Standard V-Ray output path for other formats
+                set_vray_output_path(
+                    output_path=self.output_dir,
+                    output_name=self.output_name,
+                    output_format=output_format,
+                )
 
         super().start_render(data)

@@ -690,3 +690,185 @@ def test_configure_vray_render_elements_sets_rt_settings(mock_rt: MagicMock) -> 
     assert mock_vray_settings.output_splitAlpha is True
 
     assert isinstance(warnings, list)
+
+
+# ============================================================================
+# Tests for V-Ray Raw Output (.vrimg / .exr) Support
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    "output_format,expected",
+    [
+        (".vrimg", True),
+        (".VRIMG", True),
+        (".VrImg", True),
+        (".exr", True),
+        (".EXR", True),
+        (".Exr", True),
+        (".png", False),
+        (".jpg", False),
+        (".tga", False),
+        (".tiff", False),
+        (".bmp", False),
+        ("", False),
+    ],
+)
+def test_is_vray_raw_output_format(output_format: str, expected: bool) -> None:
+    """Test is_vray_raw_output_format correctly identifies raw output formats."""
+    from deadline.max_shared.utilities.max_utils import is_vray_raw_output_format
+
+    result = is_vray_raw_output_format(output_format)
+    assert result == expected, f"Expected {expected} for format '{output_format}', got {result}"
+
+
+def test_is_vray_raw_output_format_none() -> None:
+    """Test is_vray_raw_output_format handles None input."""
+    from deadline.max_shared.utilities.max_utils import is_vray_raw_output_format
+
+    # Should return False for None (empty string check)
+    result = is_vray_raw_output_format("")
+    assert result is False
+
+
+@patch("deadline.max_shared.utilities.max_utils.rt")
+def test_configure_vray_raw_output_vrimg(mock_rt: MagicMock) -> None:
+    """Test configure_vray_raw_output configures V-Ray for .vrimg output."""
+    from deadline.max_shared.utilities.max_utils import configure_vray_raw_output
+
+    # GIVEN - Mock V-Ray renderer
+    mock_renderer = MagicMock()
+    mock_renderer.configure_mock(__str__=MagicMock(return_value="V_Ray_7_Hotfix_2"))
+    mock_renderer.classid = "#(1234, 5678)"
+    mock_rt.renderers.current = mock_renderer
+
+    output_path = "C:/output"
+    output_name = "test_render"
+    output_format = ".vrimg"
+
+    # WHEN - Configure V-Ray raw output
+    warnings = configure_vray_raw_output(output_path, output_name, output_format)
+
+    # THEN - Verify all V-Ray raw output properties were set
+    assert mock_renderer.output_userigbe is True, "VFB should be enabled"
+    assert mock_renderer.output_on is True, "Raw output should be enabled"
+    assert mock_renderer.output_saveRawFile is True, "Raw file saving should be enabled"
+    assert mock_renderer.output_rawFileName == "C:/output\\test_render.vrimg"
+    assert isinstance(warnings, list)
+    assert len(warnings) == 0, f"Expected no warnings, got: {warnings}"
+
+
+@patch("deadline.max_shared.utilities.max_utils.rt")
+def test_configure_vray_raw_output_exr(mock_rt: MagicMock) -> None:
+    """Test configure_vray_raw_output configures V-Ray for .exr output."""
+    from deadline.max_shared.utilities.max_utils import configure_vray_raw_output
+
+    # GIVEN - Mock V-Ray renderer
+    mock_renderer = MagicMock()
+    mock_renderer.configure_mock(__str__=MagicMock(return_value="V_Ray_7_Hotfix_2"))
+    mock_renderer.classid = "#(1234, 5678)"
+    mock_rt.renderers.current = mock_renderer
+
+    output_path = "C:/renders/project"
+    output_name = "frame_001"
+    output_format = ".exr"
+
+    # WHEN - Configure V-Ray raw output
+    warnings = configure_vray_raw_output(output_path, output_name, output_format)
+
+    # THEN - Verify all V-Ray raw output properties were set
+    assert mock_renderer.output_userigbe is True, "VFB should be enabled"
+    assert mock_renderer.output_on is True, "Raw output should be enabled"
+    assert mock_renderer.output_saveRawFile is True, "Raw file saving should be enabled"
+    assert mock_renderer.output_rawFileName == "C:/renders/project\\frame_001.exr"
+    assert isinstance(warnings, list)
+    assert len(warnings) == 0, f"Expected no warnings, got: {warnings}"
+
+
+@patch("deadline.max_shared.utilities.max_utils.rt")
+def test_configure_vray_raw_output_format_without_dot(mock_rt: MagicMock) -> None:
+    """Test configure_vray_raw_output handles format without leading dot."""
+    from deadline.max_shared.utilities.max_utils import configure_vray_raw_output
+
+    # GIVEN - Mock V-Ray renderer
+    mock_renderer = MagicMock()
+    mock_renderer.configure_mock(__str__=MagicMock(return_value="V_Ray_7_Hotfix_2"))
+    mock_renderer.classid = "#(1234, 5678)"
+    mock_rt.renderers.current = mock_renderer
+
+    output_path = "C:/output"
+    output_name = "test"
+    output_format = "vrimg"  # No leading dot
+
+    # WHEN - Configure V-Ray raw output
+    warnings = configure_vray_raw_output(output_path, output_name, output_format)
+
+    # THEN - Should add the dot automatically
+    assert mock_renderer.output_rawFileName == "C:/output\\test.vrimg"
+    assert len(warnings) == 0
+
+
+@patch("deadline.max_shared.utilities.max_utils.rt")
+def test_configure_vray_raw_output_vray_gpu(mock_rt: MagicMock) -> None:
+    """Test configure_vray_raw_output works with V-Ray GPU (RT)."""
+    from deadline.max_shared.utilities.max_utils import configure_vray_raw_output
+
+    # GIVEN - Mock V-Ray GPU renderer with nested V_Ray_settings
+    mock_renderer = MagicMock()
+    mock_renderer.configure_mock(__str__=MagicMock(return_value="V_Ray_GPU_7_Hotfix_2"))
+    mock_renderer.classid = "#(1770671000, 1323107829)"  # V-Ray RT class ID
+
+    mock_vray_settings = MagicMock()
+    mock_renderer.V_Ray_settings = mock_vray_settings
+    mock_rt.renderers.current = mock_renderer
+
+    output_path = "C:/output"
+    output_name = "gpu_render"
+    output_format = ".exr"
+
+    # WHEN - Configure V-Ray raw output
+    warnings = configure_vray_raw_output(output_path, output_name, output_format)
+
+    # THEN - Verify properties were set on both renderer and V_Ray_settings
+    # V-Ray GPU sets on vray_rt_settings first, then on renderer
+    assert mock_vray_settings.output_userigbe is True
+    assert mock_vray_settings.output_on is True
+    assert mock_vray_settings.output_saveRawFile is True
+    assert mock_vray_settings.output_rawFileName == "C:/output\\gpu_render.exr"
+
+    # Also set on renderer.current
+    assert mock_renderer.output_userigbe is True
+    assert mock_renderer.output_on is True
+    assert mock_renderer.output_saveRawFile is True
+    assert mock_renderer.output_rawFileName == "C:/output\\gpu_render.exr"
+
+    assert len(warnings) == 0
+
+
+@patch("deadline.max_shared.utilities.max_utils.rt")
+def test_configure_vray_raw_output_handles_exception(mock_rt: MagicMock) -> None:
+    """Test configure_vray_raw_output handles exceptions gracefully."""
+    from deadline.max_shared.utilities.max_utils import configure_vray_raw_output
+
+    # GIVEN - Mock renderer that raises exception on property set
+    mock_renderer = MagicMock()
+    mock_renderer.configure_mock(__str__=MagicMock(return_value="V_Ray_7_Hotfix_2"))
+    mock_renderer.classid = "#(1234, 5678)"
+
+    # Make setting output_userigbe raise an exception
+    type(mock_renderer).output_userigbe = property(
+        fget=lambda self: False,
+        fset=Mock(side_effect=Exception("Property set failed")),
+    )
+    mock_rt.renderers.current = mock_renderer
+
+    output_path = "C:/output"
+    output_name = "test"
+    output_format = ".vrimg"
+
+    # WHEN - Configure V-Ray raw output
+    warnings = configure_vray_raw_output(output_path, output_name, output_format)
+
+    # THEN - Should return warnings instead of raising
+    assert len(warnings) > 0
+    assert any("Failed to set V-Ray property" in w for w in warnings)

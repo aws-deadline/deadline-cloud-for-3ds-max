@@ -140,11 +140,11 @@ def _set_vray_property(prop_name: str, value: Any, warnings: list[str]) -> None:
     Set a V-Ray property on the appropriate renderer object.
 
     V-Ray CPU and GPU have different property access patterns:
-    - V-Ray GPU: Properties must be set on vray_rt_settings (nested V_Ray_settings object)
-    - V-Ray CPU: Properties must be set on rt.renderers.current directly
+    - V-Ray GPU: Properties are set on vray_rt_settings first, then attempted on base renderer
+    - V-Ray CPU: Properties are set on rt.renderers.current directly
 
-    This function automatically detects the renderer type and sets properties
-    on the correct object, avoiding MAXScript errors from setting on the wrong object.
+    For V-Ray GPU, some properties (like output_splitfilename) only exist on vray_rt_settings,
+    so we set on vray_rt_settings first, then try the base renderer but ignore failures.
 
     :param prop_name: name of the V-Ray property to set
     :param value: value to set for the property
@@ -154,12 +154,24 @@ def _set_vray_property(prop_name: str, value: Any, warnings: list[str]) -> None:
 
     try:
         if vray_rt_settings is not None:
-            # V-Ray GPU - set on vray_rt_settings only
+            # V-Ray GPU - set on vray_rt_settings first (required)
             setattr(vray_rt_settings, prop_name, value)
             _logger.debug(f"[_set_vray_property] Set vray_rt_settings.{prop_name} = {value}")
-        # V-Ray CPU - set on rt.renderers.current
-        setattr(rt.renderers.current, prop_name, value)
-        _logger.debug(f"[_set_vray_property] Set rt.renderers.current.{prop_name} = {value}")
+            # Also try to set on base renderer (some properties exist on both)
+            try:
+                setattr(rt.renderers.current, prop_name, value)
+                _logger.debug(
+                    f"[_set_vray_property] Set rt.renderers.current.{prop_name} = {value}"
+                )
+            except Exception:
+                # Property may not exist on base renderer for V-Ray GPU - this is OK
+                _logger.debug(
+                    f"[_set_vray_property] Property {prop_name} not available on base renderer"
+                )
+        else:
+            # V-Ray CPU - set on rt.renderers.current
+            setattr(rt.renderers.current, prop_name, value)
+            _logger.debug(f"[_set_vray_property] Set rt.renderers.current.{prop_name} = {value}")
     except Exception as e:
         warning_msg = f"Failed to set V-Ray property {prop_name}: {e}"
         _logger.warning(f"[_set_vray_property] {warning_msg}")
@@ -462,6 +474,78 @@ def set_vray_output_path(
         raise RuntimeError(error_msg)
 
     _logger.info(f"[set_vray_output_path] V-Ray output path set to: {split_filepath}")
+
+
+def is_vray_raw_output_format(output_format: str) -> bool:
+    """
+    Check if the output format requires V-Ray raw output pipeline.
+
+    V-Ray raw output is used for .vrimg and .exr formats, which store all
+    render elements in a single multichannel container file.
+
+    :param output_format: Output format extension (e.g., ".exr", ".vrimg")
+    :returns: True if format requires raw output pipeline
+    """
+    if not output_format:
+        return False
+    return output_format.lower() in [".vrimg", ".exr"]
+
+
+def configure_vray_raw_output(
+    output_path: str,
+    output_name: str,
+    output_format: str,
+) -> list[str]:
+    """
+    Configure V-Ray raw image output (.vrimg or multichannel .exr).
+
+    This function sets up V-Ray to output all render elements to a single
+    multichannel container file using the V-Ray Frame Buffer pipeline.
+
+    The properties must be set in this order:
+    1. output_userigbe = True (enable VFB first)
+    2. output_on = True (enable raw output feature)
+    3. output_saveRawFile = True (enable file writing)
+    4. output_rawFileName = path (set output path)
+
+    :param output_path: Output directory path
+    :param output_name: Base output filename (without extension)
+    :param output_format: Output format extension (.vrimg or .exr)
+    :returns: List of warning messages
+    """
+    warnings: list[str] = []
+
+    try:
+        # Build output filename with correct extension
+        extension: str = output_format if output_format.startswith(".") else f".{output_format}"
+        raw_filename: str = os.path.join(output_path, f"{output_name}{extension}")
+
+        # Step 1: Enable V-Ray Frame Buffer (required for raw output)
+        _set_vray_property("output_userigbe", True, warnings)
+        _logger.info(
+            "[configure_vray_raw_output] Enabled V-Ray Frame Buffer (output_userigbe = True)"
+        )
+
+        # Step 2: Enable raw output feature
+        _set_vray_property("output_on", True, warnings)
+        _logger.info("[configure_vray_raw_output] Enabled V-Ray raw output (output_on = True)")
+
+        # Step 3: Enable file writing
+        _set_vray_property("output_saveRawFile", True, warnings)
+        _logger.info(
+            "[configure_vray_raw_output] Enabled V-Ray raw file saving (output_saveRawFile = True)"
+        )
+
+        # Step 4: Set output filename
+        _set_vray_property("output_rawFileName", raw_filename, warnings)
+        _logger.info(f"[configure_vray_raw_output] V-Ray raw output configured: {raw_filename}")
+
+    except Exception as e:
+        error_msg: str = f"Failed to configure V-Ray raw output: {e}"
+        _logger.error(f"[configure_vray_raw_output] {error_msg}")
+        warnings.append(error_msg)
+
+    return warnings
 
 
 def _configure_split_buffer_settings(
@@ -859,7 +943,7 @@ def configure_vray_render_elements(
             extension = (
                 output_file_format
                 if output_file_format and output_file_format.startswith(".")
-                else f".{output_file_format}" if output_file_format else ""
+                else f".{output_file_format}" if output_file_format else ".png"
             )
             base_filepath = os.path.join(output_path, f"{base_name}{extension}")
 

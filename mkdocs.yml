@@ -30,6 +30,7 @@ nav:
   - Fleet Host Configuration: fleet-host-configuration.md
   - Installation: installation.md
   - Using the Submitter: using-submitter.md
+  - V-Ray Standalone Tile Rendering: vray-standalone-tile-rendering.md
 
 plugins:
   - search

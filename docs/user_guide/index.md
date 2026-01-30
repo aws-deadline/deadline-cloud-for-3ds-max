@@ -11,6 +11,7 @@ This user guide covers:
 - [Fleet Host Configuration](fleet-host-configuration.md) - How to configure Deadline Cloud Fleets for Autodesk 3ds Max Jobs.
 - [Installation](installation.md) - How to install the Autodesk 3ds Max submitter
 - [Using the Submitter](using-submitter.md) - How to prepare and submit rendering jobs
+- [V-Ray Standalone Tile Rendering](vray-standalone-tile-rendering.md) - How to export V-Ray scenes and submit standalone tile rendering jobs
 
 ## Support
 

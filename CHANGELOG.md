@@ -1,3 +1,19 @@
+## 0.1.8 (2026-01-31)
+
+
+### Features
+* Support vrimg and exr ouput formats to write raw files (#193) ([`c26c853`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/c26c853aaf96a05dcb8bf13fba09168b33b303da))
+* refactoring to make the code more readable (#192) ([`04b6260`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/04b6260dec088cd1be20f633f6105c665be86a77))
+* Tool to dump current 3dsmax rendering config for debug ([`1e67321`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/1e673219ea232ee99ac56d2f6e2061b74778c71f))
+* implement vrmesh pathmapping handling (#188) ([`738adc4`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/738adc4e4375d885dcb4b12a0d81a10f35fc3cf2))
+* Add an integration test for light mix (#182) ([`1743899`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/1743899d506e68d6f55e9062c1634f2a0a0fce0a))
+* Fix Lightmix rendering with FBO split buffers (#183) ([`53e8e43`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/53e8e43d1759309941ae4d39148b90470cb09818))
+
+### Bug Fixes
+* output extension override from submitter (#195) ([`3682386`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/3682386091e0c12b3e2929276abc8c9e4218e89e))
+* fixed issue with Adaptor and added tests for VRayProxyObject pathmapping for vrmesh files ([`887f883`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/887f8830794fa09534127f47764836fcff50d507))
+* add VRay system environment variable detection (#178) ([`3fbe16f`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/3fbe16ffb58e67aa516c57782cc534b84bdc8468))
+
 ## 0.1.7 (2025-11-04)
 
 

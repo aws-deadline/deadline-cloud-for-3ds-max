@@ -4,6 +4,7 @@ from deadline.max_adaptor.executable_handler import (
     SupportedMaxExecutable,
 )
 from unittest.mock import patch, Mock
+import os
 import pytest
 from typing import List
 
@@ -15,13 +16,13 @@ class TestMaxExecutableHandler:
         [
             ("3dsmax", "3dsmax"),
             ("3dsmax.exe", "3dsmax"),
-            ("C:\\Users\\user1\\somedir\\3dsmax", "3dsmax"),
-            ("C:\\Users\\user1\somedir\\3dsmax.exe", "3dsmax"),
+            (os.sep.join(["C:", "Users", "user1", "somedir", "3dsmax"]), "3dsmax"),
+            (os.sep.join(["C:", "Users", "user1", "somedir", "3dsmax.exe"]), "3dsmax"),
             ("/users/user1/somedir/3dsmax.exe", "3dsmax"),
             ("3dsmaxbatch", "3dsmaxbatch"),
             ("3dsmaxbatch.exe", "3dsmaxbatch"),
-            ("C:\\Users\\user1\\somedir\\3dsmaxbatch", "3dsmaxbatch"),
-            ("C:\\Users\\user1\\somedir\\3dsmaxbatch.exe", "3dsmaxbatch"),
+            (os.sep.join(["C:", "Users", "user1", "somedir", "3dsmaxbatch"]), "3dsmaxbatch"),
+            (os.sep.join(["C:", "Users", "user1", "somedir", "3dsmaxbatch.exe"]), "3dsmaxbatch"),
             ("/users/user1/somedir/3dsmaxbatch.exe", "3dsmaxbatch"),
         ],
     )

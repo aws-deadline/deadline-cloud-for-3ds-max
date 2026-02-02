@@ -753,7 +753,7 @@ def test_configure_vray_raw_output_vrimg(mock_rt: MagicMock) -> None:
     assert mock_renderer.output_userigbe is True, "VFB should be enabled"
     assert mock_renderer.output_on is True, "Raw output should be enabled"
     assert mock_renderer.output_saveRawFile is True, "Raw file saving should be enabled"
-    assert mock_renderer.output_rawFileName == "C:/output\\test_render.vrimg"
+    assert mock_renderer.output_rawFileName == os.path.join("C:/output", "test_render.vrimg")
     assert isinstance(warnings, list)
     assert len(warnings) == 0, f"Expected no warnings, got: {warnings}"
 
@@ -780,7 +780,7 @@ def test_configure_vray_raw_output_exr(mock_rt: MagicMock) -> None:
     assert mock_renderer.output_userigbe is True, "VFB should be enabled"
     assert mock_renderer.output_on is True, "Raw output should be enabled"
     assert mock_renderer.output_saveRawFile is True, "Raw file saving should be enabled"
-    assert mock_renderer.output_rawFileName == "C:/renders/project\\frame_001.exr"
+    assert mock_renderer.output_rawFileName == os.path.join("C:/renders/project", "frame_001.exr")
     assert isinstance(warnings, list)
     assert len(warnings) == 0, f"Expected no warnings, got: {warnings}"
 
@@ -804,7 +804,7 @@ def test_configure_vray_raw_output_format_without_dot(mock_rt: MagicMock) -> Non
     warnings = configure_vray_raw_output(output_path, output_name, output_format)
 
     # THEN - Should add the dot automatically
-    assert mock_renderer.output_rawFileName == "C:/output\\test.vrimg"
+    assert mock_renderer.output_rawFileName == os.path.join("C:/output", "test.vrimg")
     assert len(warnings) == 0
 
 
@@ -834,13 +834,13 @@ def test_configure_vray_raw_output_vray_gpu(mock_rt: MagicMock) -> None:
     assert mock_vray_settings.output_userigbe is True
     assert mock_vray_settings.output_on is True
     assert mock_vray_settings.output_saveRawFile is True
-    assert mock_vray_settings.output_rawFileName == "C:/output\\gpu_render.exr"
+    assert mock_vray_settings.output_rawFileName == os.path.join("C:/output", "gpu_render.exr")
 
     # Also set on renderer.current
     assert mock_renderer.output_userigbe is True
     assert mock_renderer.output_on is True
     assert mock_renderer.output_saveRawFile is True
-    assert mock_renderer.output_rawFileName == "C:/output\\gpu_render.exr"
+    assert mock_renderer.output_rawFileName == os.path.join("C:/output", "gpu_render.exr")
 
     assert len(warnings) == 0
 

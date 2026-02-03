@@ -141,7 +141,7 @@ class DefaultMaxHandler:
             if os.path.exists(output_path):
                 os.remove(output_path)
 
-            rt.render(camera=self.camera_node, outputFile=output_path)
+            rt.render(camera=self.camera_node, outputFile=output_path, quiet=True)
 
             self.log_to_console(f"MaxClient: Finished Rendering Frame {frame}")
 
@@ -323,6 +323,8 @@ class DefaultMaxHandler:
             raise FileNotFoundError(f"Error: The scene file '{file_path}' does not exist")
         try:
             rt.SetQuietMode(True)
+            # Make sure any renderered frames are re-rendered.
+            rt.skipRenderedFrames = False
             rt.loadMaxFile(file_path, quiet=True)
 
             # Apply path mapping after scene load

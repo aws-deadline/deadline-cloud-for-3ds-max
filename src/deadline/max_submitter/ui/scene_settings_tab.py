@@ -122,6 +122,9 @@ class SceneSettingsWidget(QWidget):
         rt.callbacks.addScript(rt.Name("postRendererChange"), "pyCallback()")
         QApplication.instance().focusChanged.connect(self.on_focus_changed)
 
+        # Track render output filename to detect changes from Render Setup dialog
+        self._last_rend_output_filename = str(rt.rendOutputFilename or "")
+
     def _build_ui(self, settings):
         """
         Function that creates all the Qt UI elements for the job specific settings tab
@@ -139,10 +142,9 @@ class SceneSettingsWidget(QWidget):
         lyt.addWidget(QLabel("Output Path"), 1, 0)
         lyt.addWidget(self.output_path_txt, 1, 1)
 
-        # Output filename
-        self.output_name_txt = QLineEdit(self)
-        lyt.addWidget(QLabel("Output Filename"), 2, 0)
-        lyt.addWidget(self.output_name_txt, 2, 1)
+        # Output filename settings (pattern + preview)
+        self._build_output_filename_settings_ui()
+        lyt.addWidget(self.output_filename_grp_box, 2, 0, 1, 2)
 
         # Output extension
         self.output_ext_box = QComboBox(self)
@@ -162,6 +164,7 @@ class SceneSettingsWidget(QWidget):
         lyt.addWidget(QLabel("State Sets"), 4, 0)
         lyt.addWidget(self.state_sets_box, 4, 1)
         (self.state_sets_box.currentIndexChanged.connect(self._update_state_set))
+        self.state_sets_box.currentIndexChanged.connect(lambda _: self._update_filename_preview())
 
         # Renderer
         self.renderers_box = QComboBox(self)
@@ -205,6 +208,7 @@ class SceneSettingsWidget(QWidget):
         self.cameras_box = QComboBox(self)
         lyt.addWidget(QLabel("Cameras To Render"), 7, 0)
         lyt.addWidget(self.cameras_box, 7, 1)
+        self.cameras_box.currentIndexChanged.connect(lambda _: self._update_filename_preview())
 
         # Override frame range
         self.frame_override_chck = QCheckBox("Override Frame Range", self)
@@ -290,6 +294,82 @@ class SceneSettingsWidget(QWidget):
         for mat in SCENE_TWEAKS_MATS:
             self.custom_mat_box.addItem(mat, mat)
         scene_tweaks_lyt.addWidget(self.custom_mat_box, 3, 1)
+
+    def _build_output_filename_settings_ui(self):
+        """
+        Create a QGroupBox for the output filename pattern settings.
+        Replaces the old "Output Filename" QLineEdit.
+        """
+        self.output_filename_grp_box = QGroupBox()
+        self.output_filename_grp_box.setTitle("Output Filename Settings")
+        fn_lyt = QGridLayout(self)
+        self.output_filename_grp_box.setLayout(fn_lyt)
+
+        # Filename Pattern
+        self.output_filename_pattern_txt = QLineEdit(self)
+        self.output_filename_pattern_txt.setToolTip(
+            "Available tokens:\n"
+            "  <camera>   — Scene camera name (e.g., Camera001, RenderCam)\n"
+            "  <stateset> — State set name\n"
+            "  <scene>    — Scene file name (without extension)\n\n"
+            "Everything else is literal text.\n"
+            "Remove a token to exclude it from the filename.\n"
+            "Examples:\n"
+            "  <camera>_<stateset>_<scene>_###\n"
+            "  <camera>_<stateset>_myRender_###\n"
+            "  <scene>_###\n"
+            "  myScene_###"
+        )
+        fn_lyt.addWidget(QLabel("Filename Pattern"), 0, 0)
+        fn_lyt.addWidget(self.output_filename_pattern_txt, 0, 1)
+        self.output_filename_pattern_txt.textChanged.connect(self._update_filename_preview)
+
+        # Filename Preview
+        self.filename_preview_label = QLabel(self)
+        self.filename_preview_label.setStyleSheet("color: gray; font-style: italic;")
+        self.filename_preview_label.setToolTip("Preview of the resolved output filename")
+        fn_lyt.addWidget(QLabel("Filename Preview"), 1, 0)
+        fn_lyt.addWidget(self.filename_preview_label, 1, 1)
+
+    def _update_filename_preview(self):
+        """
+        Update the filename preview label based on current UI values.
+        """
+        from deadline.max_shared.utilities.filename_utils import format_output_filename
+        from deadline.max_submitter.data_const import ALL_CAMERAS_STR, ALL_STEREO_CAMERAS_STR
+
+        pattern = self.output_filename_pattern_txt.text()
+
+        # Get state set name from current selection
+        state_set_text = self.state_sets_box.currentText()
+        state_set_name = "" if state_set_text == "All State Sets" else state_set_text
+
+        # For "All State Sets", show first state set as example if available
+        if state_set_text == "All State Sets" and self.state_sets:
+            state_set_name = self.state_sets[0][0]
+
+        # Get camera name from current selection
+        camera_data = self.cameras_box.currentData()
+        is_all_cameras = camera_data in (ALL_CAMERAS_STR, ALL_STEREO_CAMERAS_STR)
+
+        if is_all_cameras and hasattr(self, "cameras") and self.cameras:
+            camera_name = self.cameras[0]
+        elif not is_all_cameras and camera_data:
+            camera_name = camera_data
+        else:
+            camera_name = ""
+
+        # Get scene name
+        scene_name = max_utils.get_scene_name()
+
+        preview = format_output_filename(
+            pattern=pattern,
+            camera_name=camera_name,
+            state_set_name=state_set_name,
+            scene_name=scene_name,
+        )
+
+        self.filename_preview_label.setText(preview)
 
     def _on_render_elements_validation_changed(self, warnings):
         """
@@ -416,13 +496,26 @@ class SceneSettingsWidget(QWidget):
     def on_focus_changed(self, old_widget, new_widget):
         """
         Event handler for when the active widget changes.
-        Checks for valid frame range in frame_override_txt QLineEdit.
+        Checks if the render output filename changed in Render Setup,
+        and validates frame range in frame_override_txt QLineEdit.
 
         :param old_widget: widget that lost focus
         :type old_widget: any QWidget
         :param new_widget: widget that gained focus
         :type new_widget: any QWidget
         """
+        # Check if render output filename changed in Render Setup dialog
+        current_rend_output = str(rt.rendOutputFilename or "")
+        if current_rend_output != self._last_rend_output_filename:
+            self._last_rend_output_filename = current_rend_output
+            output_path, output_name, output_ext = max_utils.get_render_output_info()
+            self.output_path_txt.setText(output_path)
+            self.output_filename_pattern_txt.setText(f"<camera>_<stateset>_{output_name}")
+            if output_ext:
+                index = self.output_ext_box.findData(output_ext)
+                if index >= 0:
+                    self.output_ext_box.setCurrentIndex(index)
+
         if self.frame_override_txt is not old_widget:
             return
 
@@ -471,7 +564,7 @@ class SceneSettingsWidget(QWidget):
         settings.renderer = str(rt.renderers.current).split(":")[0]
         self.proj_path_txt.setText(settings.project_path)
         self.output_path_txt.setText(settings.output_path)
-        self.output_name_txt.setText(settings.output_name)
+        self.output_filename_pattern_txt.setText(settings.output_filename_pattern)
         self.frame_override_chck.setChecked(settings.override_frame_range)
         self.frame_override_txt.setEnabled(settings.override_frame_range)
         self.frame_override_txt.setText(settings.frame_list)
@@ -519,7 +612,8 @@ class SceneSettingsWidget(QWidget):
         """
         settings.project_path = self.proj_path_txt.text()
         settings.output_path = self.output_path_txt.text()
-        settings.output_name = self.output_name_txt.text()
+        settings.output_name = self.output_filename_pattern_txt.text()
+        settings.output_filename_pattern = self.output_filename_pattern_txt.text()
         settings.output_ext = self.output_ext_box.currentData()
 
         settings.override_frame_range = self.frame_override_chck.isChecked()

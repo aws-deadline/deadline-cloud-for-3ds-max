@@ -28,6 +28,7 @@ from deadline.client.ui.dialogs._types import JobBundlePurpose
 from pymxs import runtime as rt
 from qtpy.QtCore import Qt  # type: ignore
 from sanity_checks import check_sanity
+from deadline.max_shared.utilities.filename_utils import ensure_frame_padding
 from ui.scene_settings_tab import SceneSettingsWidget
 from ui.submit_dialog import SubmitMaxJobToDeadlineDialog
 from utilities import max_utils, submission_utils
@@ -97,7 +98,7 @@ def on_create_job_bundle_callback(
             if rt.rendOutputFilename:
                 output_dir = os.path.split(rt.rendOutputFilename)[0]
                 output_file = os.path.split(rt.rendOutputFilename)[1]
-                output_file_name = Path(output_file).stem
+                output_file_name = settings.output_filename_pattern
                 # Use UI override if provided, otherwise fall back to render setup extension
                 output_file_format = (
                     settings.output_ext if settings.output_ext else os.path.splitext(output_file)[1]
@@ -105,7 +106,7 @@ def on_create_job_bundle_callback(
             # If it isn't, use the UI fields data
             else:
                 output_dir = settings.output_path
-                output_file_name = state_set[0] + "_" + settings.output_name
+                output_file_name = settings.output_filename_pattern
                 output_file_format = settings.output_ext
             image_resolution = (rt.renderWidth, rt.renderHeight)
 
@@ -139,7 +140,7 @@ def on_create_job_bundle_callback(
         if rt.rendOutputFilename:
             output_dir = os.path.split(rt.rendOutputFilename)[0]
             output_file = os.path.split(rt.rendOutputFilename)[1]
-            output_file_name = Path(output_file).stem
+            output_file_name = settings.output_filename_pattern
             # Use UI override if provided, otherwise fall back to render setup extension
             output_file_format = (
                 settings.output_ext if settings.output_ext else os.path.splitext(output_file)[1]
@@ -147,7 +148,7 @@ def on_create_job_bundle_callback(
         # If it isn't, use the UI fields data
         else:
             output_dir = settings.output_path
-            output_file_name = settings.output_name
+            output_file_name = settings.output_filename_pattern
             output_file_format = settings.output_ext
         image_resolution = (rt.renderWidth, rt.renderHeight)
 
@@ -169,6 +170,12 @@ def on_create_job_bundle_callback(
     if settings.override_frame_range:
         for state_set in state_sets_to_submit:
             state_set.frame_range = settings.frame_list
+
+    # Auto-adjust frame padding: strip for single frame, add for multi-frame
+    for state_set in state_sets_to_submit:
+        state_set.output_file_name = ensure_frame_padding(
+            state_set.output_file_name, state_set.frame_range
+        )
 
     # Add render element output directories to output_directories set
     if settings.render_elements and not settings.ignore_render_elements_by_name:
@@ -253,6 +260,7 @@ def on_create_job_bundle_callback(
     settings.input_filenames = sorted(attachments.input_filenames)
 
     # Save sticky settings
+    settings.last_rend_output_filename = str(rt.rendOutputFilename or "")
     settings.save_sticky_settings()
 
 
@@ -270,12 +278,29 @@ def show_job_bundle_submitter():
     render_settings.name = max_utils.get_scene_name()
     render_settings.frame_list = max_utils.get_frames()
     render_settings.project_path = max_utils.get_scene_path()
-    render_settings.output_path = max_utils.get_scene_dir()
-    render_settings.output_name = max_utils.get_scene_name() + "_###"
+
+    # set output settings from renderer
+    output_path, output_name, output_ext = max_utils.get_render_output_info()
+    render_settings.output_path = output_path
+    render_settings.output_name = output_name
+    # Build default pattern from render settings
+    render_settings.output_filename_pattern = f"<camera>_<stateset>_{output_name}"
+    if output_ext:
+        render_settings.output_ext = output_ext
+
     render_settings.backup_file = rt.execute("GetDir #temp") + "\\" + TEMP_BACKUP_FILENAME
     render_settings.renderer = str(rt.renderers.current).split(":")[0]
 
     render_settings.load_sticky_settings()
+
+    # Only override sticky pattern if render output changed since last save
+    current_rend_output = str(rt.rendOutputFilename or "")
+    if current_rend_output and current_rend_output != render_settings.last_rend_output_filename:
+        output_path, output_name, output_ext = max_utils.get_render_output_info()
+        render_settings.output_path = output_path
+        render_settings.output_filename_pattern = f"<camera>_<stateset>_{output_name}"
+        if output_ext:
+            render_settings.output_ext = output_ext
 
     output_directories: set[str] = set()
 

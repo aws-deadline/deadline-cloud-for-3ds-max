@@ -9,12 +9,14 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
 
 import pymxs  # noqa
 from pymxs import runtime as rt
 
 from deadline.max_adaptor.executable_handler import MaxExecutableHandler
+from deadline.max_shared.utilities.filename_utils import format_output_filename
 
 if TYPE_CHECKING:
     from deadline.max_adaptor.MaxClient.render_element_manager import RenderElementManager
@@ -46,6 +48,7 @@ class DefaultMaxHandler:
         self.output_dir = None
         self.output_name = None
         self.output_format = None
+        self.state_set_name: str = ""
         self._executable_handler: MaxExecutableHandler = MaxExecutableHandler()
         # Initialize render element manager as private attribute
         self._render_element_manager: Optional["RenderElementManager"] = None
@@ -117,19 +120,25 @@ class DefaultMaxHandler:
                 logger.debug("Setting camera with run data")
                 camera = self.get_camera_to_render(camera)
                 self.camera_node = rt.getNodeByName(camera)
-                # If camera gets set by run data, add the camera to the output name
-                output_name = self.output_name + "_" + camera
 
             # Since camera can be set by both init and run data, this isn't a required parameter in either schema.
             if self.camera_node is None:
                 self.log_to_console("Error: MaxClient: start_render called without a camera.")
                 raise RuntimeError("MaxClient: start_render called without a camera.")
 
-            # Create output path to pass along with render
-            if not output_name:
-                output_name = self.reformat_framenumber_padding(self.output_name, frame)
-            else:
-                output_name = self.reformat_framenumber_padding(output_name, frame)
+            # Resolve all tokens in the output filename pattern
+            scene_name = Path(rt.maxFileName).stem if rt.maxFileName else ""
+            state_set_name = self.state_set_name or ""
+            camera_name = camera or ""
+
+            output_name = format_output_filename(
+                pattern=self.output_name,
+                camera_name=camera_name,
+                state_set_name=state_set_name,
+                scene_name=scene_name,
+            )
+
+            output_name = self.reformat_framenumber_padding(output_name, frame)
             output_file = output_name + self.output_format
             output_path = os.path.join(self.output_dir, output_file)
 
@@ -170,9 +179,10 @@ class DefaultMaxHandler:
         """
         padding_amount = name.count("#")
 
-        # If there are no hashes indicating the padding, just add the number
+        # If there are no hashes, the submitter decided no frame numbering is needed
+        # (e.g. single-frame render). Return the name as-is.
         if not padding_amount:
-            return name + str(number)
+            return name
 
         numbers_amount = len(str(number))
         # Calculate how many zeroes need to be added.
@@ -270,6 +280,7 @@ class DefaultMaxHandler:
         :raises: RuntimeError: if state set doesn't exist
         """
         state_set_name = data.get("state_set")
+        self.state_set_name = state_set_name or ""
 
         # Create necessary items to interact with state sets
         state_sets_dot_net_object = rt.dotNetObject("Autodesk.Max.StateSets.Plugin")

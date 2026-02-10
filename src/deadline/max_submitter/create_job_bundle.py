@@ -415,46 +415,119 @@ def _create_step_definitions(
 
 def _merge_adaptor_override_environment():
     """
-    Create template for the adaptor override environment
+    Create template for the adaptor override environment.
+
+    Loads the adaptor_override_environment.yaml file, validates the wheels directory,
+    and configures the OverrideAdaptorName parameter with the default value.
+
+    :return: The override environment dictionary loaded from YAML
+    :raises RuntimeError: If the YAML file is invalid or wheels directory is missing/incorrect
     """
-    # TODO see if changes to adaptor_override_environment.yaml need to be made to work on windows worker
     with open(Path(__file__).parent / "adaptor_override_environment.yaml") as f:
         override_environment = yaml.safe_load(f)
 
-    # Read DEVELOPMENT.md for instructions to create the wheels directory.
+    if override_environment is None:
+        raise RuntimeError(
+            "Failed to load adaptor_override_environment.yaml - file is empty or invalid"
+        )
+
+    if "parameterDefinitions" not in override_environment:
+        raise RuntimeError(
+            f"adaptor_override_environment.yaml is missing 'parameterDefinitions'. Keys found: {list(override_environment.keys())}"
+        )
+
+    # Validate wheels directory exists and contains the correct packages
     wheels_path = Path(__file__).parent.parent.parent.parent / "wheels"
-    if not wheels_path.exists() and wheels_path.is_dir():
+    _logger.info(f"Validating wheels directory: {wheels_path}")
+
+    if not wheels_path.exists() or not wheels_path.is_dir():
         raise RuntimeError(
             "The Developer Option 'Include Adaptor Wheels' is enabled, "
-            "but the wheels directory does not exist:\n" + str(wheels_path)
+            f"but the wheels directory does not exist: {wheels_path}"
         )
-    wheels_path_package_names = {
-        path.split("-", 1)[0] for path in os.listdir(wheels_path) if path.endswith(".whl")
-    }
-    if wheels_path_package_names != {
-        "openjd_adaptor_runtime",
-        "deadline",
-        "deadline_cloud_for_3ds_max",
-    }:
+
+    wheel_files = [f for f in os.listdir(wheels_path) if f.endswith(".whl")]
+    wheels_path_package_names = {path.split("-", 1)[0] for path in wheel_files}
+
+    # Check for duplicate packages (multiple versions of the same package)
+    package_counts = {}
+    for wheel_file in wheel_files:
+        package_name = wheel_file.split("-", 1)[0]
+        package_counts[package_name] = package_counts.get(package_name, 0) + 1
+
+    duplicates = {pkg: count for pkg, count in package_counts.items() if count > 1}
+    if duplicates:
+        duplicate_details = []
+        for pkg in duplicates:
+            matching_wheels = [f for f in wheel_files if f.startswith(pkg + "-")]
+            duplicate_details.append(f"  {pkg}: {len(matching_wheels)} versions found")
+            for wheel in matching_wheels:
+                duplicate_details.append(f"    - {wheel}")
+        raise RuntimeError(
+            "The Developer Option 'Include Adaptor Wheels' is enabled, but the wheels directory contains "
+            "multiple versions of the same package(s):\n"
+            + "\n".join(duplicate_details)
+            + "\n\nPlease ensure only one version of each package is present. "
+            + "Run 'scripts/build_wheels.ps1 -Clean' to rebuild with a clean directory."
+        )
+
+    expected_packages = {"openjd_adaptor_runtime", "deadline", "deadline_cloud_for_3ds_max"}
+    if wheels_path_package_names != expected_packages:
         raise RuntimeError(
             "The Developer Option 'Include Adaptor Wheels' is enabled, but the wheels directory contains the "
             "wrong wheels:\n"
-            + "Expected: openjd_adaptor_runtime, deadline, and deadline_cloud_for_3ds_max\n"
-            + f"Actual: {wheels_path_package_names}"
+            + f"Expected: {', '.join(sorted(expected_packages))}\n"
+            + f"Actual: {', '.join(sorted(wheels_path_package_names))}"
         )
 
-    override_adaptor_wheels_param = [
+    _logger.info(f"Found required wheel packages: {', '.join(sorted(wheels_path_package_names))}")
+
+    # Find and validate OverrideAdaptorWheels parameter
+    override_adaptor_wheels_params = [
         param
         for param in override_environment["parameterDefinitions"]
-        if param["name"] == "OverrideAdaptorWheels"
-    ][0]
-    override_adaptor_wheels_param["default"] = str(wheels_path)
-    override_adaptor_name_param = [
+        if param and param.get("name") == "OverrideAdaptorWheels"
+    ]
+
+    if not override_adaptor_wheels_params:
+        raise RuntimeError(
+            "Could not find 'OverrideAdaptorWheels' parameter in adaptor_override_environment.yaml"
+        )
+
+    # Find and configure OverrideAdaptorName parameter
+    override_adaptor_name_params = [
         param
         for param in override_environment["parameterDefinitions"]
-        if param["name"] == "OverrideAdaptorName"
-    ][0]
+        if param and param.get("name") == "OverrideAdaptorName"
+    ]
+
+    if not override_adaptor_name_params:
+        raise RuntimeError(
+            "Could not find 'OverrideAdaptorName' parameter in adaptor_override_environment.yaml"
+        )
+
+    override_adaptor_name_param = override_adaptor_name_params[0]
     override_adaptor_name_param["default"] = "3dsmax-openjd"
+    _logger.info("Configured adaptor override environment with adaptor name: 3dsmax-openjd")
+
+    # Load the setup script from external file and inject it into the embedded files
+    setup_script_path = Path(__file__).parent / "setup_adaptor_wheels.py"
+    with open(setup_script_path, "r", encoding="utf8") as f:
+        setup_script_content = f.read()
+
+    # Find the SetupAdaptor embedded file and update its data
+    embedded_files = override_environment["environment"]["script"]["embeddedFiles"]
+    for embedded_file in embedded_files:
+        if embedded_file.get("name") == "SetupAdaptor":
+            embedded_file["data"] = setup_script_content
+            _logger.info(f"Loaded setup script from {setup_script_path}")
+            break
+    else:
+        raise RuntimeError(
+            "Could not find 'SetupAdaptor' embedded file in adaptor_override_environment.yaml"
+        )
+
+    return override_environment
 
 
 def get_parameters_values(
@@ -639,6 +712,11 @@ def _get_job_parameters(
         elif any(elem.name for elem in render_elements):
             # Add empty parameter if render elements exist but none are ignored
             parameter_values.append({"name": "IgnoreRenderElementsByName", "value": ""})
+
+    # If we're overriding the adaptor with wheels, set the OverrideAdaptorWheels parameter
+    if settings.include_adaptor_wheels:
+        wheels_path = str(Path(__file__).parent.parent.parent.parent / "wheels")
+        parameter_values.append({"name": "OverrideAdaptorWheels", "value": wheels_path})
 
     return parameter_values
 

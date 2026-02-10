@@ -81,13 +81,51 @@ After installation a "Deadline Cloud" menu is available the menu bar. Run "Submi
 
 ### Application Interface Adaptor Development Workflow
 
-You can work on the adaptor alongside your submitter development workflow using a Deadline Cloud
-farm that uses a service-managed fleet. You'll need to perform the following steps to substitute
-your build of the adaptor for the one in the service.
+#### Running the Adaptor on a Farm
 
-1. Use the development location from the Submitter Development Workflow. Make sure you're running 3ds Max with `set DEADLINE_ENABLE_DEVELOPER_OPTIONS=true` enabled.
-2. Build wheels for `openjd_adaptor_runtime`, `deadline` and `deadline_cloud_for_3ds_max`, place them in a "wheels" folder in `deadline-cloud-for-3ds-max`. A script is provided to do this, just execute from `deadline-cloud-for-3ds-max`:
+If you have made modifications to the adaptor and wish to test your modifications on a live Deadline Cloud Farm
+with real jobs, then we recommend using a [Service Managed Fleet](https://docs.aws.amazon.com/deadline-cloud/latest/userguide/smf-manage.html)
+for your testing. We recommend performing this style of test if you have made any modifications that might interact with Deadline Cloud's
+job attachments feature, or that could interact with path mapping in any way. We have implemented a developer feature in the 3ds Max submitter
+plug-in that submits the Python wheel files for your modified adaptor along with your job submission and uses the modified adaptor to
+run the submitted job.
 
+You'll need to perform the following steps to substitute your build of the adaptor for the one in the service.
+
+1. Using the submitter development workflow (See [Submitter Development Workflow](#submitter-development-workflow)), make sure that you are
+   running 3ds Max with `DEADLINE_ENABLE_DEVELOPER_OPTIONS=true` enabled.
+   
+   **Windows (PowerShell):**
+   ```powershell
+   $env:DEADLINE_ENABLE_DEVELOPER_OPTIONS = "true"
+   & $env:3DSMAX_EXECUTABLE
+   ```
+   
+   **Windows (CMD):**
+   ```cmd
+   set DEADLINE_ENABLE_DEVELOPER_OPTIONS=true
+   "%3DSMAX_EXECUTABLE%"
+   ```
+
+2. Clone the [deadline-cloud](https://github.com/aws-deadline/deadline-cloud) and
+   [openjd-adaptor-runtime-for-python](https://github.com/OpenJobDescription/openjd-adaptor-runtime-for-python) repositories beside
+   this one, and ensure that you `git checkout release` in each to checkout the latest `release` branch.
+
+3. Build wheels for `openjd_adaptor_runtime`, `deadline` and `deadline_cloud_for_3ds_max`, place them in the `wheels/` folder in `deadline-cloud-for-3ds-max`.
+   
+   **Windows (PowerShell):**
+   ```powershell
+   # If you don't have the build package installed already
+   pip install build
+   
+   # Use the provided script to build all wheels
+   .\scripts\build_wheels.ps1
+   
+   # Or to clean and rebuild:
+   .\scripts\build_wheels.ps1 -Clean
+   ```
+   
+   **Linux/Mac:**
    ```bash
    # If you don't have the build package installed already
    $ pip install build
@@ -95,7 +133,7 @@ your build of the adaptor for the one in the service.
    $ ./scripts/build_wheels.sh
    ```
 
-   Wheels should have been generated in the "wheels" folder:
+   Wheels should have been generated in the `wheels/` folder:
 
    ```bash
    $ ls ./wheels
@@ -104,7 +142,11 @@ your build of the adaptor for the one in the service.
    openjd_adaptor_runtime-<version>-py3-none-any.whl
    ```
 
-3. Open the 3ds Max integrated submitter, and in the Job-Specific Settings tab, enable the option 'Include Adaptor Wheels'. This option is only visible when the environment variable `DEADLINE_ENABLE_DEVELOPER_OPTIONS` is set to `true`. Then submit your test job.
+4. Open the 3ds Max integrated submitter, and in the Scene Settings tab, enable the option 'Override Adaptor Wheels'. This option is only visible when the environment variable `DEADLINE_ENABLE_DEVELOPER_OPTIONS` is set to `true`.
+
+5. Go to the Job Attachments tab and manually add the `wheels` directory as an input directory.
+
+6. Submit your test job. The worker will create a Python virtual environment, install your development wheels, and use your modified adaptor to run the job.
 
 #### Adaptor Schema Files
 

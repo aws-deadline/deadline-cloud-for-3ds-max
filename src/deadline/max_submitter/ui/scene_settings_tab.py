@@ -242,7 +242,8 @@ class SceneSettingsWidget(QWidget):
 
         if self.developer_options:
             self.include_adaptor_wheels = QCheckBox(
-                "Developer Option: Include Adaptor Wheels", self
+                "Developer Option: Include Adaptor Wheels. Add the 'wheels' directory from Job Attachments Tab.",
+                self,
             )
             lyt.addWidget(self.include_adaptor_wheels, 17, 0)
 

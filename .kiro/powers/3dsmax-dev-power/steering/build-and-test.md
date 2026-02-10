@@ -74,7 +74,62 @@ Integration tests require 3ds Max to be installed.
 .\scripts\test-3dsmax-openjd-run.ps1 -JobBundleDir "test/integ/test_scripts/vray_simple_test/expected_job_bundle" -SkipInstall
 ```
 
-## Step 5: Check Logs
+## Step 5: Build Adaptor Wheels (Developer Option)
+
+For testing adaptor changes on a live Deadline Cloud farm, build wheels for all dependencies:
+
+```powershell
+# Build wheels for openjd-adaptor-runtime, deadline, and deadline-cloud-for-3ds-max
+.\scripts\build_wheels.ps1
+
+# Or clean and rebuild
+.\scripts\build_wheels.ps1 -Clean
+```
+
+This creates wheels in the `wheels/` directory:
+- `openjd_adaptor_runtime-*.whl`
+- `deadline-*.whl`
+- `deadline_cloud_for_3ds_max-*.whl`
+
+### Testing Adaptor Wheels on Workers
+
+1. **Enable developer options** before launching 3ds Max:
+   ```powershell
+   $env:DEADLINE_ENABLE_DEVELOPER_OPTIONS = "true"
+   & "D:\ProgramFiles\Autodesk\3ds Max 2025\3dsmax.exe"
+   ```
+
+2. **Open the submitter** and go to Scene Settings tab
+
+3. **Enable "Override Adaptor Wheels"** checkbox (only visible with developer options)
+
+4. **Add wheels directory** to Job Attachments tab:
+   - Click "Add Directory"
+   - Browse to `D:\workspace\3dsmax\deadline-cloud-for-3ds-max\wheels`
+
+5. **Submit the job** - The worker will:
+   - Create a Python virtual environment
+   - Install your development wheels
+   - Use your modified adaptor to run the job
+
+### Prerequisites for Building Wheels
+
+The sibling repositories must be cloned:
+```
+workspace/
+├── openjd-adaptor-runtime-for-python/
+├── deadline-cloud/
+└── deadline-cloud-for-3ds-max/
+```
+
+Clone missing repositories:
+```powershell
+cd D:\workspace\3dsmax
+git clone https://github.com/OpenJobDescription/openjd-adaptor-runtime-for-python.git
+git clone https://github.com/aws-deadline/deadline-cloud.git
+```
+
+## Step 6: Check Logs
 
 After running integration tests:
 

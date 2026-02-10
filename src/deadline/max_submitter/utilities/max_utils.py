@@ -17,6 +17,7 @@ _logger = logging.getLogger(__name__)
 def get_referenced_files() -> list:
     """
     Finds all referenced files (bitmap textures, xrefs).
+    Excludes render output files (render outputs, render elements, video post).
 
     :returns: list with paths to all referenced files
     :return_type: list
@@ -27,7 +28,21 @@ def get_referenced_files() -> list:
     # Convert result from usedMaps MAXScript function into a python list
     maps = rt.ATSOps.GetFiles(pymxs.byref(None))
     # Note: ATSOps returns list[int, [file paths]]
-    maps_in_scene = [str(x.replace("\\", "/")) for x in list(maps)[1]]
+    all_files = list(maps)[1]
+
+    # Filter out output assets (RenderOutput, VideoPost)
+    maps_in_scene = []
+    for f in all_files:
+        try:
+            asset_id = rt.AssetManager.getAssetId(f)
+            asset_obj = rt.AssetManager.getAsset(asset_id)
+            asset_type = str(asset_obj.getType())
+            if asset_type in ("#RenderOutput", "#VideoPost"):
+                continue
+        except Exception:
+            # If we can't determine the asset type, include the file
+            pass
+        maps_in_scene.append(str(f.replace("\\", "/")))
 
     # Check for nested files to make sure the path correctly gets converted when it's relative
     nested_files: list[list] = []
@@ -38,7 +53,11 @@ def get_referenced_files() -> list:
         if not nested:
             continue
         for item in nested:
-            index = maps_in_scene.index(item.replace("\\", "/"))
+            try:
+                index = maps_in_scene.index(item.replace("\\", "/"))
+            except ValueError:
+                # Item may have been filtered out as an output asset
+                continue
             # Pass along the nested file, the index of that nested file and the index of the parent
             # in maps_in_scene
             nested_files += [[item, index, i]]

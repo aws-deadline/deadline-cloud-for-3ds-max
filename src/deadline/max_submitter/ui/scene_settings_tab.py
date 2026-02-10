@@ -9,12 +9,15 @@ import os
 
 import pymxs  # noqa
 from deadline.max_submitter.data_const import (
+    ALL_CAMERAS_STR,
     ALL_STATE_SETS_STR,
+    ALL_STEREO_CAMERAS_STR,
     ALLOWED_EXTENSIONS,
     ALLOWED_RENDERERS,
     SCENE_TWEAKS_MATS,
     STEREO_CAMERA_OPTIONS,
 )
+from deadline.max_shared.utilities.filename_utils import format_output_filename, get_tokens_tooltip
 from deadline.client.ui import block_signals
 from pymxs import runtime as rt
 from qtpy.QtCore import QRegularExpression, QSize, Qt  # type: ignore
@@ -121,9 +124,6 @@ class SceneSettingsWidget(QWidget):
         rt.pyCallback = self._update_renderer
         rt.callbacks.addScript(rt.Name("postRendererChange"), "pyCallback()")
         QApplication.instance().focusChanged.connect(self.on_focus_changed)
-
-        # Track render output filename to detect changes from Render Setup dialog
-        self._last_rend_output_filename = str(rt.rendOutputFilename or "")
 
     def _build_ui(self, settings):
         """
@@ -298,7 +298,9 @@ class SceneSettingsWidget(QWidget):
     def _build_output_filename_settings_ui(self):
         """
         Create a QGroupBox for the output filename pattern settings.
-        Replaces the old "Output Filename" QLineEdit.
+        Output filename settings shows a token-based
+        pattern field and a live preview label, allowing users
+        to customize filenames according to scene tokens
         """
         self.output_filename_grp_box = QGroupBox()
         self.output_filename_grp_box.setTitle("Output Filename Settings")
@@ -307,19 +309,7 @@ class SceneSettingsWidget(QWidget):
 
         # Filename Pattern
         self.output_filename_pattern_txt = QLineEdit(self)
-        self.output_filename_pattern_txt.setToolTip(
-            "Available tokens:\n"
-            "  <camera>   — Scene camera name (e.g., Camera001, RenderCam)\n"
-            "  <stateset> — State set name\n"
-            "  <scene>    — Scene file name (without extension)\n\n"
-            "Everything else is literal text.\n"
-            "Remove a token to exclude it from the filename.\n"
-            "Examples:\n"
-            "  <camera>_<stateset>_<scene>_###\n"
-            "  <camera>_<stateset>_myRender_###\n"
-            "  <scene>_###\n"
-            "  myScene_###"
-        )
+        self.output_filename_pattern_txt.setToolTip(get_tokens_tooltip())
         fn_lyt.addWidget(QLabel("Filename Pattern"), 0, 0)
         fn_lyt.addWidget(self.output_filename_pattern_txt, 0, 1)
         self.output_filename_pattern_txt.textChanged.connect(self._update_filename_preview)
@@ -327,7 +317,7 @@ class SceneSettingsWidget(QWidget):
         # Filename Preview
         self.filename_preview_label = QLabel(self)
         self.filename_preview_label.setStyleSheet("color: gray; font-style: italic;")
-        self.filename_preview_label.setToolTip("Preview of the resolved output filename")
+        self.filename_preview_label.setToolTip("Example preview of the resolved output filename")
         fn_lyt.addWidget(QLabel("Filename Preview"), 1, 0)
         fn_lyt.addWidget(self.filename_preview_label, 1, 1)
 
@@ -335,8 +325,6 @@ class SceneSettingsWidget(QWidget):
         """
         Update the filename preview label based on current UI values.
         """
-        from deadline.max_shared.utilities.filename_utils import format_output_filename
-        from deadline.max_submitter.data_const import ALL_CAMERAS_STR, ALL_STEREO_CAMERAS_STR
 
         pattern = self.output_filename_pattern_txt.text()
 
@@ -496,25 +484,13 @@ class SceneSettingsWidget(QWidget):
     def on_focus_changed(self, old_widget, new_widget):
         """
         Event handler for when the active widget changes.
-        Checks if the render output filename changed in Render Setup,
-        and validates frame range in frame_override_txt QLineEdit.
+        Validates frame range in frame_override_txt QLineEdit.
 
         :param old_widget: widget that lost focus
         :type old_widget: any QWidget
         :param new_widget: widget that gained focus
         :type new_widget: any QWidget
         """
-        # Check if render output filename changed in Render Setup dialog
-        current_rend_output = str(rt.rendOutputFilename or "")
-        if current_rend_output != self._last_rend_output_filename:
-            self._last_rend_output_filename = current_rend_output
-            output_path, output_name, output_ext = max_utils.get_render_output_info()
-            self.output_path_txt.setText(output_path)
-            self.output_filename_pattern_txt.setText(f"<camera>_<stateset>_{output_name}")
-            if output_ext:
-                index = self.output_ext_box.findData(output_ext)
-                if index >= 0:
-                    self.output_ext_box.setCurrentIndex(index)
 
         if self.frame_override_txt is not old_widget:
             return

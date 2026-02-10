@@ -4,6 +4,8 @@ from typing import Any
 from unittest.mock import patch, MagicMock
 import pytest
 
+from deadline.max_submitter.utilities.max_utils import get_render_output_info
+
 
 class TestGetReferencedFilesFiltering:
     """Tests for output asset filtering in get_referenced_files()."""
@@ -184,3 +186,62 @@ class TestGetReferencedFilesFiltering:
         assert "C:/output/render.png" not in result
         assert "C:/videopost/out.avi" not in result
         assert "C:/output/element_ao.exr" not in result
+
+
+class TestGetRenderOutputInfo:
+    """Tests for get_render_output_info() — Path-based decomposition of render output."""
+
+    @pytest.fixture
+    def mock_rt(self):
+        with patch("deadline.max_submitter.utilities.max_utils.rt") as mock_rt:
+            yield mock_rt
+
+    def test_returns_path_stem_suffix(self, mock_rt):
+        """Standard render output is decomposed into parent, stem, suffix."""
+        mock_rt.rendOutputFilename = "C:\\output\\render_###.png"
+
+        output_dir, output_name, output_ext = get_render_output_info()
+
+        assert output_dir == "C:\\output"
+        assert output_name == "render_###"
+        assert output_ext == ".png"
+
+    def test_forward_slash_path(self, mock_rt):
+        mock_rt.rendOutputFilename = "C:/output/myScene_###.exr"
+
+        output_dir, output_name, output_ext = get_render_output_info()
+
+        assert output_name == "myScene_###"
+        assert output_ext == ".exr"
+
+    def test_no_extension(self, mock_rt):
+        mock_rt.rendOutputFilename = "C:\\output\\render_###"
+
+        output_dir, output_name, output_ext = get_render_output_info()
+
+        assert output_name == "render_###"
+        assert output_ext == ""
+
+    def test_empty_output_falls_back_to_scene(self, mock_rt):
+        """When rendOutputFilename is empty, fall back to scene-based defaults."""
+        mock_rt.rendOutputFilename = ""
+        mock_rt.maxFilePath = "C:\\scenes\\"
+        mock_rt.maxFileName = "myScene.max"
+
+        output_dir, output_name, output_ext = get_render_output_info()
+
+        assert output_dir == "C:/scenes/"
+        assert output_name == "myScene_###"
+        assert output_ext == ""
+
+    def test_none_output_falls_back_to_scene(self, mock_rt):
+        """When rendOutputFilename is None/falsy, fall back to scene-based defaults."""
+        mock_rt.rendOutputFilename = None
+        mock_rt.maxFilePath = "C:\\scenes\\"
+        mock_rt.maxFileName = "testStudio.max"
+
+        output_dir, output_name, output_ext = get_render_output_info()
+
+        assert output_dir == "C:/scenes/"
+        assert output_name == "testStudio_###"
+        assert output_ext == ""

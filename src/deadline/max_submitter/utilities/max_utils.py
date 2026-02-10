@@ -343,11 +343,8 @@ def get_render_output_info() -> tuple[str, str, str]:
               If no render output is set, returns scene-based defaults
     """
     if rt.rendOutputFilename:
-        output_dir = os.path.split(rt.rendOutputFilename)[0]
-        output_file = os.path.split(rt.rendOutputFilename)[1]
-        output_name = Path(output_file).stem
-        output_ext = os.path.splitext(output_file)[1]
-        return output_dir.replace("\\", "/"), output_name, output_ext
+        output_path = Path(rt.rendOutputFilename)
+        return str(output_path.parent), output_path.stem, output_path.suffix
     else:
         # Fall back to default scene-based naming
         return get_scene_dir(), get_scene_name() + "_###", ""

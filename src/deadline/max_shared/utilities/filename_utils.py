@@ -4,55 +4,32 @@
 Shared output filename utilities for Deadline Cloud 3ds Max integration.
 
 Provides token-based output filename formatting.
-
-Supported tokens:
-    <camera>   — Scene camera name (e.g., "Camera001", "RenderCam")
-    <stateset> — State Set name (e.g., "DayLight", "NightTime")
-    <scene>    — Scene file name without extension (e.g., "myScene")
-
 Everything else in the pattern is literal text (base name, frame padding, delimiters).
 """
 
-# Hardcoded delimiter for cleanup
-_DELIMITER = "_"
-
-# Default frame padding when auto-added for multi-frame ranges
-_DEFAULT_FRAME_PADDING = "####"
-
-
-def is_single_frame(frame_range: str) -> bool:
-    """
-    Check if a frame range string represents a single frame.
-
-    :param frame_range: frame range string (e.g., "5", "1-10", "1,3,5")
-    :returns: True if the range is a single frame
-    """
-    return bool(frame_range) and "-" not in frame_range and "," not in frame_range
+# Single source of truth for supported tokens and their descriptions.
+# Add new tokens here — the UI tooltip and replacement logic both read from this.
+SUPPORTED_TOKENS: dict[str, str] = {
+    "<camera>": "Scene camera name (e.g., Camera001, RenderCam)",
+    "<stateset>": "State set name",
+    "<scene>": "Scene file name (without extension)",
+}
 
 
-def ensure_frame_padding(pattern: str, frame_range: str) -> str:
-    """
-    Ensure the output filename pattern has appropriate frame padding.
-
-    If the frame range is a single frame, any existing # padding is stripped.
-    If the frame range is multiple frames and no # padding exists, #### is appended.
-
-    :param pattern: the output filename pattern
-    :param frame_range: the frame range string (e.g., "0", "1-10", "1,3,5-12")
-    :returns: the pattern with appropriate frame padding
-    """
-    has_padding = "#" in pattern
-
-    if is_single_frame(frame_range):
-        # Single frame — strip any # padding
-        if has_padding:
-            pattern = pattern.rstrip("#").rstrip(_DELIMITER)
-        return pattern
-    else:
-        # Multi-frame — ensure padding exists
-        if not has_padding:
-            return f"{pattern}{_DELIMITER}{_DEFAULT_FRAME_PADDING}"
-        return pattern
+def get_tokens_tooltip() -> str:
+    """Build a tooltip string describing all supported tokens."""
+    lines = ["Available tokens:"]
+    for token, desc in SUPPORTED_TOKENS.items():
+        lines.append(f"  {token}  — {desc}")
+    lines.append("")
+    lines.append("Everything else is literal text.")
+    lines.append("Remove a token to exclude it from the filename.")
+    lines.append("Examples:")
+    lines.append("  <camera>_<stateset>_<scene>_###")
+    lines.append("  <camera>_<stateset>_myRender_###")
+    lines.append("  <scene>_###")
+    lines.append("  myScene_###")
+    return "\n".join(lines)
 
 
 def format_output_filename(
@@ -64,9 +41,8 @@ def format_output_filename(
     """
     Resolve an output filename from a token pattern.
 
-    Replaces <camera>, <stateset>, and <scene> tokens with actual values,
-    then cleans up double underscores and leading/trailing underscores
-    that result from empty token values.
+    Replaces <camera>, <stateset>, and <scene> tokens with their actual values.
+    No additional cleanup is performed — what you see is what you get.
 
     Examples:
         >>> format_output_filename(
@@ -77,12 +53,7 @@ def format_output_filename(
         >>> format_output_filename(
         ...     "<camera>_<stateset>_<scene>_###",
         ...     camera_name="", state_set_name="", scene_name="myScene")
-        'myScene_###'
-
-        >>> format_output_filename(
-        ...     "<camera>_<stateset>_myRender_###",
-        ...     camera_name="RenderCam", state_set_name="DayLight")
-        'RenderCam_DayLight_myRender_###'
+        '__myScene_###'
 
         >>> format_output_filename("myRender_###")
         'myRender_###'
@@ -100,13 +71,5 @@ def format_output_filename(
     result = result.replace("<camera>", camera_name)
     result = result.replace("<stateset>", state_set_name)
     result = result.replace("<scene>", scene_name)
-
-    # Collapse runs of the delimiter into a single delimiter
-    double = _DELIMITER + _DELIMITER
-    while double in result:
-        result = result.replace(double, _DELIMITER)
-
-    # Strip leading/trailing delimiters
-    result = result.strip(_DELIMITER)
 
     return result

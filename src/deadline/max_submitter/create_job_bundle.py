@@ -413,7 +413,7 @@ def _create_step_definitions(
     return job_template
 
 
-def _merge_adaptor_override_environment():
+def _merge_adaptor_override_environment() -> dict[str, Any]:
     """
     Create template for the adaptor override environment.
 
@@ -450,7 +450,7 @@ def _merge_adaptor_override_environment():
     wheels_path_package_names = {path.split("-", 1)[0] for path in wheel_files}
 
     # Check for duplicate packages (multiple versions of the same package)
-    package_counts = {}
+    package_counts: dict[str, int] = {}
     for wheel_file in wheel_files:
         package_name = wheel_file.split("-", 1)[0]
         package_counts[package_name] = package_counts.get(package_name, 0) + 1

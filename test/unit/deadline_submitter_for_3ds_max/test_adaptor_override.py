@@ -89,7 +89,7 @@ class TestAdaptorWheelsValidation:
         ]
 
         # Count packages
-        package_counts = {}
+        package_counts: dict[str, int] = {}
         for wheel_file in wheel_files:
             package_name = wheel_file.split("-", 1)[0]
             package_counts[package_name] = package_counts.get(package_name, 0) + 1
@@ -111,7 +111,7 @@ class TestAdaptorWheelsValidation:
         ]
 
         # Count packages
-        package_counts = {}
+        package_counts: dict[str, int] = {}
         for wheel_file in wheel_files:
             package_name = wheel_file.split("-", 1)[0]
             package_counts[package_name] = package_counts.get(package_name, 0) + 1

@@ -93,20 +93,9 @@ def on_create_job_bundle_callback(
                 f"needState = masterState.Children.Item[{state_set[1]}] \n"
                 f"masterState.CurrentState = #(needState)"
             )
-            # Check if an output directory is set in render setup dialog
-            if rt.rendOutputFilename:
-                output_dir = os.path.split(rt.rendOutputFilename)[0]
-                output_file = os.path.split(rt.rendOutputFilename)[1]
-                output_file_name = Path(output_file).stem
-                # Use UI override if provided, otherwise fall back to render setup extension
-                output_file_format = (
-                    settings.output_ext if settings.output_ext else os.path.splitext(output_file)[1]
-                )
-            # If it isn't, use the UI fields data
-            else:
-                output_dir = settings.output_path
-                output_file_name = state_set[0] + "_" + settings.output_name
-                output_file_format = settings.output_ext
+            output_dir = settings.output_path
+            output_file_name = settings.output_filename_pattern
+            output_file_format = settings.output_ext
             image_resolution = (rt.renderWidth, rt.renderHeight)
 
             state_sets_to_submit.append(
@@ -135,20 +124,9 @@ def on_create_job_bundle_callback(
             f"needState = masterState.Children.Item[{need_state}]\n"
             f"masterState.CurrentState = #(needState)"
         )
-        # Check if an output directory is set in render setup dialog
-        if rt.rendOutputFilename:
-            output_dir = os.path.split(rt.rendOutputFilename)[0]
-            output_file = os.path.split(rt.rendOutputFilename)[1]
-            output_file_name = Path(output_file).stem
-            # Use UI override if provided, otherwise fall back to render setup extension
-            output_file_format = (
-                settings.output_ext if settings.output_ext else os.path.splitext(output_file)[1]
-            )
-        # If it isn't, use the UI fields data
-        else:
-            output_dir = settings.output_path
-            output_file_name = settings.output_name
-            output_file_format = settings.output_ext
+        output_dir = settings.output_path
+        output_file_name = settings.output_filename_pattern
+        output_file_format = settings.output_ext
         image_resolution = (rt.renderWidth, rt.renderHeight)
 
         state_sets_to_submit.append(
@@ -270,8 +248,16 @@ def show_job_bundle_submitter():
     render_settings.name = max_utils.get_scene_name()
     render_settings.frame_list = max_utils.get_frames()
     render_settings.project_path = max_utils.get_scene_path()
-    render_settings.output_path = max_utils.get_scene_dir()
-    render_settings.output_name = max_utils.get_scene_name() + "_###"
+
+    # set output settings from renderer
+    output_path, output_name, output_ext = max_utils.get_render_output_info()
+    render_settings.output_path = output_path
+    render_settings.output_name = output_name
+    # Build default pattern from render settings
+    render_settings.output_filename_pattern = f"<camera>_<stateset>_{output_name}"
+    if output_ext:
+        render_settings.output_ext = output_ext
+
     render_settings.backup_file = rt.execute("GetDir #temp") + "\\" + TEMP_BACKUP_FILENAME
     render_settings.renderer = str(rt.renderers.current).split(":")[0]
 
@@ -292,8 +278,8 @@ def show_job_bundle_submitter():
             f"masterState.CurrentState = #(needState)"
         )
         if rt.rendOutputFilename:
-            output = os.path.split(rt.rendOutputFilename)
-            output_directories.update([output[0]])
+            output_dir, _, _ = max_utils.get_render_output_info()
+            output_directories.update([output_dir])
     output_directories.update([render_settings.output_path])
 
     # Add render element output directories if render elements are enabled

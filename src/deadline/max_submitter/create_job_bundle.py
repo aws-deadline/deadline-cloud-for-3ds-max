@@ -573,6 +573,7 @@ def _get_job_parameters(
     possible_multiples = [
         ["frame_range", "Frames"],
         ["output_file_dir", "OutputFilePath"],
+        ["output_file_name", "OutputFileName"],
         ["output_file_format", "OutputFileFormat"],
     ]
     for possible_multiple in possible_multiples:

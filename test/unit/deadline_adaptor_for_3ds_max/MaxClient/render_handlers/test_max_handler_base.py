@@ -117,6 +117,23 @@ class TestDefaultMaxHandler:
         # WHEN/THEN - Should not raise exception
         maxhandlerbase.cleanup_render_elements(data)
 
+    @pytest.mark.parametrize(
+        "name,number,expected",
+        [
+            # With hash padding — zero-padded frame number replaces hashes
+            ("output_#####", 1, "output_00001"),
+            ("output_####", 42, "output_0042"),
+            ("output_###", 100, "output_100"),
+            # No hashes — return name as-is (single-frame, no numbering needed)
+            ("output", 0, "output"),
+            ("output", 7, "output"),
+        ],
+    )
+    def test_reformat_framenumber_padding(
+        self, maxhandlerbase: DefaultMaxHandler, name: str, number: int, expected: str
+    ) -> None:
+        assert maxhandlerbase.reformat_framenumber_padding(name, number) == expected
+
     def test_cleanup_render_elements_not_configured(self, maxhandlerbase: DefaultMaxHandler):
         """Tests that cleanup_render_elements handles unconfigured render elements gracefully"""
         # GIVEN

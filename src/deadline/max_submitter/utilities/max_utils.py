@@ -333,3 +333,18 @@ def get_state_set_names() -> list:
     for i in range(-1, master_state.Children.count - 2):
         state_sets.append([master_state.Children.Item[i].Name, i + 1])
     return state_sets
+
+
+def get_render_output_info() -> tuple[str, str, str]:
+    """
+    Gets render output information from 3ds Max render settings.
+
+    :returns: tuple of (output_path, output_name, output_ext)
+              If no render output is set, returns scene-based defaults
+    """
+    if rt.rendOutputFilename:
+        output_path = Path(rt.rendOutputFilename)
+        return str(output_path.parent), output_path.stem, output_path.suffix
+    else:
+        # Fall back to default scene-based naming
+        return get_scene_dir(), get_scene_name() + "_###", ""

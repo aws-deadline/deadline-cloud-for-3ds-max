@@ -90,6 +90,12 @@ class RenderSubmitterUISettings:
     output_ext_list: list[str] = field(default_factory=list)
     output_ext: str = field(default=".jpg", metadata={"sticky": True})
 
+    # The full output filename with optional <camera>, <stateset>, and <scene> tokens.
+    # Everything else is literal text (base name, frame padding, delimiters).
+    output_filename_pattern: str = field(
+        default="<camera>_<stateset>_<scene>_###", metadata={"sticky": True}
+    )
+
     renderer: str = field(default="")
     state_set: str = field(default="")
     state_set_index: str = field(default="")

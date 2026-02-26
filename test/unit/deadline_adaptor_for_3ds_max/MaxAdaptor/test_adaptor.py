@@ -22,6 +22,7 @@ EXPECTED_INIT_DATA_PROPERTIES = {
     "output_file_name": "output_###",
     "output_file_format": ".jpg",
     "state_set": "State01",
+    "batch_render_view": "BatchView1",
     "renderer": "Default_Scanline_Renderer",
     "scene_file": "/path/to/scene.max",
     "strict_error_checking": True,
@@ -53,7 +54,7 @@ EXPECTED_RUN_DATA_REQUIRED = ["frame"]
 
 # Expected version - must be bumped when schemas change
 EXPECTED_SCHEMA_VERSION_MAJOR = 0
-EXPECTED_SCHEMA_VERSION_MINOR = 1
+EXPECTED_SCHEMA_VERSION_MINOR = 2
 
 
 @pytest.fixture
@@ -92,7 +93,7 @@ class TestMaxAdaptor_semantic_version:
     def test_semantic_version(self, init_data: dict) -> None:
         """Tests that the adaptor semantic version is in the expected format"""
         adaptor = MaxAdaptor(init_data)
-        assert adaptor.integration_data_interface_version == SemanticVersion(major=0, minor=1)
+        assert adaptor.integration_data_interface_version == SemanticVersion(major=0, minor=2)
 
     def test_if_init_data_and_run_data_schema_are_changed_schema_version_is_bumped(
         self, init_data: dict

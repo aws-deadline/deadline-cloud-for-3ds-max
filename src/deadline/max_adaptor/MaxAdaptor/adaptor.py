@@ -27,6 +27,10 @@ from deadline.max_adaptor.MaxAdaptor.regex_callback_handler import MaxRegexCallb
 _logger = logging.getLogger(__name__)
 
 
+# 3ds Max's MaxScript log buffer truncates lines beyond this limit.
+_MAX_LOG_LINE_LENGTH = 512
+
+
 class MaxNotRunningError(Exception):
     """Error that is raised when attempting to use Max while it is not running"""
 
@@ -59,6 +63,7 @@ _MAX_INIT_KEYS = {
     "output_file_path",
     "output_file_name",
     "output_file_format",
+    "batch_render_view",
 }
 
 
@@ -97,7 +102,7 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
 
     @property
     def integration_data_interface_version(self) -> SemanticVersion:
-        return SemanticVersion(major=0, minor=1)
+        return SemanticVersion(major=0, minor=2)
 
     @staticmethod
     def _get_timer(timeout: int | float) -> Callable[[], bool]:
@@ -343,6 +348,53 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
                 "Render element modification is disabled, skipping render element configuration"
             )
 
+    def _dump_max_log_on_error(self) -> None:
+        """
+        Reads and logs the full 3ds Max network log file.
+
+        MaxScript's log buffer truncates output at 512 characters per line, so the
+        STDOUT captured by the adaptor may be incomplete. The on-disk Max.log contains
+        the untruncated output. This method is called on failure so the full error
+        context is available in the worker logs.
+
+        Lines longer than _MAX_LOG_LINE_LENGTH are split into chunks to avoid any
+        downstream truncation in log pipelines.
+        """
+        import glob
+
+        local_appdata = os.environ.get("LOCALAPPDATA", "")
+        if not local_appdata:
+            _logger.warning("LOCALAPPDATA not set, cannot locate Max.log")
+            return
+
+        pattern = os.path.join(
+            local_appdata, "Autodesk", "3dsMax", "*", "ENU", "Network", "Max.log"
+        )
+        log_files = glob.glob(pattern)
+
+        if not log_files:
+            _logger.info("No Max.log files found at %s", pattern)
+            return
+
+        for log_file in log_files:
+            try:
+                with open(log_file, "r", errors="replace") as f:
+                    lines = f.readlines()
+                tail = lines[-10000:] if len(lines) > 10000 else lines
+                _logger.info("--- Begin 3ds Max Full Log (%s) ---", log_file)
+                for line in tail:
+                    line = line.rstrip("\n")
+                    if len(line) <= _MAX_LOG_LINE_LENGTH:
+                        _logger.info(line)
+                    else:
+                        # Split long lines into chunks to prevent truncation
+                        for i in range(0, len(line), _MAX_LOG_LINE_LENGTH):
+                            chunk = line[i : i + _MAX_LOG_LINE_LENGTH]
+                            _logger.info(chunk if i == 0 else f"\t{chunk}")
+                _logger.info("--- End 3ds Max Full Log ---")
+            except OSError as e:
+                _logger.warning("Failed to read Max.log at %s: %s", log_file, e)
+
     def on_start(self) -> None:
         """
         For job stickiness. Will start everything required for the Task.
@@ -376,6 +428,7 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
             time.sleep(0.1)  # Busy wait for max to finish initialization
 
         if len(self._action_queue) > 0:
+            self._dump_max_log_on_error()
             if is_not_timed_out():
                 raise RuntimeError(
                     "Max encountered an error and was not able to complete initialization actions."
@@ -411,6 +464,7 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
             # error case because the Max Client should still be running and waiting for the next command.
             # If the thread finished, then we cannot continue
             exit_code = self._max_client.returncode
+            self._dump_max_log_on_error()
             raise RuntimeError(
                 f"Max exited early and did not render successfully, please check render logs. Exit code {exit_code}"
             )

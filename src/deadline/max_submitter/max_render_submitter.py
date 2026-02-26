@@ -14,8 +14,11 @@ from typing import Any, Optional
 import pymxs  # noqa
 import qtmax
 import yaml
-from create_job_bundle import get_job_template, get_parameters_values
-from data_classes import RenderSubmitterUISettings, StateSetData
+from create_job_bundle import (
+    get_job_template,
+    get_parameters_values,
+)
+from data_classes import BatchRenderView, RenderSubmitterUISettings, StateSetData
 from data_const import (
     ALL_STATE_SETS_STR,
     ALL_STEREO_CAMERAS_STR,
@@ -31,7 +34,10 @@ from sanity_checks import check_sanity
 from ui.scene_settings_tab import SceneSettingsWidget
 from ui.submit_dialog import SubmitMaxJobToDeadlineDialog
 from utilities import max_utils, submission_utils
-from deadline.max_shared.utilities.max_utils import get_render_elements_output_directories
+from deadline.max_shared.utilities.max_utils import (
+    get_batch_render_views,
+    get_render_elements_output_directories,
+)
 
 from _version import version_tuple as adaptor_version_tuple
 
@@ -210,6 +216,20 @@ def on_create_job_bundle_callback(
 
     parameter_values = get_parameters_values(settings, state_sets_to_submit, queue_parameters)
 
+    # Collect preset files from batch render views if batch rendering is enabled
+    if settings.batch_render_enabled and settings.batch_render.enabled_views:
+        all_batch_views = get_batch_render_views()
+        # Filter to only enabled items
+        enabled_batch_views = [item for item in all_batch_views if item.enabled]
+
+        # Collect preset files and add them to asset references
+        preset_files = _collect_batch_render_attachments(enabled_batch_views)
+        if preset_files:
+            _logger.info(f"Adding {len(preset_files)} preset file(s) to job attachments")
+            # Add preset files to input filenames in asset_references
+            for preset_file in preset_files:
+                asset_references.input_filenames.add(preset_file)
+
     # If "HostRequirements" is provided, inject it into each of the "Step"
     if host_requirements:
         # for each step in the template, append the same host requirements.
@@ -330,3 +350,58 @@ def show_job_bundle_submitter():
     )
     window.show()
     return window
+
+
+def _collect_batch_render_attachments(batch_views: list[BatchRenderView]) -> list[str]:
+    """
+    Collect preset files from batch render views as job attachments.
+
+    Queries batch render views for preset files, validates they exist,
+    deduplicates them, and returns a list of absolute paths to include
+    in the job bundle.
+
+    :param batch_views: list of BatchRenderView instances from get_batch_render_views()
+    :return: list of absolute paths to preset files that should be attached to the job
+    """
+    preset_files: set[str] = set()
+
+    for item in batch_views:
+        preset_file = item.preset_file
+
+        # Skip if no preset file is specified
+        if not preset_file:
+            continue
+
+        # Convert to absolute path if relative
+        if not os.path.isabs(preset_file):
+            # Resolve relative to scene file directory
+            scene_dir = max_utils.get_scene_path()
+            if scene_dir:
+                scene_dir = os.path.dirname(scene_dir)
+                preset_file = os.path.abspath(os.path.join(scene_dir, preset_file))
+            else:
+                # If no scene file, try to resolve relative to current directory
+                preset_file = os.path.abspath(preset_file)
+
+        # Validate preset file exists
+        if not os.path.exists(preset_file):
+            _logger.warning(
+                f"Preset file '{preset_file}' referenced by batch item '{item.name}' "
+                f"does not exist and will not be included in job bundle"
+            )
+            continue
+
+        # Validate it's a file (not a directory)
+        if not os.path.isfile(preset_file):
+            _logger.warning(
+                f"Preset path '{preset_file}' referenced by batch item '{item.name}' "
+                f"is not a file and will not be included in job bundle"
+            )
+            continue
+
+        # Add to set (automatically deduplicates)
+        preset_files.add(preset_file)
+        _logger.debug(f"Added preset file to attachments: {preset_file}")
+
+    # Convert set to sorted list for consistent ordering
+    return sorted(list(preset_files))

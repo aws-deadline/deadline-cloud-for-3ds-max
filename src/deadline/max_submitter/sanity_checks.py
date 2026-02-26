@@ -7,8 +7,13 @@
 import pymxs  # noqa
 from pymxs import runtime as rt
 
+from deadline.max_shared.utilities.max_utils import get_batch_render_views
 from deadline.max_submitter.utilities import max_utils
-from deadline.max_submitter.data_classes import RenderSubmitterUISettings
+from deadline.max_submitter.data_classes import (
+    PARAM_NAME_REGEX,
+    RenderSubmitterUISettings,
+    sanitize_param_name,
+)
 from deadline.max_submitter.data_const import (
     ALL_CAMERAS_STR,
     ALL_STEREO_CAMERAS_STR,
@@ -60,6 +65,7 @@ def check_sanity(settings: RenderSubmitterUISettings):
 
     check_sanity_cameras(settings)
     check_sanity_state_sets(settings)
+    check_sanity_batch_render(settings)
 
     if settings.override_frame_range:
         if not settings.frame_list:
@@ -177,6 +183,14 @@ def check_sanity_specific_state_set(settings: RenderSubmitterUISettings, state_s
             f"The state set name {state_set} is too long. The max length allowed is {STEP_NAME_MAX_STRING_LENGTH}."
         )
 
+    # Validate that the sanitized state set name produces a valid parameter name component
+    sanitized = sanitize_param_name(state_set)
+    if not PARAM_NAME_REGEX.match(sanitized):
+        raise Exception(
+            f"The state set name '{state_set}' cannot be converted to a valid parameter name. "
+            "Names must contain at least one alphanumeric character or underscore."
+        )
+
     renderer_name = str(rt.renderers.current).split(":")[0]
 
     # Check if renderer is supported - either exact match or starts with an allowed renderer
@@ -217,3 +231,92 @@ def check_sanity_specific_state_set(settings: RenderSubmitterUISettings, state_s
             raise Exception(
                 f"Output filename for {state_set} isn't set in render settings or in submitter UI"
             )
+
+
+def check_sanity_batch_render(settings: RenderSubmitterUISettings):
+    """
+    All batch render related sanity checks.
+
+    :param settings: a RenderSubmitterUISettings object containing the latest UI settings
+    """
+    # Only perform batch render checks if batch rendering is enabled
+    if not settings.batch_render_enabled:
+        return
+
+    # Get all batch render views from the scene
+    all_batch_views = get_batch_render_views()
+
+    # Filter to only enabled items
+    enabled_batch_views = [item for item in all_batch_views if item.enabled]
+
+    # Check if any batch views are enabled
+    if not enabled_batch_views:
+        raise Exception(
+            "No enabled batch views found. Please enable at least one view in the Batch Render Manager."
+        )
+
+    # Check for mutual exclusivity between Batch Render Scene States and State Sets.
+    # 3ds Max's Batch Render uses the older "Scene States" system, which is incompatible
+    # with the newer "State Sets" system. Both modify overlapping scene properties (lights,
+    # materials, cameras, render settings) and applying both causes undefined behavior.
+    # This matches how Deadline 10 handled it: Batch Render + Scene States and State Sets
+    # were treated as separate, mutually exclusive submission workflows.
+    items_with_scene_states = [item for item in enabled_batch_views if item.scene_state]
+    if items_with_scene_states:
+        item_names = ", ".join(f"'{item.name}'" for item in items_with_scene_states)
+        raise Exception(
+            f"Batch Render views with Scene States cannot be combined with State Sets.\n\n"
+            f"The following batch items have Scene States assigned: {item_names}.\n\n"
+            "Scene States (used by Batch Render) and State Sets are separate 3ds Max features "
+            "that modify overlapping scene properties. Applying both leads to conflicts.\n\n"
+            "To fix this, either:\n"
+            "  - Remove the Scene State assignments from the batch views in the Batch Render dialog, or\n"
+            "  - Use State Sets submission (without Batch Render) instead."
+        )
+
+    # Validate that batch view names produce valid parameter name components
+    for item in enabled_batch_views:
+        sanitized = sanitize_param_name(item.name)
+        if not PARAM_NAME_REGEX.match(sanitized):
+            raise Exception(
+                f"The batch item name '{item.name}' cannot be converted to a valid parameter name. "
+                "Names must contain at least one alphanumeric character or underscore."
+            )
+
+    # Collect warnings (non-blocking issues)
+    warnings = []
+
+    # Check for missing output paths
+    for item in enabled_batch_views:
+        if not item.output_filename:
+            warnings.append(f"batch item '{item.name}' has no output path specified.")
+
+    # Check for conflicting output paths
+    output_paths: dict[str, str] = {}
+    for item in enabled_batch_views:
+        output_path = item.output_filename
+        if output_path:
+            if output_path in output_paths:
+                warnings.append(
+                    f"Multiple batch views write to the same output path: {output_path} "
+                    f"(items: {output_paths[output_path]}, {item.name})"
+                )
+                output_paths[output_path] += f", {item.name}"
+            else:
+                output_paths[output_path] = item.name
+
+    # Check for missing cameras
+    scene_cameras = max_utils.get_camera_names()
+    for item in enabled_batch_views:
+        if item.camera and item.camera not in scene_cameras:
+            warnings.append(
+                f"Camera '{item.camera}' specified in batch item '{item.name}' does not exist in scene."
+            )
+
+    # Log warnings (allow submission to continue)
+    if warnings:
+        import logging
+
+        _logger = logging.getLogger(__name__)
+        for warning in warnings:
+            _logger.warning(f"Batch render validation: {warning}")

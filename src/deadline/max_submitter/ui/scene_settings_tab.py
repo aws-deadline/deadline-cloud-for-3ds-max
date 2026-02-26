@@ -30,14 +30,18 @@ from qtpy.QtWidgets import (  # type: ignore
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
     QSizePolicy,
     QSpacerItem,
+    QTableWidget,
+    QTableWidgetItem,
     QWidget,
 )
+from deadline.max_shared.utilities.max_utils import get_batch_render_views
 from deadline.max_submitter.utilities import max_utils
 from deadline.max_submitter.ui.render_elements_widget import RenderElementsWidget
 
@@ -130,6 +134,8 @@ class SceneSettingsWidget(QWidget):
         Function that creates all the Qt UI elements for the job specific settings tab
         """
         lyt = QGridLayout(self)
+        lyt.setColumnStretch(0, 0)
+        lyt.setColumnStretch(1, 1)
 
         # Project path
         self.proj_path_txt = QLineEdit(self)
@@ -166,6 +172,10 @@ class SceneSettingsWidget(QWidget):
         (self.state_sets_box.currentIndexChanged.connect(self._update_state_set))
         self.state_sets_box.currentIndexChanged.connect(lambda _: self._update_filename_preview())
 
+        # Batch Rendering section
+        self._build_batch_rendering_ui()
+        lyt.addWidget(self.batch_rendering_grp_box, 5, 0, 1, 2)
+
         # Renderer
         self.renderers_box = QComboBox(self)
         self.renderers_box.setEnabled(False)
@@ -178,8 +188,8 @@ class SceneSettingsWidget(QWidget):
 
             if str(renderer).split("__")[0] in ALLOWED_RENDERERS:
                 self.renderers_box.addItem(renderer.replace("_", " "), renderer)
-        lyt.addWidget(QLabel("Renderer"), 5, 0)
-        lyt.addWidget(self.renderers_box, 5, 1)
+        lyt.addWidget(QLabel("Renderer"), 6, 0)
+        lyt.addWidget(self.renderers_box, 6, 1)
 
         # Stereo Cameras selection
         self.stereo_cameras_box = QComboBox(self)
@@ -200,14 +210,14 @@ class SceneSettingsWidget(QWidget):
         else:
             self.stereo_cameras_box.addItem("Disable Stereo Camera Submission", "None")
             self.stereo_cameras_box.setEnabled(False)
-        lyt.addWidget(QLabel("Stereo Cameras Selection"), 6, 0)
-        lyt.addWidget(self.stereo_cameras_box, 6, 1)
+        lyt.addWidget(QLabel("Stereo Cameras Selection"), 7, 0)
+        lyt.addWidget(self.stereo_cameras_box, 7, 1)
         self.stereo_cameras_box.currentIndexChanged.connect(self._fill_cameras_box)
 
         # Cameras to render selection
         self.cameras_box = QComboBox(self)
-        lyt.addWidget(QLabel("Cameras To Render"), 7, 0)
-        lyt.addWidget(self.cameras_box, 7, 1)
+        lyt.addWidget(QLabel("Cameras To Render"), 8, 0)
+        lyt.addWidget(self.cameras_box, 8, 1)
         self.cameras_box.currentIndexChanged.connect(lambda _: self._update_filename_preview())
 
         # Override frame range
@@ -217,8 +227,8 @@ class SceneSettingsWidget(QWidget):
             "Frame range you want to use as override. \n" "E.g. 1,3,5-10 or 1, 3, 5-10"
         )
         self.style_sheet = self.frame_override_txt.styleSheet()
-        lyt.addWidget(self.frame_override_chck, 8, 0)
-        lyt.addWidget(self.frame_override_txt, 8, 1)
+        lyt.addWidget(self.frame_override_chck, 9, 0)
+        lyt.addWidget(self.frame_override_txt, 9, 1)
         self.frame_override_chck.stateChanged.connect(self.activate_frame_override_changed)
 
         # Frame range validation
@@ -235,23 +245,23 @@ class SceneSettingsWidget(QWidget):
 
         # Scene tweaks group box
         self._build_scene_tweaks_ui()
-        lyt.addWidget(self.scene_tweaks_grp_box, 9, 0, 3, 5)
+        lyt.addWidget(self.scene_tweaks_grp_box, 10, 0, 1, 2)
 
         # Render elements widget
         self.render_elements_widget = RenderElementsWidget(settings, self)
         self.render_elements_widget.validation_changed.connect(
             self._on_render_elements_validation_changed
         )
-        lyt.addWidget(self.render_elements_widget, 12, 0, 5, 5)
+        lyt.addWidget(self.render_elements_widget, 11, 0, 1, 2)
 
         if self.developer_options:
             self.include_adaptor_wheels = QCheckBox(
                 "Developer Option: Include Adaptor Wheels. Add the 'wheels' directory from Job Attachments Tab.",
                 self,
             )
-            lyt.addWidget(self.include_adaptor_wheels, 17, 0)
+            lyt.addWidget(self.include_adaptor_wheels, 12, 0, 1, 2)
 
-        lyt.addItem(QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding), 18, 0)
+        lyt.addItem(QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding), 13, 0)
 
         self._fill_cameras_box(0)
 
@@ -262,7 +272,7 @@ class SceneSettingsWidget(QWidget):
         # Create groupbox
         self.scene_tweaks_grp_box = QGroupBox()
         self.scene_tweaks_grp_box.setTitle("Scene Tweaks")
-        scene_tweaks_lyt = QGridLayout(self)
+        scene_tweaks_lyt = QGridLayout()
         self.scene_tweaks_grp_box.setLayout(scene_tweaks_lyt)
 
         # Merge XRef Objects check box
@@ -304,7 +314,9 @@ class SceneSettingsWidget(QWidget):
         """
         self.output_filename_grp_box = QGroupBox()
         self.output_filename_grp_box.setTitle("Output Filename Settings")
-        fn_lyt = QGridLayout(self)
+        fn_lyt = QGridLayout()
+        fn_lyt.setColumnStretch(0, 0)
+        fn_lyt.setColumnStretch(1, 1)
         self.output_filename_grp_box.setLayout(fn_lyt)
 
         # Filename Pattern
@@ -358,6 +370,56 @@ class SceneSettingsWidget(QWidget):
         )
 
         self.filename_preview_label.setText(preview)
+
+    def _build_batch_rendering_ui(self):
+        """
+        Create a QGroupBox for the batch rendering controls
+        """
+        # Create groupbox
+        self.batch_rendering_grp_box = QGroupBox()
+        self.batch_rendering_grp_box.setTitle("Batch Rendering")
+        batch_rendering_lyt = QGridLayout()
+        batch_rendering_lyt.setColumnStretch(0, 1)
+        batch_rendering_lyt.setColumnStretch(1, 1)
+        self.batch_rendering_grp_box.setLayout(batch_rendering_lyt)
+
+        # Submit Batch Render Queue checkbox
+        self.batch_render_chck = QCheckBox("Submit Batch Render Queue", self)
+        self.batch_render_chck.setToolTip(
+            "Enable to submit all enabled batch views from the Batch Render Manager"
+        )
+        batch_rendering_lyt.addWidget(self.batch_render_chck, 0, 0, 1, 2)
+        self.batch_render_chck.stateChanged.connect(self._on_batch_render_enabled_changed)
+
+        # Open Batch Render Dialog button
+        self.open_batch_dialog_btn = QPushButton("Open Batch Render Dialog", self)
+        self.open_batch_dialog_btn.setToolTip("Open 3ds Max's native Batch Render Manager dialog")
+        batch_rendering_lyt.addWidget(self.open_batch_dialog_btn, 1, 0, 1, 2)
+        self.open_batch_dialog_btn.clicked.connect(self._open_batch_render_dialog)
+
+        # Info label showing enabled item count
+        self.batch_views_info_label = QLabel("No batch views configured", self)
+        batch_rendering_lyt.addWidget(self.batch_views_info_label, 2, 0, 1, 2)
+
+        # batch views table widget (read-only)
+        self.batch_views_table = QTableWidget(self)
+        self.batch_views_table.setColumnCount(9)
+        self.batch_views_table.setHorizontalHeaderLabels(
+            ["", "Name", "Camera", "Preset", "Ovr", "Start", "End", "W", "H"]
+        )
+        self.batch_views_table.setEditTriggers(QTableWidget.NoEditTriggers)  # Read-only
+        self.batch_views_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.batch_views_table.setAlternatingRowColors(True)
+        # Set column resize modes - first column fixed width, others stretch to fill
+        header = self.batch_views_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.Fixed)
+        self.batch_views_table.setColumnWidth(0, 24)  # Narrow enabled column
+        for col in range(1, 9):
+            header.setSectionResizeMode(col, QHeaderView.Stretch)
+        self.batch_views_table.setMinimumHeight(120)
+        self.batch_views_table.setMaximumHeight(180)
+        self.batch_views_table.setToolTip("Batch render views from 3ds Max Batch Render Manager")
+        batch_rendering_lyt.addWidget(self.batch_views_table, 3, 0, 1, 2)
 
     def _on_render_elements_validation_changed(self, warnings):
         """
@@ -484,13 +546,19 @@ class SceneSettingsWidget(QWidget):
     def on_focus_changed(self, old_widget, new_widget):
         """
         Event handler for when the active widget changes.
-        Validates frame range in frame_override_txt QLineEdit.
+        Auto-refreshes batch views when the submitter regains focus,
+        and validates frame range in frame_override_txt QLineEdit.
 
         :param old_widget: widget that lost focus
         :type old_widget: any QWidget
         :param new_widget: widget that gained focus
         :type new_widget: any QWidget
         """
+
+        # Auto-refresh batch views when the submitter regains focus
+        if new_widget is not None and self.isAncestorOf(new_widget):
+            if hasattr(self, "batch_render_chck") and self.batch_render_chck.isChecked():
+                self._refresh_batch_views()
 
         if self.frame_override_txt is not old_widget:
             return
@@ -582,6 +650,12 @@ class SceneSettingsWidget(QWidget):
         # Update render elements widget from settings
         self.render_elements_widget.update_settings_from_data_class(settings)
 
+        # Update batch rendering settings
+        self.batch_render_chck.setChecked(settings.batch_render_enabled)
+        # Refresh batch views list on initial load
+        if settings.batch_render_enabled:
+            self._refresh_batch_views()
+
     def update_settings(self, settings):
         """
         Update a scene settings object with the latest values.
@@ -623,6 +697,18 @@ class SceneSettingsWidget(QWidget):
         # Keep render_element_output_filenames empty for now
         settings.render_element_output_filenames = []
 
+        # Update batch rendering settings
+        settings.batch_render_enabled = self.batch_render_chck.isChecked()
+
+        # Query 3ds Max directly for enabled batch views
+        try:
+            batch_views = get_batch_render_views()
+            enabled_views = [item.name for item in batch_views if item.enabled]
+        except Exception as e:
+            _logger.warning(f"Failed to get batch views from 3ds Max: {e}")
+            enabled_views = []
+        settings.batch_render.enabled_views = enabled_views
+
     def activate_frame_override_changed(self, state):
         """
         Set the activated/deactivated status of the Frame override text box
@@ -647,3 +733,127 @@ class SceneSettingsWidget(QWidget):
         # If the selected renderer isn't in the list set it to the 'Renderer not supported' option
         else:
             self.renderers_box.setCurrentIndex(0)
+
+    def _on_batch_render_enabled_changed(self, state):
+        """
+        Handle batch render checkbox state change
+        """
+        enabled = Qt.CheckState(state) == Qt.Checked
+        _logger.debug(f"Batch render enabled changed to: {enabled}")
+
+        if enabled:
+            self._refresh_batch_views()
+        else:
+            self._clear_batch_views()
+
+    def _open_batch_render_dialog(self):
+        """
+        Open 3ds Max's native Batch Render Manager dialog
+        """
+        try:
+            # Use actionMan to execute the Batch Render menu action
+            # This is the same method Deadline 10 used
+            rt.actionMan.executeAction(-43434444, "4096")
+            _logger.debug("Opened Batch Render Manager dialog")
+        except Exception as e:
+            _logger.error(f"Failed to open Batch Render Manager dialog: {e}")
+            QMessageBox.warning(
+                self,
+                "Error Opening Batch Render Dialog",
+                f"Failed to open the Batch Render Manager dialog:\n{str(e)}",
+            )
+
+    def _clear_batch_views(self):
+        """Clear the batch views table and reset the info label."""
+        self.batch_views_table.setRowCount(0)
+        self.batch_views_info_label.setText("No batch views configured")
+
+    def _refresh_batch_views(self):
+        """
+        Refresh the list of batch views from the Batch Render Manager
+        """
+        try:
+            batch_views = get_batch_render_views()
+            self._populate_batch_views_list(batch_views)
+            _logger.debug(f"Refreshed batch items list: {len(batch_views)} views found")
+        except Exception as e:
+            _logger.error(f"Failed to refresh batch views: {e}")
+            QMessageBox.warning(
+                self,
+                "Error Refreshing batch views",
+                f"Failed to refresh batch views from the Batch Render Manager:\n{str(e)}",
+            )
+
+    def _populate_batch_views_list(self, batch_views):
+        """
+        Populate the batch items table widget with batch view data.
+
+        Shows all batch views in a read-only table with columns for each field.
+        """
+        self.batch_views_table.setRowCount(0)  # Clear existing rows
+
+        enabled_count = 0
+        total_count = len(batch_views)
+
+        for row, item in enumerate(batch_views):
+            self.batch_views_table.insertRow(row)
+
+            if item.enabled:
+                enabled_count += 1
+
+            # Column 0: Enabled (checkbox-style text)
+            enabled_item = QTableWidgetItem("✓" if item.enabled else "")
+            enabled_item.setTextAlignment(Qt.AlignCenter)
+            self.batch_views_table.setItem(row, 0, enabled_item)
+
+            # Column 1: Name
+            name_item = QTableWidgetItem(item.name)
+            self.batch_views_table.setItem(row, 1, name_item)
+
+            # Column 2: Camera
+            camera = item.camera or "Viewport"
+            camera_item = QTableWidgetItem(camera)
+            self.batch_views_table.setItem(row, 2, camera_item)
+
+            # Column 3: Preset file
+            preset = item.preset_file or ""
+            preset_display = os.path.basename(preset) if preset else ""
+            preset_item = QTableWidgetItem(preset_display)
+            preset_item.setToolTip(preset)  # Full path in tooltip
+            self.batch_views_table.setItem(row, 3, preset_item)
+
+            # Column 4: Override preset
+            override_item = QTableWidgetItem("✓" if item.override_preset else "")
+            override_item.setTextAlignment(Qt.AlignCenter)
+            self.batch_views_table.setItem(row, 4, override_item)
+
+            # Column 5: Frame start
+            frame_start_item = QTableWidgetItem(
+                str(item.frame_start) if item.frame_start is not None else ""
+            )
+            self.batch_views_table.setItem(row, 5, frame_start_item)
+
+            # Column 6: Frame end
+            frame_end_item = QTableWidgetItem(
+                str(item.frame_end) if item.frame_end is not None else ""
+            )
+            self.batch_views_table.setItem(row, 6, frame_end_item)
+
+            # Column 7: Width
+            width_item = QTableWidgetItem(str(item.width) if item.width is not None else "")
+            self.batch_views_table.setItem(row, 7, width_item)
+
+            # Column 8: Height
+            height_item = QTableWidgetItem(str(item.height) if item.height is not None else "")
+            self.batch_views_table.setItem(row, 8, height_item)
+
+            # Store full item data in first column for later retrieval
+            enabled_item.setData(Qt.UserRole, item)
+
+        # Update info label
+        if total_count == 0:
+            self.batch_views_info_label.setText("No batch views found")
+        else:
+            self.batch_views_info_label.setText(
+                f"{enabled_count} of {total_count} batch views enabled"
+            )

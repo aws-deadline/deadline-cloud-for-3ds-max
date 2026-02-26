@@ -33,6 +33,10 @@
         "state_set": {
             "type": "string"
         },
+        "batch_render_view": {
+            "type": "string",
+            "description": "Name of the batch render view to apply settings from"
+        },
         "renderer": {
             "oneOf": [
                 {

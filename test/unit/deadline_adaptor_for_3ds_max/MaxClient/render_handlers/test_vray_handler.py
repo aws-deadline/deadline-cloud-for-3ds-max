@@ -185,9 +185,6 @@ class TestVrayHandler:
                         "deadline.max_adaptor.MaxClient.render_handlers.vray_handler.configure_vray_raw_output"
                     ) as mock_raw_output,
                     patch(
-                        "deadline.max_adaptor.MaxClient.render_handlers.vray_handler.set_vray_output_path"
-                    ) as mock_standard_output,
-                    patch(
                         "deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.os.path.exists"
                     ) as mock_exists,
                     patch(
@@ -221,13 +218,7 @@ class TestVrayHandler:
                             output_name="test_render",
                             output_format=output_format,
                         )
-                        mock_standard_output.assert_not_called()
                     else:
-                        mock_standard_output.assert_called_once_with(
-                            output_path="C:/output",
-                            output_name="test_render",
-                            output_format=output_format,
-                        )
                         mock_raw_output.assert_not_called()
 
     def test_start_render_logs_raw_output_mode(self) -> None:

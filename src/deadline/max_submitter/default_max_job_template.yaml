@@ -18,14 +18,6 @@ parameterDefinitions:
       patterns:
       - '*'
   description: The Max scene file to render.
-- name: OutputFileName
-  type: STRING
-  userInterface:
-    control: LINE_EDIT
-    label: Output File Name
-    groupLabel: 3dsMax Settings
-  description: The output file name.
-  default: "image_###"
 - name: StrictErrorChecking
   type: STRING
   userInterface:

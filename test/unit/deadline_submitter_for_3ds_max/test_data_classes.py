@@ -15,6 +15,7 @@ from deadline.max_submitter.data_classes import (
     StateSetData,
     BatchRenderSettings,
     RenderSubmitterUISettings,
+    SubmissionMode,
 )
 from deadline.max_shared.utilities.max_utils import BatchRenderView
 
@@ -78,17 +79,16 @@ class TestStepData:
         assert step_data.name == "MyStateSet"
 
     def test_name_with_batch_view(self, sample_state_set):
-        """Verify name includes batch render view name when present."""
+        """Verify name uses batch view name when batch view is present."""
         batch_view = BatchRenderView(name="BatchRender001")
         step_data = StepData(
-            state_set=sample_state_set,
             batch_view=batch_view,
             frame_range="1-100",
             width=1920,
             height=1080,
         )
 
-        assert step_data.name == "StateSet_MyStateSet_Batch_BatchRender001"
+        assert step_data.name == "BatchRender001"
 
 
 class TestRenderSubmitterUISettings:
@@ -106,7 +106,7 @@ class TestRenderSubmitterUISettings:
         """Verify load_sticky_settings correctly deserializes nested BatchRenderSettings."""
         sticky_data = {
             "name": "TestJob",
-            "batch_render_enabled": True,
+            "submission_mode": SubmissionMode.BATCH_RENDER.value,
             "batch_render": {
                 "enabled_views": ["Item1", "Item2", "Item3"],
             },
@@ -120,7 +120,7 @@ class TestRenderSubmitterUISettings:
                     settings.load_sticky_settings()
 
         assert settings.name == "TestJob"
-        assert settings.batch_render_enabled is True
+        assert settings.submission_mode == SubmissionMode.BATCH_RENDER.value
         assert isinstance(settings.batch_render, BatchRenderSettings)
         assert settings.batch_render.enabled_views == ["Item1", "Item2", "Item3"]
         assert settings.priority == 75
@@ -172,7 +172,7 @@ class TestRenderSubmitterUISettings:
         """Verify save_sticky_settings correctly serializes nested BatchRenderSettings."""
         settings = RenderSubmitterUISettings()
         settings.name = "TestJob"
-        settings.batch_render_enabled = True
+        settings.submission_mode = SubmissionMode.BATCH_RENDER.value
         settings.batch_render = BatchRenderSettings(enabled_views=["Item1", "view2"])
         settings.priority = 80
 
@@ -187,7 +187,7 @@ class TestRenderSubmitterUISettings:
         written_data = json.loads("".join(written_chunks))
 
         assert written_data["name"] == "TestJob"
-        assert written_data["batch_render_enabled"] is True
+        assert written_data["submission_mode"] == SubmissionMode.BATCH_RENDER.value
         assert written_data["batch_render"] == {"enabled_views": ["Item1", "view2"]}
         assert written_data["priority"] == 80
 

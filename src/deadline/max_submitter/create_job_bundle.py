@@ -8,7 +8,7 @@ import logging
 import os
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any
 
 import yaml
 from PySide6.QtCore import Qt
@@ -21,13 +21,36 @@ from data_classes import (
     RenderSubmitterUISettings,
     StateSetData,
     StepData,
+    SubmissionMode,
 )
 from data_const import ALL_CAMERAS_STR, ALL_STEREO_CAMERAS_STR
 from deadline.client.exceptions import DeadlineOperationError
 from deadline.max_shared.utilities.max_utils import get_batch_render_views, get_render_elements
+from pymxs import runtime as rt
 from utilities import max_utils
 
 _logger = logging.getLogger(__name__)
+
+# Maximum length for an OpenJD parameter definition name.
+_OPENJD_PARAM_NAME_MAX_LENGTH: int = 64
+
+
+def _make_param_name(step: "StepData", suffix: str) -> str:
+    """Build an OpenJD parameter name from a step and suffix, truncating if needed.
+
+    For batch views, prefixes the sanitized name with the view's index from the
+    Batch Render Manager (e.g. ``B1_MyBatchView_Frames``). The name portion is
+    truncated so the full parameter name fits within the OpenJD 64-character limit.
+
+    For state sets (default mode), no index prefix is added.
+    """
+    base = step.name
+    if step.batch_view is not None:
+        prefix = f"B{step.batch_view.index}_"
+        budget = _OPENJD_PARAM_NAME_MAX_LENGTH - len(prefix) - len("_") - len(suffix)
+        return f"{prefix}{base[:budget]}_{suffix}"
+    else:
+        return f"{base}_{suffix}"
 
 
 def get_job_template(
@@ -258,32 +281,29 @@ def _create_param_definitions(
     if settings.description:
         job_template["description"] = settings.description
 
-    # Get batch render views if batch rendering is enabled
-    batch_views: list[BatchRenderView] = []
-    if settings.batch_render_enabled and settings.batch_render.enabled_views:
-        all_batch_views = get_batch_render_views()
-        # Filter to only enabled items
-        batch_views = [item for item in all_batch_views if item.enabled]
-
-    # Build StepData list for Cartesian product of state sets × batch views
+    # Build StepData list based on submission mode (mutually exclusive)
     steps: list[StepData] = []
-    items_to_process: List[Optional[BatchRenderView]] = batch_views if batch_views else [None]
-    for state_set in state_sets:
-        for batch_view in items_to_process:
-            steps.append(StepData(state_set=state_set, batch_view=batch_view))
+    if settings.submission_mode == SubmissionMode.BATCH_RENDER.value:
+        # One step per enabled batch view, no state set
+        if settings.batch_render.enabled_views:
+            all_batch_views = get_batch_render_views()
+            batch_views = [item for item in all_batch_views if item.enabled]
+            steps = [StepData(batch_view=bv) for bv in batch_views]
+    else:
+        # DEFAULT — existing State Sets + Cameras workflow
+        steps = [StepData(state_set=ss) for ss in state_sets]
 
     # Create step-specific parameter definitions
     step_params: list[dict[str, Any]] = []
     for step in steps:
-        group_label = (
-            f"{step.state_set.ui_group_label} - {step.batch_view.name}"
-            if step.batch_view
-            else step.state_set.ui_group_label
-        )
+        if step.batch_view and step.state_set is None:
+            group_label = step.batch_view.name
+        else:
+            group_label = step.state_set.ui_group_label
         # Frames parameter
         step_params.append(
             {
-                "name": f"{step.name}_Frames",
+                "name": _make_param_name(step, "Frames"),
                 "type": "STRING",
                 "userInterface": {
                     "control": "LINE_EDIT",
@@ -297,7 +317,7 @@ def _create_param_definitions(
         # OutputFilePath parameter
         step_params.append(
             {
-                "name": f"{step.name}_OutputFilePath",
+                "name": _make_param_name(step, "OutputFilePath"),
                 "type": "PATH",
                 "objectType": "DIRECTORY",
                 "dataFlow": "OUT",
@@ -309,10 +329,23 @@ def _create_param_definitions(
                 "description": "The render output path.",
             }
         )
+        # OutputFileName parameter
+        step_params.append(
+            {
+                "name": _make_param_name(step, "OutputFileName"),
+                "type": "STRING",
+                "userInterface": {
+                    "control": "LINE_EDIT",
+                    "label": "Output File Name",
+                    "groupLabel": group_label,
+                },
+                "description": "The output file name.",
+            }
+        )
         # OutputFileFormat parameter
         step_params.append(
             {
-                "name": f"{step.name}_OutputFileFormat",
+                "name": _make_param_name(step, "OutputFileFormat"),
                 "type": "STRING",
                 "userInterface": {
                     "control": "LINE_EDIT",
@@ -325,7 +358,7 @@ def _create_param_definitions(
         # ImageWidth parameter
         step_params.append(
             {
-                "name": f"{step.name}_ImageWidth",
+                "name": _make_param_name(step, "ImageWidth"),
                 "type": "INT",
                 "userInterface": {
                     "control": "SPIN_BOX",
@@ -339,7 +372,7 @@ def _create_param_definitions(
         # ImageHeight parameter
         step_params.append(
             {
-                "name": f"{step.name}_ImageHeight",
+                "name": _make_param_name(step, "ImageHeight"),
                 "type": "INT",
                 "userInterface": {
                     "control": "SPIN_BOX",
@@ -350,6 +383,64 @@ def _create_param_definitions(
                 "description": "The image height of the output.",
             }
         )
+        # Batch render step-specific parameters
+        if step.batch_view is not None:
+            # Camera parameter
+            step_params.append(
+                {
+                    "name": _make_param_name(step, "Camera"),
+                    "type": "STRING",
+                    "userInterface": {
+                        "control": "LINE_EDIT",
+                        "label": "Camera",
+                        "groupLabel": group_label,
+                    },
+                    "description": "The camera to render from.",
+                    "default": "",
+                }
+            )
+            # SceneState parameter
+            step_params.append(
+                {
+                    "name": _make_param_name(step, "SceneState"),
+                    "type": "STRING",
+                    "userInterface": {
+                        "control": "LINE_EDIT",
+                        "label": "Scene State",
+                        "groupLabel": group_label,
+                    },
+                    "description": "Scene state to restore before rendering.",
+                    "default": "",
+                }
+            )
+            # PresetFile parameter
+            step_params.append(
+                {
+                    "name": _make_param_name(step, "PresetFile"),
+                    "type": "STRING",
+                    "userInterface": {
+                        "control": "LINE_EDIT",
+                        "label": "Preset File",
+                        "groupLabel": group_label,
+                    },
+                    "description": "Render preset file (.rps) to load before rendering.",
+                    "default": "",
+                }
+            )
+            # PixelAspect parameter
+            step_params.append(
+                {
+                    "name": _make_param_name(step, "PixelAspect"),
+                    "type": "STRING",
+                    "userInterface": {
+                        "control": "LINE_EDIT",
+                        "label": "Pixel Aspect",
+                        "groupLabel": group_label,
+                    },
+                    "description": "Pixel aspect ratio override.",
+                    "default": "",
+                }
+            )
 
     # Add sorted step-specific parameters
     job_template["parameterDefinitions"].extend(sorted(step_params, key=lambda p: str(p["name"])))
@@ -399,28 +490,25 @@ def _create_step_definitions(
     # Mapping from job template parameter names to init-data keys
     param_to_init_data_key = {
         "OutputFilePath": "output_file_path",
+        "OutputFileName": "output_file_name",
         "OutputFileFormat": "output_file_format",
         "ImageWidth": "image_width",
         "ImageHeight": "image_height",
     }
 
-    # Get batch render views if batch rendering is enabled
-    batch_views: list[BatchRenderView] = []
-    if settings.batch_render_enabled and settings.batch_render.enabled_views:
-        all_batch_views = get_batch_render_views()
-        # Filter to only enabled items
-        batch_views = [item for item in all_batch_views if item.enabled]
-
-    # At least one state set is required
-    if len(state_sets) <= 0:
-        raise ValueError("At least one state set is required.")
-
-    # Build StepData list for Cartesian product of state sets × batch views
+    # Build StepData list based on submission mode (mutually exclusive)
     steps: list[StepData] = []
-    items_to_process: List[Optional[BatchRenderView]] = batch_views if batch_views else [None]
-    for state_set in state_sets:
-        for batch_view in items_to_process:
-            steps.append(StepData(state_set=state_set, batch_view=batch_view))
+    if settings.submission_mode == SubmissionMode.BATCH_RENDER.value:
+        # One step per enabled batch view, no state set
+        if settings.batch_render.enabled_views:
+            all_batch_views = get_batch_render_views()
+            batch_views = [item for item in all_batch_views if item.enabled]
+            steps = [StepData(batch_view=bv) for bv in batch_views]
+    else:
+        # DEFAULT — existing State Sets + Cameras workflow
+        if len(state_sets) <= 0:
+            raise ValueError("At least one state set is required.")
+        steps = [StepData(state_set=ss) for ss in state_sets]
 
     # Create steps from StepData
     for step_data in steps:
@@ -431,43 +519,71 @@ def _create_step_definitions(
 
         # Always use step-specific frame parameter
         parameters_space["taskParameterDefinitions"][0]["range"] = (
-            "{{Param." + step_data.name + "_Frames}}"
+            "{{Param." + _make_param_name(step_data, "Frames") + "}}"
         )
-
-        # If were submitting all cameras, add 'Camera' to task parameters
-        if (
-            settings.camera_selection == ALL_CAMERAS_STR
-            or settings.camera_selection == ALL_STEREO_CAMERAS_STR
-        ):
-            parameters_space["taskParameterDefinitions"].append(
-                {"name": "Camera", "type": "STRING", "range": cameras_in_scene}
-            )
-            run_data = step["script"]["embeddedFiles"][0]
-            run_data["data"] += "camera: '{{Task.Param.Camera}}'"
 
         # init data of the step
         init_data = step["stepEnvironments"][0]["script"]["embeddedFiles"][0]
-        init_data["data"] = (
-            init_data["data"]
-            + f"renderer: {step_data.state_set.renderer}\n"
-            + f"state_set: {step_data.state_set.state_set}\n"
-            + f"output_file_name: {step_data.state_set.output_file_name}\n"
-        )
 
-        # Add batch view name only when batch rendering
-        if step_data.batch_view:
-            init_data["data"] += f"batch_render_view: {step_data.batch_view.name}\n"
+        # Renderer is always required by the adaptor schema
+        init_data["data"] += f"renderer: {settings.renderer}\n"
 
-        # Add step-specific parameters
-        for param_name, init_data_key in param_to_init_data_key.items():
-            init_data["data"] += f"{init_data_key}: '{{{{Param.{step_data.name}_{param_name}}}}}'\n"
+        if settings.submission_mode == SubmissionMode.BATCH_RENDER.value:
+            # Batch render mode: write individual settings from batch view
+            # Camera: only if the batch view has one assigned
+            if step_data.batch_view.camera:
+                init_data[
+                    "data"
+                ] += f"camera: '{{{{Param.{_make_param_name(step_data, 'Camera')}}}}}'\n"
 
-        # If a specific camera is selected, link to the Camera parameter
-        if (
-            settings.camera_selection != ALL_CAMERAS_STR
-            and settings.camera_selection != ALL_STEREO_CAMERAS_STR
-        ):
-            init_data["data"] += "camera: '{{Param.Camera}}'\n"
+            # Scene state: only if assigned
+            if step_data.batch_view.scene_state:
+                init_data[
+                    "data"
+                ] += f"scene_state: '{{{{Param.{_make_param_name(step_data, 'SceneState')}}}}}'\n"
+
+            # Preset file: only if assigned
+            if step_data.batch_view.preset_file:
+                init_data[
+                    "data"
+                ] += f"preset_file: '{{{{Param.{_make_param_name(step_data, 'PresetFile')}}}}}'\n"
+
+            # Pixel aspect: only if override_preset is true and pixel_aspect is set
+            if (
+                step_data.batch_view.override_preset
+                and step_data.batch_view.pixel_aspect is not None
+            ):
+                init_data[
+                    "data"
+                ] += f"pixel_aspect: '{{{{Param.{_make_param_name(step_data, 'PixelAspect')}}}}}'\n"
+        else:
+            # DEFAULT mode: preserve existing init-data logic
+
+            # If submitting all cameras, add 'Camera' to task parameters
+            if (
+                settings.camera_selection == ALL_CAMERAS_STR
+                or settings.camera_selection == ALL_STEREO_CAMERAS_STR
+            ):
+                parameters_space["taskParameterDefinitions"].append(
+                    {"name": "Camera", "type": "STRING", "range": cameras_in_scene}
+                )
+                run_data = step["script"]["embeddedFiles"][0]
+                run_data["data"] += "camera: '{{Task.Param.Camera}}'"
+
+            init_data["data"] += f"state_set: {step_data.state_set.state_set}\n"
+
+            # If a specific camera is selected, link to the Camera parameter
+            if (
+                settings.camera_selection != ALL_CAMERAS_STR
+                and settings.camera_selection != ALL_STEREO_CAMERAS_STR
+            ):
+                init_data["data"] += "camera: '{{Param.Camera}}'\n"
+
+        # Add step-specific output parameters (applies to both modes)
+        for suffix, init_data_key in param_to_init_data_key.items():
+            init_data[
+                "data"
+            ] += f"{init_data_key}: '{{{{Param.{_make_param_name(step_data, suffix)}}}}}'\n"
 
         # Add render element parameters to init data only if render elements exist
         render_elements = get_render_elements()
@@ -484,8 +600,8 @@ def _create_step_definitions(
 
 def _get_batch_view_settings(
     batch_view: BatchRenderView,
-    state_set_frame_range: str,
-    state_set_resolution: tuple[int, int],
+    default_frame_range: str,
+    default_resolution: tuple[int, int],
 ) -> dict[str, Any]:
     """
     Get render settings for a single batch view.
@@ -494,15 +610,15 @@ def _get_batch_view_settings(
     Falls back to state set defaults for any missing values.
 
     :param batch_view: BatchRenderView dataclass instance
-    :param state_set_frame_range: frame range from the state set
-    :param state_set_resolution: (width, height) from the state set
+    :param default_frame_range: default frame range to use
+    :param default_resolution: default resolution to use (width, height)
     :return: dict with keys 'frame_range', 'width', 'height'
     """
     # Initialize with state set defaults
     settings = {
-        "frame_range": state_set_frame_range,
-        "width": state_set_resolution[0],
-        "height": state_set_resolution[1],
+        "frame_range": default_frame_range,
+        "width": default_resolution[0],
+        "height": default_resolution[1],
     }
 
     # Load preset settings if available and not all overrides are provided
@@ -707,57 +823,88 @@ def _get_job_parameters(
 
     parameter_values.append({"name": "MaxSceneFile", "value": max_utils.get_scene_path()})
 
-    # Get batch render views if batch rendering is enabled
-    batch_views: list[BatchRenderView] = []
-    if settings.batch_render_enabled and settings.batch_render.enabled_views:
-        all_batch_views = get_batch_render_views()
-        # Filter to only enabled items
-        batch_views = [item for item in all_batch_views if item.enabled]
-
-    # Build step data list
-    # Use [None] if no batch views to simplify the loop
+    # Build step data list based on submission mode (mutually exclusive)
     steps: list[StepData] = []
-    items_to_process: List[Optional[BatchRenderView]] = batch_views if batch_views else [None]
-    for state_set in state_sets:
-        for batch_view in items_to_process:
+
+    if settings.submission_mode == SubmissionMode.BATCH_RENDER.value:
+        # Batch render mode: one step per enabled batch view, no state set.
+        # Read scene defaults from pymxs API and submitter UI settings as fallbacks.
+        scene_frame_range = max_utils.get_frames()
+        scene_width = int(rt.renderWidth)
+        scene_height = int(rt.renderHeight)
+
+        batch_views: list[BatchRenderView] = []
+        if settings.batch_render.enabled_views:
+            all_batch_views = get_batch_render_views()
+            batch_views = [item for item in all_batch_views if item.enabled]
+
+        for bv in batch_views:
             steps.append(
                 StepData(
-                    state_set=state_set,
-                    batch_view=batch_view,
-                    frame_range=state_set.frame_range,
-                    width=state_set.image_resolution[0],
-                    height=state_set.image_resolution[1],
+                    batch_view=bv,
+                    frame_range=scene_frame_range,
+                    width=scene_width,
+                    height=scene_height,
                 )
             )
 
-    # If batch views exist, process them to extract preset/override settings
-    if batch_views:
-        # Create progress dialog
-        progress = QProgressDialog()
-        progress.setLabelText(f"Generating {len(steps)} steps...")
-        progress.setCancelButton(None)
-        progress.setMinimum(0)
-        progress.setMaximum(len(steps))
-        progress.setWindowTitle("Processing batch Render views")
-        progress.setWindowModality(Qt.ApplicationModal)
-        progress.setMinimumDuration(0)
-        progress.setAutoClose(False)
-        progress.setAutoReset(False)
-        progress.setValue(0)
-        progress.show()
-        QApplication.processEvents()
+        # Process batch views to extract preset/override settings
+        if steps:
+            progress = QProgressDialog()
+            progress.setLabelText(f"Generating {len(steps)} steps...")
+            progress.setCancelButton(None)
+            progress.setMinimum(0)
+            progress.setMaximum(len(steps))
+            progress.setWindowTitle("Processing batch Render views")
+            progress.setWindowModality(Qt.ApplicationModal)
+            progress.setMinimumDuration(0)
+            progress.setAutoClose(False)
+            progress.setAutoReset(False)
+            progress.setValue(0)
+            progress.show()
+            QApplication.processEvents()
 
-        try:
-            for i, step in enumerate(steps):
-                progress.setValue(i)
-                QApplication.processEvents()
+            try:
+                for i, step in enumerate(steps):
+                    progress.setValue(i)
+                    QApplication.processEvents()
 
-                if step.batch_view:
                     settings_dict = _get_batch_view_settings(
                         batch_view=step.batch_view,
-                        state_set_frame_range=step.state_set.frame_range,
-                        state_set_resolution=step.state_set.image_resolution,
+                        default_frame_range=scene_frame_range,
+                        default_resolution=(scene_width, scene_height),
                     )
+
+                    # Validate batch view settings before creating parameters
+                    bv = step.batch_view
+                    if bv.camera:
+                        scene_cameras = [
+                            cam.name for cam in rt.cameras if "$Target:" not in str(cam)
+                        ]
+                        if bv.camera not in scene_cameras:
+                            raise ValueError(
+                                f"Batch view '{bv.name}' references camera '{bv.camera}' "
+                                f"which does not exist in the scene"
+                            )
+                    if bv.scene_state:
+                        if rt.sceneStateMgr.FindSceneState(bv.scene_state) < 0:
+                            raise ValueError(
+                                f"Batch view '{bv.name}' references scene state "
+                                f"'{bv.scene_state}' which does not exist"
+                            )
+                    if bv.preset_file:
+                        if not os.path.exists(bv.preset_file):
+                            raise ValueError(
+                                f"Batch view '{bv.name}' references preset file "
+                                f"'{bv.preset_file}' which does not exist"
+                            )
+                    if bv.override_preset and bv.pixel_aspect is not None:
+                        if bv.pixel_aspect <= 0:
+                            raise ValueError(
+                                f"Batch view '{bv.name}' has invalid pixel aspect: "
+                                f"{bv.pixel_aspect} (must be a positive number)"
+                            )
+
                     # If the user has enabled Override Frame Range, it takes highest
                     # priority over all batch view frame ranges (preset and override alike).
                     if settings.override_frame_range and settings.frame_list:
@@ -766,23 +913,96 @@ def _get_job_parameters(
                         step.frame_range = settings_dict["frame_range"]
                     step.width = settings_dict["width"]
                     step.height = settings_dict["height"]
-        finally:
-            progress.close()
+            finally:
+                progress.close()
+
+    else:
+        # DEFAULT mode: existing State Sets + Cameras workflow, no batch views
+        for state_set in state_sets:
+            steps.append(
+                StepData(
+                    state_set=state_set,
+                    frame_range=state_set.frame_range,
+                    width=state_set.image_resolution[0],
+                    height=state_set.image_resolution[1],
+                )
+            )
 
     # Create parameters for all steps
-    for step in sorted(steps, key=lambda s: s.name):
+    for step in steps:
+        # For default mode, use state set data for output settings.
+        # For batch render mode, extract output dir/name/format from the batch view's
+        # output_filename configured in the scene.
+        if step.state_set is not None:
+            step_output_file_dir = step.state_set.output_file_dir
+            step_output_file_name = step.state_set.output_file_name
+            step_output_file_format = step.state_set.output_file_format
+        else:
+            # Batch render mode: output comes entirely from the batch view's scene data
+            if not step.batch_view.output_filename:
+                raise ValueError(
+                    f"Batch view '{step.batch_view.name}' has no output filename configured "
+                    f"in the Batch Render Manager."
+                )
+            bv_output = step.batch_view.output_filename
+            step_output_file_dir = os.path.dirname(bv_output)
+            bv_basename = os.path.basename(bv_output)
+            bv_name, bv_ext = os.path.splitext(bv_basename)
+            step_output_file_name = bv_name
+            step_output_file_format = bv_ext if bv_ext else ""
+            if not step_output_file_format:
+                raise ValueError(
+                    f"Batch view '{step.batch_view.name}' output filename "
+                    f"'{bv_basename}' has no file extension."
+                )
+
         parameter_values.extend(
             [
-                {"name": f"{step.name}_Frames", "value": step.frame_range},
-                {"name": f"{step.name}_OutputFilePath", "value": step.state_set.output_file_dir},
+                {"name": _make_param_name(step, "Frames"), "value": step.frame_range},
                 {
-                    "name": f"{step.name}_OutputFileFormat",
-                    "value": step.state_set.output_file_format,
+                    "name": _make_param_name(step, "OutputFilePath"),
+                    "value": step_output_file_dir,
                 },
-                {"name": f"{step.name}_ImageWidth", "value": step.width},
-                {"name": f"{step.name}_ImageHeight", "value": step.height},
+                {
+                    "name": _make_param_name(step, "OutputFileName"),
+                    "value": step_output_file_name,
+                },
+                {
+                    "name": _make_param_name(step, "OutputFileFormat"),
+                    "value": step_output_file_format,
+                },
+                {"name": _make_param_name(step, "ImageWidth"), "value": step.width},
+                {"name": _make_param_name(step, "ImageHeight"), "value": step.height},
             ]
         )
+
+        # Add batch render view-specific parameter values
+        if step.batch_view is not None:
+            if step.batch_view.camera:
+                parameter_values.append(
+                    {"name": _make_param_name(step, "Camera"), "value": step.batch_view.camera}
+                )
+            if step.batch_view.scene_state:
+                parameter_values.append(
+                    {
+                        "name": _make_param_name(step, "SceneState"),
+                        "value": step.batch_view.scene_state,
+                    }
+                )
+            if step.batch_view.preset_file:
+                parameter_values.append(
+                    {
+                        "name": _make_param_name(step, "PresetFile"),
+                        "value": step.batch_view.preset_file,
+                    }
+                )
+            if step.batch_view.override_preset and step.batch_view.pixel_aspect is not None:
+                parameter_values.append(
+                    {
+                        "name": _make_param_name(step, "PixelAspect"),
+                        "value": str(step.batch_view.pixel_aspect),
+                    }
+                )
 
     # Only add camera parameter when a specific camera is selected
     if (

@@ -17,7 +17,11 @@ from deadline.max_submitter.sanity_checks import (
     ALL_STATE_SETS_STR,
     ALLOWED_RENDERERS,
 )
-from deadline.max_submitter.data_classes import BatchRenderSettings, RenderSubmitterUISettings
+from deadline.max_submitter.data_classes import (
+    BatchRenderSettings,
+    RenderSubmitterUISettings,
+    SubmissionMode,
+)
 
 
 @fixture(scope="function", autouse=True)
@@ -238,7 +242,7 @@ class TestCheckSanityBatchRender:
         """Create settings with batch rendering enabled."""
         settings = RenderSubmitterUISettings()
         settings.name = "test_job"
-        settings.batch_render_enabled = True
+        settings.submission_mode = SubmissionMode.BATCH_RENDER.value
         settings.batch_render = BatchRenderSettings(enabled_views=["Item1", "view2"])
         return settings
 
@@ -247,7 +251,7 @@ class TestCheckSanityBatchRender:
         self, mock_get_batch_views, default_settings: RenderSubmitterUISettings
     ):
         """Verify no checks are performed when batch rendering is disabled."""
-        default_settings.batch_render_enabled = False
+        default_settings.submission_mode = SubmissionMode.DEFAULT.value
 
         # Should not raise and should not call get_batch_render_views
         check_sanity_batch_render(default_settings)
@@ -285,24 +289,25 @@ class TestCheckSanityBatchRender:
 
     @patch("deadline.max_submitter.sanity_checks.max_utils.get_camera_names")
     @patch("deadline.max_submitter.sanity_checks.get_batch_render_views")
-    def test_warns_on_missing_output_path(
+    def test_raises_on_missing_output_filename(
         self,
         mock_get_batch_views,
         mock_get_camera_names,
         batch_settings: RenderSubmitterUISettings,
-        caplog,
     ):
-        """Verify warning is logged when batch view has no output path."""
+        """Verify exception lists all batch views missing output filenames."""
         mock_get_camera_names.return_value = ["Camera001"]
         mock_get_batch_views.return_value = [
-            BatchRenderView(name="view1", enabled=True, output_filename=""),  # No output
-            BatchRenderView(name="view2", enabled=True, output_filename="C:/output/render.png"),
+            BatchRenderView(name="view1", enabled=True, output_filename=""),
+            BatchRenderView(name="view2", enabled=True, output_filename=""),
+            BatchRenderView(name="view3", enabled=True, output_filename="C:/output/render.png"),
         ]
 
-        with caplog.at_level(logging.WARNING):
+        with raises(
+            Exception,
+            match=r"(?s)- view1.*- view2",
+        ):
             check_sanity_batch_render(batch_settings)
-
-        assert "has no output path" in caplog.text
 
     @patch("deadline.max_submitter.sanity_checks.max_utils.get_camera_names")
     @patch("deadline.max_submitter.sanity_checks.get_batch_render_views")
@@ -352,63 +357,3 @@ class TestCheckSanityBatchRender:
             check_sanity_batch_render(batch_settings)
 
         assert "does not exist in scene" in caplog.text
-
-    @patch("deadline.max_submitter.sanity_checks.get_batch_render_views")
-    def test_raises_when_batch_views_have_scene_states(
-        self, mock_get_batch_views, batch_settings: RenderSubmitterUISettings
-    ):
-        """Verify exception when batch views have Scene States assigned (incompatible with State Sets)."""
-        mock_get_batch_views.return_value = [
-            BatchRenderView(
-                name="Item1",
-                enabled=True,
-                scene_state="DayLighting",
-                output_filename="C:/output/render.png",
-            ),
-            BatchRenderView(name="view2", enabled=True, output_filename="C:/output/render2.png"),
-        ]
-
-        with raises(Exception, match="Scene States cannot be combined with State Sets"):
-            check_sanity_batch_render(batch_settings)
-
-    @patch("deadline.max_submitter.sanity_checks.get_batch_render_views")
-    def test_passes_when_batch_views_have_no_scene_states(
-        self, mock_get_batch_views, batch_settings: RenderSubmitterUISettings
-    ):
-        """Verify no exception when batch views don't have Scene States assigned."""
-
-        mock_get_batch_views.return_value = [
-            BatchRenderView(name="view1", enabled=True, output_filename="C:/output/render.png"),
-            BatchRenderView(
-                name="Item2",
-                enabled=True,
-                scene_state=None,
-                output_filename="C:/output/render2.png",
-            ),
-        ]
-
-        # Should not raise - no scene states assigned
-        check_sanity_batch_render(batch_settings)
-
-    @patch("deadline.max_submitter.sanity_checks.get_batch_render_views")
-    def test_raises_lists_all_items_with_scene_states(
-        self, mock_get_batch_views, batch_settings: RenderSubmitterUISettings
-    ):
-        """Verify error message lists all batch views that have Scene States."""
-        mock_get_batch_views.return_value = [
-            BatchRenderView(
-                name="Item1",
-                enabled=True,
-                scene_state="DayLighting",
-                output_filename="C:/output/render.png",
-            ),
-            BatchRenderView(
-                name="Item2",
-                enabled=True,
-                scene_state="NightLighting",
-                output_filename="C:/output/render2.png",
-            ),
-        ]
-
-        with raises(Exception, match="'Item1'.*'Item2'"):
-            check_sanity_batch_render(batch_settings)

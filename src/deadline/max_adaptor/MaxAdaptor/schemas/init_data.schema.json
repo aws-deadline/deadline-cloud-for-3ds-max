@@ -33,9 +33,17 @@
         "state_set": {
             "type": "string"
         },
-        "batch_render_view": {
+        "scene_state": {
             "type": "string",
-            "description": "Name of the batch render view to apply settings from"
+            "description": "Scene state name to restore via rt.sceneStateMgr"
+        },
+        "preset_file": {
+            "type": "string",
+            "description": "Path to render preset file (.rps) to load"
+        },
+        "pixel_aspect": {
+            "type": "string",
+            "description": "Pixel aspect ratio override for rendering (string representation of a positive number)"
         },
         "renderer": {
             "oneOf": [

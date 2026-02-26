@@ -99,6 +99,7 @@ class BatchRenderView:
     """
 
     name: str
+    index: int = 0
     enabled: bool = True
     camera: Optional[str] = None
     output_filename: str = ""
@@ -173,6 +174,7 @@ def _view_to_batch_render_view(view, index: int) -> BatchRenderView:
 
     return BatchRenderView(
         name=name,
+        index=index,
         enabled=enabled,
         camera=camera,
         output_filename=output_filename,
@@ -214,28 +216,6 @@ def get_batch_render_views() -> list[BatchRenderView]:
         )
 
     return batch_views
-
-
-def get_batch_render_view_by_name(view_name: str) -> BatchRenderView:
-    """
-    Find a batch render view by name in the Batch Render Manager.
-
-    :param view_name: Name of the batch render view to find
-    :returns: BatchRenderView dataclass instance
-    :raises RuntimeError: if view not found or Batch Render Manager unavailable
-    """
-    batch_mgr = rt.batchRenderMgr
-    if not batch_mgr:
-        raise RuntimeError("Batch Render Manager not available")
-
-    num_items = batch_mgr.numViews
-    for i in range(1, num_items + 1):
-        view = batch_mgr.getView(i)
-        if view and view.name and str(view.name) == view_name:
-            _logger.debug(f"Found batch render view: {view_name}")
-            return _view_to_batch_render_view(view, i)
-
-    raise RuntimeError(f"batch view '{view_name}' not found in Batch Render Manager")
 
 
 # V-Ray RT class IDs (GPU renderer)
@@ -590,38 +570,6 @@ def configure_render_element_paths(
     return warnings
 
 
-def set_vray_output_path(
-    output_path: str,
-    output_name: str,
-    output_format: str = ".exr",
-) -> None:
-    """
-    Set V-Ray split buffer output path for both standard V-Ray and V-Ray RT.
-
-    Only sets the output path (output_splitfilename).
-    Split buffer flags are controlled by configure_vray_render_elements().
-
-    :param output_path: base output directory path
-    :param output_name: base output filename
-    :param output_format: output file format/extension (default: .exr)
-    :raises RuntimeError: if V-Ray output path cannot be set
-    """
-    split_filepath: str = os.path.join(output_path, f"{output_name}{output_format}")
-    warnings: list[str] = []
-
-    _logger.debug(
-        f"[set_vray_output_path] Attempting to set output_splitfilename = {split_filepath}"
-    )
-    _set_vray_property("output_splitfilename", split_filepath, warnings)
-
-    if warnings:
-        error_msg: str = f"[set_vray_output_path] Failed to set V-Ray output path: {warnings}"
-        _logger.error(error_msg)
-        raise RuntimeError(error_msg)
-
-    _logger.info(f"[set_vray_output_path] V-Ray output path set to: {split_filepath}")
-
-
 def is_vray_raw_output_format(output_format: str) -> bool:
     """
     Check if the output format requires V-Ray raw output pipeline.
@@ -663,8 +611,13 @@ def configure_vray_raw_output(
 
     try:
         # Build output filename with correct extension
+        # Strip any existing extension from output_name to avoid double extensions
+        # (e.g. output_name="render.exr" + extension=".exr" would produce "render.exr.exr")
         extension: str = output_format if output_format.startswith(".") else f".{output_format}"
-        raw_filename: str = os.path.join(output_path, f"{output_name}{extension}")
+        base_name: str = output_name
+        if output_name.endswith(extension):
+            base_name = output_name[: -len(extension)]
+        raw_filename: str = os.path.join(output_path, f"{base_name}{extension}")
 
         # Step 1: Enable V-Ray Frame Buffer (required for raw output)
         _set_vray_property("output_userigbe", True, warnings)

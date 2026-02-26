@@ -37,6 +37,58 @@ Use `-MaxVersion` parameter if using a different version.
 
 ## V-Ray Issues
 
+### Inspecting V-Ray Renderer Properties
+
+To list all available properties on the current V-Ray renderer, run this in the MAXScript Listener:
+
+```maxscript
+vr = renderers.current
+showproperties vr
+```
+
+This is the authoritative source for valid V-Ray property names. Always check this before using `_set_vray_property()` — don't guess property names from naming patterns.
+
+### V-Ray Output Properties Reference (V-Ray 7)
+
+These are the output-related properties on the V-Ray renderer object. Use `_set_vray_property(name, value, warnings)` to set them from Python.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `output_on` | boolean | Master switch — enables/disables V-Ray's own output pipeline |
+| `output_saveFile` | boolean | Enables V-Ray file saving (main beauty output) |
+| `output_fileName` | string | Main output file path for V-Ray's direct file output |
+| `output_fileOnly` | boolean | Render to file only (skip VFB display) |
+| `output_splitgbuffer` | boolean | Enable split buffer (separate files per render element) |
+| `output_splitfilename` | filename | Base filename for split buffer output |
+| `output_splitRGB` | boolean | Save RGB channels in split buffer mode |
+| `output_splitAlpha` | boolean | Save Alpha channel in split buffer mode |
+| `output_splitbitmap` | bitmap | Split buffer bitmap object |
+| `output_saveRawFile` | boolean | Enable raw file output (.vrimg/.exr multichannel) |
+| `output_rawFileName` | filename | Output path for raw file |
+| `output_rawExrUseHalf` | boolean | Use half-precision floats in raw EXR |
+| `output_rawExrDeep` | boolean | Enable deep EXR output |
+| `output_rawSaveColorCorrections` | boolean | Save color corrections in raw file |
+| `output_rawSaveColorCorrectionsRE` | boolean | Save color corrections for render elements |
+| `output_separateFolders` | boolean | Save render elements in separate folders |
+| `output_saveCryptomattesSeparately` | boolean | Save Cryptomatte passes as separate files |
+| `output_userigbe` | boolean | Enable V-Ray Frame Buffer (VFB) |
+| `output_resumableRendering` | boolean | Enable resumable rendering |
+| `output_progressiveAutoSave` | float | Auto-save interval for progressive rendering |
+| `output_force32bit_3dsmax_vfb` | boolean | Force 32-bit in 3ds Max VFB |
+| `output_width` | integer | Output image width |
+| `output_height` | integer | Output image height |
+| `output_aspect` | float | Output pixel aspect ratio |
+
+### V-Ray Output Modes
+
+V-Ray ignores `rt.rendOutputFilename` / `rt.rendSaveFile` — it uses its own output properties instead. There are three output modes:
+
+1. **Direct file output**: `output_on=True` + `output_saveFile=True` + `output_fileName=path` — writes the beauty pass to a single file
+2. **Split buffer**: `output_splitgbuffer=True` + `output_splitRGB=True` + `output_splitfilename=path` — writes render elements to separate files
+3. **Raw output**: `output_saveRawFile=True` + `output_rawFileName=path` — writes all channels into a single multichannel .vrimg or .exr
+
+For non-raw formats without render elements, use direct file output (mode 1). The split buffer (mode 2) is for render elements. Raw output (mode 3) is for .exr and .vrimg.
+
 ### "VRayProxy class not found"
 V-Ray is not loaded. Ensure V-Ray is installed and environment is set up.
 
@@ -95,6 +147,17 @@ New-Item -ItemType Directory -Path "test/integ/test_scripts/my_test/tempout" -Fo
 - Check camera name in job parameters
 - Verify scene renders in 3ds Max UI first
 - Check lights are enabled
+
+### V-Ray render completes but no output file is saved
+V-Ray ignores 3ds Max's `rt.rendOutputFilename` — it uses its own output properties. If `_configure_renderer_output` returns `False` for V-Ray, `start_render` sets the 3ds Max output path, but V-Ray won't write anything.
+
+For non-raw formats (.jpg, .png, .tga, etc.), you must explicitly enable V-Ray's output:
+```python
+_set_vray_property("output_on", True, warnings)
+_set_vray_property("output_saveFile", True, warnings)
+_set_vray_property("output_fileName", filepath, warnings)
+```
+See "V-Ray Output Modes" above for the full explanation.
 
 ### Render elements not saved
 ```powershell

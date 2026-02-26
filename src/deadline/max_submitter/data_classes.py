@@ -8,6 +8,7 @@ import dataclasses
 import json
 import re
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -74,11 +75,18 @@ def sanitize_param_name(name: str) -> str:
     return sanitized
 
 
+class SubmissionMode(str, Enum):
+    """Mutually exclusive submission modes for the submitter."""
+
+    DEFAULT = "default"
+    BATCH_RENDER = "batch_render"
+
+
 @dataclass
 class StepData:
     """Data for a single render step."""
 
-    state_set: "StateSetData"
+    state_set: Optional["StateSetData"] = None
     batch_view: Optional[BatchRenderView] = None
     frame_range: str = ""
     width: int = 0
@@ -86,16 +94,17 @@ class StepData:
 
     @property
     def name(self) -> str:
-        """Generate the step name based on state set and optional batch render view.
+        """Generate the step name based on state set or batch render view.
 
         The name is sanitized to be valid as an OpenJD parameter definition name
         component (alphanumeric and underscores only, starting with a letter or underscore).
         """
-        sanitized_state_set = sanitize_param_name(self.state_set.state_set)
         if self.batch_view:
-            sanitized_batch = sanitize_param_name(self.batch_view.name)
-            return f"StateSet_{sanitized_state_set}_Batch_{sanitized_batch}"
-        return sanitized_state_set
+            return sanitize_param_name(self.batch_view.name)
+        elif self.state_set:
+            return sanitize_param_name(self.state_set.state_set)
+        else:
+            raise RuntimeError("Step has no name. Need either batch view or state set.")
 
 
 @dataclass
@@ -171,7 +180,7 @@ class RenderSubmitterUISettings:
     state_set_index: str = field(default="")
 
     # Batch Rendering
-    batch_render_enabled: bool = field(default=False, metadata={"sticky": True})
+    submission_mode: str = field(default=SubmissionMode.DEFAULT.value, metadata={"sticky": True})
     batch_render: BatchRenderSettings = field(
         default_factory=BatchRenderSettings, metadata={"sticky": True}
     )

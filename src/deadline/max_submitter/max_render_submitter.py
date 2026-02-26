@@ -18,7 +18,7 @@ from create_job_bundle import (
     get_job_template,
     get_parameters_values,
 )
-from data_classes import BatchRenderView, RenderSubmitterUISettings, StateSetData
+from data_classes import BatchRenderView, RenderSubmitterUISettings, StateSetData, SubmissionMode
 from data_const import (
     ALL_STATE_SETS_STR,
     ALL_STEREO_CAMERAS_STR,
@@ -30,6 +30,7 @@ from deadline.client.job_bundle.submission import AssetReferences
 from deadline.client.ui.dialogs._types import JobBundlePurpose
 from pymxs import runtime as rt
 from qtpy.QtCore import Qt  # type: ignore
+from qtpy.QtWidgets import QMessageBox  # type: ignore
 from sanity_checks import check_sanity
 from ui.scene_settings_tab import SceneSettingsWidget
 from ui.submit_dialog import SubmitMaxJobToDeadlineDialog
@@ -68,7 +69,21 @@ def on_create_job_bundle_callback(
         JobBundlePurpose.SUBMISSION when 'Submit' was pressed
     """
     # Run all sanity checks
-    check_sanity(settings)
+    warnings = check_sanity(settings)
+
+    # Show confirmation dialog if there are non-blocking warnings
+    if warnings:
+        warning_text = "\n".join(f"• {w}" for w in warnings)
+        result = QMessageBox.warning(
+            widget,
+            "Submission Warnings",
+            f"The following warnings were found:\n\n{warning_text}\n\n"
+            "Do you want to continue anyway?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if result != QMessageBox.Yes:
+            raise Exception("Submission cancelled by user.")
 
     _logger.debug("Start on_create_job_bundle_callback")
     settings.backup_file = rt.execute("GetDir #temp") + "\\" + TEMP_BACKUP_FILENAME
@@ -85,10 +100,44 @@ def on_create_job_bundle_callback(
     submission_utils.custom_mat = False
 
     state_sets_to_submit: list[StateSetData] = []
-    state_sets = max_utils.get_state_set_names()
-    # if all state sets were chosen for submission, make a StateSetData object for each state set
-    if settings.state_set == ALL_STATE_SETS_STR:
-        for state_set in state_sets:
+
+    if settings.submission_mode == SubmissionMode.DEFAULT.value:
+        # DEFAULT mode: build StateSetData from the selected state sets
+        state_sets = max_utils.get_state_set_names()
+        # if all state sets were chosen for submission, make a StateSetData object for each state set
+        if settings.state_set == ALL_STATE_SETS_STR:
+            for state_set in state_sets:
+                # Set the current state set
+                rt.execute(
+                    f"stateSetsDotNetObject = dotNetObject "
+                    f'"Autodesk.Max.StateSets.Plugin" \n'
+                    f"stateSets = stateSetsDotNetObject.Instance \n"
+                    f"masterState = stateSets.EntityManager.RootEntity."
+                    f"MasterStateSet \n"
+                    f"needState = masterState.Children.Item[{state_set[1]}] \n"
+                    f"masterState.CurrentState = #(needState)"
+                )
+                output_dir = settings.output_path
+                output_file_name = settings.output_filename_pattern
+                output_file_format = settings.output_ext
+                image_resolution = (rt.renderWidth, rt.renderHeight)
+
+                state_sets_to_submit.append(
+                    StateSetData(
+                        state_set=state_set[0],
+                        renderer=str(rt.renderers.current).split(":")[0],
+                        frame_range=max_utils.get_frames(),
+                        output_directories=output_directories,
+                        output_file_dir=output_dir,
+                        output_file_name=output_file_name,
+                        output_file_format=output_file_format,
+                        image_resolution=image_resolution,
+                        ui_group_label=state_set[0] + " Settings",
+                    )
+                )
+        # Otherwise only create it for the selected state set
+        else:
+            need_state = settings.state_set_index
             # Set the current state set
             rt.execute(
                 f"stateSetsDotNetObject = dotNetObject "
@@ -96,7 +145,7 @@ def on_create_job_bundle_callback(
                 f"stateSets = stateSetsDotNetObject.Instance \n"
                 f"masterState = stateSets.EntityManager.RootEntity."
                 f"MasterStateSet \n"
-                f"needState = masterState.Children.Item[{state_set[1]}] \n"
+                f"needState = masterState.Children.Item[{need_state}]\n"
                 f"masterState.CurrentState = #(needState)"
             )
             output_dir = settings.output_path
@@ -106,7 +155,7 @@ def on_create_job_bundle_callback(
 
             state_sets_to_submit.append(
                 StateSetData(
-                    state_set=state_set[0],
+                    state_set=settings.state_set,
                     renderer=str(rt.renderers.current).split(":")[0],
                     frame_range=max_utils.get_frames(),
                     output_directories=output_directories,
@@ -114,59 +163,31 @@ def on_create_job_bundle_callback(
                     output_file_name=output_file_name,
                     output_file_format=output_file_format,
                     image_resolution=image_resolution,
-                    ui_group_label=state_set[0] + " Settings",
+                    ui_group_label=UI_GROUP_LABEL,
                 )
             )
-    # Otherwise only create it for the selected state set
-    else:
-        need_state = settings.state_set_index
-        # Set the current state set
-        rt.execute(
-            f"stateSetsDotNetObject = dotNetObject "
-            f'"Autodesk.Max.StateSets.Plugin" \n'
-            f"stateSets = stateSetsDotNetObject.Instance \n"
-            f"masterState = stateSets.EntityManager.RootEntity."
-            f"MasterStateSet \n"
-            f"needState = masterState.Children.Item[{need_state}]\n"
-            f"masterState.CurrentState = #(needState)"
-        )
-        output_dir = settings.output_path
-        output_file_name = settings.output_filename_pattern
-        output_file_format = settings.output_ext
-        image_resolution = (rt.renderWidth, rt.renderHeight)
 
-        state_sets_to_submit.append(
-            StateSetData(
-                state_set=settings.state_set,
-                renderer=str(rt.renderers.current).split(":")[0],
-                frame_range=max_utils.get_frames(),
-                output_directories=output_directories,
-                output_file_dir=output_dir,
-                output_file_name=output_file_name,
-                output_file_format=output_file_format,
-                image_resolution=image_resolution,
-                ui_group_label=UI_GROUP_LABEL,
-            )
-        )
-
-    # Use override from UI if the checkbox is checked
-    if settings.override_frame_range:
-        for state_set in state_sets_to_submit:
-            state_set.frame_range = settings.frame_list
-
-    # Add render element output directories to output_directories set
-    if settings.render_elements and not settings.ignore_render_elements_by_name:
-        try:
-            render_element_dirs = get_render_elements_output_directories()
-            output_directories.update(render_element_dirs)
-            _logger.debug(f"Added render element output directories: {render_element_dirs}")
-
-            # Update state sets with render element directories
+        # Use override from UI if the checkbox is checked
+        if settings.override_frame_range:
             for state_set in state_sets_to_submit:
-                state_set.output_directories.update(render_element_dirs)
+                state_set.frame_range = settings.frame_list
 
-        except Exception as e:
-            _logger.warning(f"Failed to get render element output directories: {e}")
+        # Add render element output directories to output_directories set
+        if settings.render_elements and not settings.ignore_render_elements_by_name:
+            try:
+                render_element_dirs = get_render_elements_output_directories()
+                output_directories.update(render_element_dirs)
+                _logger.debug(f"Added render element output directories: {render_element_dirs}")
+
+                # Update state sets with render element directories
+                for state_set in state_sets_to_submit:
+                    state_set.output_directories.update(render_element_dirs)
+
+            except Exception as e:
+                _logger.warning(f"Failed to get render element output directories: {e}")
+
+    # BATCH_RENDER mode: no state sets needed — job bundle functions read scene
+    # defaults directly from the pymxs API and submitter UI settings
 
     # Only do these actions when we want to submit a scene
     if purpose == JobBundlePurpose.SUBMISSION:
@@ -216,8 +237,11 @@ def on_create_job_bundle_callback(
 
     parameter_values = get_parameters_values(settings, state_sets_to_submit, queue_parameters)
 
-    # Collect preset files from batch render views if batch rendering is enabled
-    if settings.batch_render_enabled and settings.batch_render.enabled_views:
+    # Collect preset files from batch render views if batch render mode is selected
+    if (
+        settings.submission_mode == SubmissionMode.BATCH_RENDER.value
+        and settings.batch_render.enabled_views
+    ):
         all_batch_views = get_batch_render_views()
         # Filter to only enabled items
         enabled_batch_views = [item for item in all_batch_views if item.enabled]

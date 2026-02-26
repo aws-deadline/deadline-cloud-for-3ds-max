@@ -18,11 +18,9 @@ from pymxs import runtime as rt
 from deadline.max_adaptor.executable_handler import MaxExecutableHandler
 from deadline.max_shared.utilities.filename_utils import format_output_filename
 from deadline.max_shared.utilities.max_utils import (
-    BatchRenderView,
     _configure_render_element_filenames,
     _configure_render_element_outputs_filename,
     _set_vray_property,
-    get_batch_render_view_by_name,
     get_render_elements,
 )
 
@@ -51,26 +49,22 @@ class DefaultMaxHandler:
             # Render elements integration actions
             "configure_render_elements": self.configure_render_elements,
             "cleanup_render_elements": self.cleanup_render_elements,
-            # Batch render view application
-            "batch_render_view": self.apply_batch_render_view,
+            # New batch render submission-time actions
+            "scene_state": self.set_scene_state,
+            "preset_file": self.set_preset_file,
+            "pixel_aspect": self.set_pixel_aspect,
         }
         self.camera_node = None
         self.output_dir = None
         self.output_name = None
         self.output_format = None
         self.state_set_name: str = ""
-        self.batch_render_view = None  # Batch render view name (if batch rendering)
         self._executable_handler: MaxExecutableHandler = MaxExecutableHandler()
         # Initialize render element manager as private attribute
         self._render_element_manager: Optional["RenderElementManager"] = None
         # Path mapping function injected by MaxClient
         # Uses Callable type since map_path comes from ClientInterface
         self.map_path: Optional[Callable[[str], str]] = None
-        # Batch render view applier - use lambdas to defer lookup of map_path since it's set after __init__
-        self._batch_render_view_applier = BatchRenderViewApplier(
-            map_path=lambda path: self.map_path(path) if self.map_path else path,
-            set_camera_callback=lambda node: setattr(self, "camera_node", node),
-        )
 
     @property
     def render_element_manager(self) -> Optional["RenderElementManager"]:
@@ -91,31 +85,6 @@ class DefaultMaxHandler:
             value: The render element manager instance to set.
         """
         self._render_element_manager = value
-
-    def apply_batch_render_view(self, data: dict) -> None:
-        """
-        Apply batch render view settings.
-        Called from the action queue with data containing batch_render_view.
-
-        :param data: The data given from the Adaptor. Keys expected: ['batch_render_view']
-        :type data: dict
-        """
-        batch_render_view = data.get("batch_render_view")
-        if not batch_render_view:
-            self.log_to_console("Error: batch_render_view action called without a view name")
-            raise RuntimeError("batch_render_view action called without a view name")
-
-        # Store the batch render view name for use in output filename
-        self.batch_render_view = batch_render_view
-
-        self.log_to_console(f"Applying batch render view: {batch_render_view}")
-        try:
-            self._batch_render_view_applier.apply(batch_render_view)
-            self.log_to_console(f"Successfully applied batch render view: {batch_render_view}")
-        except Exception as e:
-            error_msg = f"Failed to apply batch render view '{batch_render_view}': {e}"
-            self.log_to_console(f"Error: {error_msg}")
-            raise RuntimeError(error_msg)
 
     def start_render(self, data: dict) -> None:
         """
@@ -164,15 +133,28 @@ class DefaultMaxHandler:
                 camera = self.get_camera_to_render(camera)
                 self.camera_node = rt.getNodeByName(camera)
 
-            # Since camera can be set by both init and run data, this isn't a required parameter in either schema.
+            # If no camera was set by init or run data, use the scene's active camera
             if self.camera_node is None:
-                self.log_to_console("Error: MaxClient: start_render called without a camera.")
-                raise RuntimeError("MaxClient: start_render called without a camera.")
+                cameras = list(rt.cameras)
+                if cameras:
+                    self.camera_node = cameras[0]
+                    self.log_to_console(
+                        f"No camera specified, using scene default: {self.camera_node.name}"
+                    )
+                else:
+                    self.log_to_console("Error: MaxClient: No cameras found in scene.")
+                    raise RuntimeError("MaxClient: No cameras found in scene.")
 
             # Resolve all tokens in the output filename pattern
             scene_name = Path(rt.maxFileName).stem if rt.maxFileName else ""
             state_set_name = self.state_set_name or ""
-            camera_name = camera or ""
+            # Camera name: prefer run data camera, fall back to init-data camera (self.camera_node)
+            if camera:
+                camera_name = camera
+            elif self.camera_node is not None:
+                camera_name = str(self.camera_node.name)
+            else:
+                camera_name = ""
 
             output_name = format_output_filename(
                 pattern=self.output_name,
@@ -181,14 +163,18 @@ class DefaultMaxHandler:
                 scene_name=scene_name,
             )
 
-            # If batch rendering, add the batch render view name to the output name
-            if self.batch_render_view:
-                output_name = output_name + "_" + self.batch_render_view
-
             output_name = self.reformat_framenumber_padding(output_name, frame)
 
             # Let subclasses configure renderer-specific settings with the resolved name
-            self._configure_renderer_output(
+            self.log_to_console(
+                f"DEBUG start_render: output_dir='{self.output_dir}', output_name='{output_name}', output_format='{self.output_format}'"
+            )
+
+            # If output_name is a full path (e.g. from batch view output_filename),
+            # extract just the filename portion. The directory comes from self.output_dir.
+            output_name = os.path.basename(output_name)
+
+            renderer_handles_output = self._configure_renderer_output(
                 output_name=output_name,
                 output_dir=self.output_dir,
                 output_format=self.output_format,
@@ -209,7 +195,13 @@ class DefaultMaxHandler:
             if os.path.exists(output_path):
                 os.remove(output_path)
 
-            rt.render(camera=self.camera_node, outputFile=output_path, quiet=True)
+            # If the renderer handles its own output (e.g. V-Ray raw/split buffer),
+            # don't pass outputFile to rt.render to avoid duplicate files.
+            if renderer_handles_output:
+                rt.render(camera=self.camera_node, quiet=True)
+            else:
+                self.log_to_console(f"Rendering to {output_path}")
+                rt.render(camera=self.camera_node, outputFile=output_path, quiet=True)
 
             self.log_to_console(f"MaxClient: Finished Rendering Frame {frame}")
 
@@ -226,7 +218,7 @@ class DefaultMaxHandler:
 
     def _configure_renderer_output(
         self, output_name: str, output_dir: str, output_format: str
-    ) -> None:
+    ) -> bool:
         """
         Hook for subclasses to configure renderer-specific settings before rendering.
 
@@ -237,8 +229,9 @@ class DefaultMaxHandler:
         :param output_name: The fully resolved output filename (tokens replaced, frame padding applied)
         :param output_dir: The output directory path
         :param output_format: The output file format extension (e.g. ".exr", ".png")
+        :returns: True if the renderer handles output file writing (suppresses rt.render outputFile)
         """
-        pass
+        return False
 
     def reformat_framenumber_padding(self, name: str, number: int) -> str:
         """
@@ -365,6 +358,9 @@ class DefaultMaxHandler:
         """
         Sets the output file path.
 
+        Note: Path mapping is already applied by Deadline Cloud to job parameter values
+        before they reach the adaptor, so no additional mapping is needed here.
+
         :param data: The data given from the Adaptor. Keys expected: ['output_file_path']
         :type data: dict
         """
@@ -446,6 +442,74 @@ class DefaultMaxHandler:
             self.log_to_console(f"Set state set to: {state_set_name}")
 
         self.check_renderer()
+
+    def set_scene_state(self, data: dict) -> None:
+        """
+        Restore a scene state via rt.sceneStateMgr.
+
+        This is distinct from set_state_set which uses the Autodesk.Max.StateSets.Plugin API.
+        Scene states are used in batch render mode, while state sets are used in default mode.
+
+        :param data: The data given from the Adaptor. Keys expected: ['scene_state']
+        :type data: dict
+
+        :raises RuntimeError: If the scene state does not exist or fails to restore
+        """
+        scene_state_name = data.get("scene_state")
+        if not scene_state_name:
+            return
+        scene_state_mgr = rt.sceneStateMgr
+        index = scene_state_mgr.FindSceneState(scene_state_name)
+        if index < 0:
+            raise RuntimeError(f"Scene State '{scene_state_name}' does not exist in the scene")
+        result = scene_state_mgr.RestoreAllParts(scene_state_name)
+        if not result:
+            raise RuntimeError(f"Failed to restore scene state '{scene_state_name}'")
+        self.log_to_console(f"Applied scene state: {scene_state_name}")
+
+    def set_preset_file(self, data: dict) -> None:
+        """
+        Load a render preset file with path mapping.
+
+        :param data: The data given from the Adaptor. Keys expected: ['preset_file']
+        :type data: dict
+
+        :raises RuntimeError: If the preset file does not exist after path mapping or fails to load
+        """
+        preset_path = data.get("preset_file")
+        if not preset_path:
+            return
+        if self.map_path is not None:
+            preset_path = self.map_path(preset_path)
+        if not os.path.exists(preset_path):
+            raise RuntimeError(f"Preset file '{preset_path}' does not exist after path mapping")
+        result = rt.renderPresets.LoadAll(0, preset_path)
+        if not result:
+            raise RuntimeError(
+                f"Failed to load preset file '{preset_path}' — may be incompatible with current renderer"
+            )
+        self.log_to_console(f"Loaded render preset: {preset_path}")
+
+    def set_pixel_aspect(self, data: dict) -> None:
+        """
+        Set the render pixel aspect ratio.
+
+        :param data: The data given from the Adaptor. Keys expected: ['pixel_aspect']
+        :type data: dict
+
+        :raises RuntimeError: If the pixel aspect value is not a positive number
+        """
+        pixel_aspect_str = data.get("pixel_aspect")
+        if not pixel_aspect_str:
+            return
+        try:
+            pixel_aspect = float(pixel_aspect_str)
+        except (ValueError, TypeError):
+            raise RuntimeError(f"Invalid pixel aspect: '{pixel_aspect_str}' (not a number)")
+        if pixel_aspect <= 0:
+            raise RuntimeError(f"Invalid pixel aspect: {pixel_aspect} (must be a positive number)")
+        rt.renderPixelAspect = pixel_aspect
+        self.log_to_console(f"Set pixel aspect: {pixel_aspect}")
 
     def set_scene_file(self, data: dict) -> None:
         """
@@ -564,137 +628,6 @@ class DefaultMaxHandler:
                 self.log_to_console(f"Warning: Render elements cleanup had issues: {error_msg}")
         except Exception as e:
             self.log_to_console(f"Warning: Error during render elements cleanup: {e}")
-
-
-class BatchRenderViewApplier:
-    """
-    Applies batch render view settings from 3ds Max's Batch Render dialog.
-
-    This class encapsulates all the logic for:
-    - Finding batch render views by name
-    - Applying camera settings
-    - Loading render presets
-    - Applying resolution overrides
-    - Applying scene states (legacy feature)
-    """
-
-    def __init__(
-        self,
-        map_path: Optional[Callable[[str], str]] = None,
-        set_camera_callback: Optional[Callable[[object], None]] = None,
-    ):
-        """
-        Initialize the batch render view applier.
-
-        :param map_path: Optional path mapping function for resolving paths
-        :param set_camera_callback: Callback to set the camera node on the parent handler
-        """
-        self.map_path = map_path
-        self._set_camera_callback = set_camera_callback
-
-    def apply(self, batch_render_view: str) -> None:
-        """
-        Apply settings from a batch render view for rendering.
-
-        :param batch_render_view: Name of the batch render view to apply
-        :raises: RuntimeError if batch render view doesn't exist or configuration fails
-        """
-        batch_view = get_batch_render_view_by_name(batch_render_view)
-
-        # Note: Output path is not configured here. It is determined by the submitter UI
-        # output path setting and applied via the job template's init-data.
-
-        if batch_view.camera:
-            self._apply_camera(batch_view)
-        if batch_view.scene_state:
-            self._apply_scene_state(batch_view)
-        if batch_view.preset_file:
-            self._load_preset(batch_view)
-        if batch_view.override_preset:
-            self._apply_resolution_override(batch_view)
-
-    def _apply_camera(self, batch_view: BatchRenderView) -> None:
-        """Apply camera from batch render view."""
-        camera_node = rt.getNodeByName(batch_view.camera)
-        if camera_node is None:
-            raise RuntimeError(f"Camera '{batch_view.camera}' does not exist in scene")
-
-        if not rt.isKindOf(camera_node, rt.Camera):
-            raise RuntimeError(f"Object '{batch_view.camera}' is not a camera")
-
-        if self._set_camera_callback:
-            self._set_camera_callback(camera_node)
-            log_to_console(f"  Set camera: {batch_view.camera}")
-
-    def _apply_scene_state(self, batch_view: BatchRenderView) -> None:
-        """Apply scene state from batch render view."""
-        scene_state_mgr = rt.sceneStateMgr
-
-        # Check if the scene state exists by searching for it
-        scene_state_index = scene_state_mgr.FindSceneState(batch_view.scene_state)
-        if scene_state_index < 0:
-            raise RuntimeError(f"Scene State '{batch_view.scene_state}' does not exist")
-
-        # Use RestoreAllParts which takes the scene state name and restores all parts
-        result = scene_state_mgr.RestoreAllParts(batch_view.scene_state)
-        if not result:
-            raise RuntimeError(f"Failed to restore scene state '{batch_view.scene_state}'")
-
-        log_to_console(f"  Applied scene state: {batch_view.scene_state}")
-
-    def _load_preset(self, batch_view: BatchRenderView) -> None:
-        """Load render preset from batch render view."""
-        preset_file: Optional[str] = batch_view.preset_file
-
-        if preset_file is None:
-            return
-
-        if self.map_path is not None:
-            preset_file = self.map_path(preset_file)
-
-        if preset_file is None or not os.path.exists(preset_file):
-            raise RuntimeError(f"Preset file '{preset_file}' does not exist in job bundle")
-
-        result = rt.renderPresets.LoadAll(0, preset_file)
-        if not result:
-            raise RuntimeError(
-                f"Failed to load preset file '{preset_file}' - may be incompatible with current renderer"
-            )
-
-        log_to_console(f"  Loaded render preset: {preset_file}")
-
-    def _apply_resolution_override(self, batch_view: BatchRenderView) -> None:
-        """Apply resolution overrides from batch render view."""
-        if (
-            batch_view.width is None
-            and batch_view.height is None
-            and batch_view.pixel_aspect is None
-        ):
-            return
-
-        if batch_view.width is not None:
-            if batch_view.width <= 0:
-                raise RuntimeError(
-                    f"Invalid width override: {batch_view.width} (must be a positive integer)"
-                )
-            rt.renderWidth = batch_view.width
-            log_to_console(f"  Set render width: {batch_view.width}")
-
-        if batch_view.height is not None:
-            if batch_view.height <= 0:
-                raise RuntimeError(
-                    f"Invalid height override: {batch_view.height} (must be a positive integer)"
-                )
-            rt.renderHeight = batch_view.height
-            log_to_console(f"  Set render height: {batch_view.height}")
-
-        if batch_view.pixel_aspect is not None:
-            if batch_view.pixel_aspect <= 0:
-                raise RuntimeError(
-                    f"Invalid pixel aspect override: {batch_view.pixel_aspect} (must be a positive number)"
-                )
-            rt.renderPixelAspect = float(batch_view.pixel_aspect)
-            log_to_console(f"  Set pixel aspect: {batch_view.pixel_aspect}")
 
 
 def log_to_console(message: str) -> None:

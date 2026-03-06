@@ -6,7 +6,7 @@ parameterValues:
 - name: OutputFilePath
   value: C:/Users/RDP/deadline-cloud-for-3ds-max/test/integ/test_scripts/vray_re_test/output_images
 - name: OutputFileName
-  value: State01_fog
+  value: State01_fog_<camera>#
 - name: OutputFileFormat
   value: .png
 - name: ImageWidth

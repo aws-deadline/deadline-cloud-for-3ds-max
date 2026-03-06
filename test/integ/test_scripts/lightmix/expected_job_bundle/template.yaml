@@ -230,12 +230,12 @@ steps:
         filename: start.bat
         type: TEXT
         data: |
-          "C:\Users\RDP\AppData\Roaming\Python\Python311\Scripts\3dsmax-openjd.exe" daemon start --connection-file {{Session.WorkingDirectory}}/connection.json --init-data file://{{Env.File.initData}}
+          3dsmax-openjd daemon start --connection-file {{Session.WorkingDirectory}}/connection.json --init-data file://{{Env.File.initData}}
       - name: runStop
         filename: stop.bat
         type: TEXT
         data: |
-          "C:\Users\RDP\AppData\Roaming\Python\Python311\Scripts\3dsmax-openjd.exe" daemon stop --connection-file {{Session.WorkingDirectory}}/connection.json
+          3dsmax-openjd daemon stop --connection-file {{Session.WorkingDirectory}}/connection.json
       actions:
         onEnter:
           command: powershell
@@ -271,4 +271,4 @@ steps:
       type: TEXT
       runnable: true
       data: |
-        "C:\Users\RDP\AppData\Roaming\Python\Python311\Scripts\3dsmax-openjd.exe" daemon run --connection-file {{ Session.WorkingDirectory }}/connection.json --run-data file://{{Task.File.runData}}
+        3dsmax-openjd daemon run --connection-file {{ Session.WorkingDirectory }}/connection.json --run-data file://{{Task.File.runData}}

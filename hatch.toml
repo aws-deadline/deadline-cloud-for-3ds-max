@@ -35,6 +35,31 @@ test = "pytest --no-cov {args:test/integ} -vvv --numprocesses=1"
 test_submitters = "pytest --no-cov {args:test/integ} -vvv --numprocesses=1 -m submitter"
 test_adaptors = "pytest --no-cov {args:test/integ} -vvv --numprocesses=1 -m adaptor"
 
+[envs.integ-ci]
+pre-install-commands = [
+  "pip install -r requirements-integ-testing.txt",
+  "pip install -r requirements-testing.txt",
+]
+
+[[envs.integ-ci.matrix]]
+max = ["2024"]
+python = ["3.10"]
+
+[[envs.integ-ci.matrix]]
+max = ["2025"]
+python = ["3.11"]
+
+[[envs.integ-ci.matrix]]
+max = ["2026"]
+python = ["3.11"]
+
+[envs.integ-ci.env-vars]
+MAX_VERSION = "{matrix:max}"
+
+[envs.integ-ci.scripts]
+setup = "python ./pipeline/setup-runner.py --versions {matrix:max} {args}"
+test = "pytest --no-cov {args:test/integ} -vvv --numprocesses=1"
+
 [envs.release]
 detached = true
 

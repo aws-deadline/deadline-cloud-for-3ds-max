@@ -101,7 +101,7 @@ steps:
           scene_file: {{Param.MaxSceneFile}}
           renderer: Default_Scanline_Renderer
           state_set: State01
-          output_file_name: State01_test_###
+          output_file_name: <stateset>_test_###_<camera>
           output_file_path: '{{Param.OutputFilePath}}'
           output_file_format: '{{Param.OutputFileFormat}}'
           image_width: '{{Param.ImageWidth}}'
@@ -110,7 +110,7 @@ steps:
         filename: start.bat
         type: TEXT
         data: |
-          3dsmax-openjd daemon start --connection-file {{Session.WorkingDirectory}}/connection.json --init-data file://{{Env.File.initData}}
+          3dsmax-openjd daemon start --connection-file {{Session.WorkingDirectory}}/connection.json --init-data file://{{Env.File.initData}} --path-mapping-rules file://{{Session.PathMappingRulesFile}}
       - name: runStop
         filename: stop.bat
         type: TEXT

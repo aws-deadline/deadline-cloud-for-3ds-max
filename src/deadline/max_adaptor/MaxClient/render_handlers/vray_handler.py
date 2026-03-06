@@ -7,10 +7,12 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 import math
 import os
 import sys
+from pathlib import Path
 from typing import Any
 
 from pymxs import runtime as rt
 
+from deadline.max_shared.utilities.filename_utils import format_output_filename
 from deadline.max_shared.utilities.max_utils import (
     configure_vray_raw_output,
     is_vray_raw_output_format,
@@ -177,6 +179,9 @@ class VrayHandler(DefaultMaxHandler):
         """
         Override to set V-Ray output path before rendering.
 
+        Resolves output filename tokens before setting V-Ray output paths,
+        so the split buffer filename matches the resolved main output.
+
         Automatically uses raw output pipeline for .vrimg and .exr formats,
         which stores all render elements in a single multichannel container file.
         For other formats, uses standard V-Ray split buffer output.
@@ -184,12 +189,23 @@ class VrayHandler(DefaultMaxHandler):
         if self.output_dir and self.output_name:
             output_format = self.output_format or ".exr"
 
+            camera_name = data.get("camera", "") or ""
+            scene_name = Path(rt.maxFileName).stem if rt.maxFileName else ""
+            state_set_name = self.state_set_name or ""
+
+            resolved_name = format_output_filename(
+                pattern=self.output_name,
+                camera_name=camera_name,
+                state_set_name=state_set_name,
+                scene_name=scene_name,
+            )
+
             # Auto-detect raw output mode based on format
             if is_vray_raw_output_format(output_format):
                 self.log_to_console(f"V-Ray raw output mode enabled for format: {output_format}")
                 warnings = configure_vray_raw_output(
                     output_path=self.output_dir,
-                    output_name=self.output_name,
+                    output_name=resolved_name,
                     output_format=output_format,
                 )
                 for warning in warnings:
@@ -198,7 +214,7 @@ class VrayHandler(DefaultMaxHandler):
                 # Standard V-Ray output path for other formats
                 set_vray_output_path(
                     output_path=self.output_dir,
-                    output_name=self.output_name,
+                    output_name=resolved_name,
                     output_format=output_format,
                 )
 

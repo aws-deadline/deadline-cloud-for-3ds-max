@@ -11,6 +11,19 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
+def _decode_bytes(data: bytes) -> str:
+    """
+    Decode subprocess output bytes, handling UTF-16 (common from 3ds Max) and UTF-8.
+    Strips any remaining null bytes that can appear in mixed-encoding output.
+    """
+    # Try UTF-16 first if BOM is present
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return data.decode("utf-16", errors="replace")
+    # Try UTF-8, then strip stray null bytes (from UTF-16LE without BOM)
+    text = data.decode("utf-8", errors="replace")
+    return text.replace("\x00", "")
+
+
 def run_command(args: List[str]) -> subprocess.CompletedProcess[bytes]:
     """
     Helper function to log, run command and also print out output, error for better debug
@@ -38,8 +51,7 @@ def run_command(args: List[str]) -> subprocess.CompletedProcess[bytes]:
     output = subprocess.run(args, capture_output=True)
 
     print(f"Ran the following: {' '.join(output.args)}")
-    print(f"\nstdout:\n\n{output.stdout.decode('utf-8', errors='replace')}")
-    print(f"\nstderr:\n\n{output.stderr.decode('utf-8', errors='replace')}")
+    print(f"\nstdout:\n\n{_decode_bytes(output.stdout)}")
 
     return output
 
@@ -94,7 +106,7 @@ def run_adaptor_test(
     template_path: Path,
     job_params: Dict[str, Any],
     path_mapping_rules: Optional[Dict[str, Any]] = None,
-) -> None:
+) -> str:
     """
     Function to use openjd CLI "run" command to run the 3dsmax adaptor to render image
     with optional path mapping rules.
@@ -105,6 +117,9 @@ def run_adaptor_test(
         path_mapping_rules: Optional path mapping rules dictionary conforming to
             the pathmapping-1.0 schema. If provided, these rules will be passed
             to openjd to remap asset paths during rendering.
+
+    Returns:
+        Combined output from all steps as a string.
     """
     # Add the Scripts directory to PATH so openjd command can be found
     scripts_dir = os.path.join(os.path.split(sys.executable)[0])
@@ -122,6 +137,7 @@ def run_adaptor_test(
         key: value for key, value in job_params.items() if not key.startswith("deadline:")
     }
 
+    combined_output = ""
     for step in template["steps"]:
         command = [
             "openjd",
@@ -140,3 +156,6 @@ def run_adaptor_test(
 
         output = run_command(command)
         assert output.returncode == 0
+        combined_output += _decode_bytes(output.stdout)
+
+    return combined_output

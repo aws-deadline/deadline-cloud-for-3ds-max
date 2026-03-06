@@ -8,7 +8,6 @@ to remap asset paths (like VRMesh files) at render time.
 """
 
 import json
-import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -26,76 +25,7 @@ from test.integ.test_const import (
     EXPECTED_JOB_BUNDLE_FOLDER,
 )
 
-# 3ds Max log file location - dynamically find for any version
 EXPECTED_IMAGES_FOLDER = "expected_images"
-
-
-def get_max_log_path() -> Optional[Path]:
-    """
-    Find the 3ds Max log file path based on the 3ds Max version in PATH.
-
-    The function looks for 3ds Max installation paths in the PATH environment
-    variable (e.g., C:\\Program Files\\Autodesk\\3ds Max 2026) to determine
-    which version is being used for testing.
-
-    The log file is located at:
-    %LOCALAPPDATA%/Autodesk/3dsMax/<version> - 64bit/ENU/Network/Max.log
-
-    Returns:
-        Path to the Max.log file if found, None otherwise.
-    """
-    local_app_data = os.environ.get("LOCALAPPDATA", "")
-    if not local_app_data:
-        return None
-
-    # Look for 3ds Max version in PATH environment variable
-    path_env = os.environ.get("PATH", "")
-    max_version_pattern = re.compile(r"3ds\s*Max\s*(\d{4})", re.IGNORECASE)
-
-    max_version = None
-    for path_entry in path_env.split(os.pathsep):
-        match = max_version_pattern.search(path_entry)
-        if match:
-            max_version = int(match.group(1))
-            print(f"Found 3ds Max {max_version} in PATH: {path_entry}")
-            break
-
-    if max_version:
-        # Construct log path using the version found in PATH
-        log_path = (
-            Path(local_app_data)
-            / "Autodesk"
-            / "3dsMax"
-            / f"{max_version} - 64bit"
-            / "ENU"
-            / "Network"
-            / "Max.log"
-        )
-        return log_path
-
-    # Fallback: scan for any installed version if not found in PATH
-    print("Warning: 3ds Max not found in PATH, scanning for installed versions...")
-    max_base_path = Path(local_app_data) / "Autodesk" / "3dsMax"
-    if not max_base_path.exists():
-        return None
-
-    # Look for any 3ds Max version directory (2024, 2025, 2026, etc.)
-    version_dirs = []
-    for version_dir in max_base_path.iterdir():
-        if version_dir.is_dir() and "64bit" in version_dir.name:
-            try:
-                year = int(version_dir.name.split()[0])
-                if 2024 <= year <= 2030:
-                    version_dirs.append((year, version_dir))
-            except (ValueError, IndexError):
-                continue
-
-    if version_dirs:
-        # Sort by year descending and return the most recent
-        version_dirs.sort(key=lambda x: x[0], reverse=True)
-        return version_dirs[0][1] / "ENU" / "Network" / "Max.log"
-
-    return None
 
 
 def create_path_mapping_rules(
@@ -180,34 +110,31 @@ def update_path_mapping_for_checkout(
     }
 
 
-def verify_path_mapping_in_log(
-    log_path: Path,
+def verify_path_mapping_in_output(
+    output: str,
     expected_source_pattern: str,
     expected_dest_pattern: str,
 ) -> List[str]:
     """
-    Verify that path mapping occurred correctly by checking the 3ds Max log file.
+    Verify that path mapping occurred correctly by checking the adaptor stdout output.
 
     Args:
-        log_path: Path to the 3ds Max log file.
-        expected_source_pattern: Pattern to match in the source path (e.g., "assets\\Bench.vrmesh").
-        expected_dest_pattern: Pattern to match in the destination path (e.g., "vray_vrmesh_remap_test\\scene\\Bench.vrmesh").
+        output: The captured stdout from the adaptor process.
+        expected_source_pattern: Pattern to match in the source path (e.g., "assets/Bench.vrmesh").
+        expected_dest_pattern: Pattern to match in the destination path (e.g., "vray_vrmesh_remap_test/scene/Bench.vrmesh").
 
     Returns:
-        List of matching log lines.
+        List of matching output lines.
 
     Raises:
-        AssertionError: If the log file does not exist or no valid remap is found.
+        AssertionError: If no valid remap is found in the output.
     """
-    assert log_path.exists(), f"Log file not found: {log_path}"
-
     matching_lines = []
     remap_pattern = re.compile(r"Remapped VRayProxy '([^']+)':\s*(.+?)\s*->\s*(.+)")
 
-    with open(log_path, "r", encoding="utf-8", errors="replace") as f:
-        for line in f:
-            if "Remapped VRayProxy" in line:
-                matching_lines.append(line.strip())
+    for line in output.splitlines():
+        if "Remapped VRayProxy" in line:
+            matching_lines.append(line.strip())
 
     # Verify at least one remap occurred with expected paths
     found_valid_remap = False
@@ -230,32 +157,28 @@ def verify_path_mapping_in_log(
 
     assert found_valid_remap, (
         f"Path mapping verification failed. Expected remapping from '{expected_source_pattern}' "
-        f"to '{expected_dest_pattern}'.\nLog entries found: {matching_lines}"
+        f"to '{expected_dest_pattern}'.\nOutput lines found: {matching_lines}"
     )
 
     return matching_lines
 
 
-def get_vrmesh_remap_count_from_log(log_path: Path) -> int:
+def get_vrmesh_remap_count_from_output(output: str) -> int:
     """
-    Get the count of VRMesh proxies remapped from the log file.
+    Get the count of VRMesh proxies remapped from the adaptor stdout output.
 
     Args:
-        log_path: Path to the 3ds Max log file.
+        output: The captured stdout from the adaptor process.
 
     Returns:
         Number of proxies remapped, or -1 if not found.
     """
-    if not log_path.exists():
-        return -1
-
     pattern = re.compile(r"VRMesh path mapping complete:\s*(\d+)\s*proxies remapped")
 
-    with open(log_path, "r", encoding="utf-8", errors="replace") as f:
-        for line in f:
-            match = pattern.search(line)
-            if match:
-                return int(match.group(1))
+    for line in output.splitlines():
+        match = pattern.search(line)
+        if match:
+            return int(match.group(1))
 
     return -1
 
@@ -291,12 +214,6 @@ class TestPathMappingAdaptors:
         location, the path mapping rules correctly redirect the adaptor to find the
         assets in their actual location.
         """
-        # Get the log path and delete it for a clean test run
-        max_log_path = get_max_log_path()
-        if max_log_path and max_log_path.exists():
-            print(f"Deleting existing log file for clean test run: {max_log_path}")
-            max_log_path.unlink()
-
         test_file_location = script_location / bundle_dir
         scene_location = test_file_location / TEST_SCENE_FOLDER / scene_max
         output_path = tmp_path / OUTPUT_FOLDER
@@ -333,11 +250,16 @@ class TestPathMappingAdaptors:
         job_params["MaxSceneFile"] = str(scene_location)
         job_params["OutputFilePath"] = str(output_path)
 
-        run_adaptor_test(
+        adaptor_output = run_adaptor_test(
             test_file_location / EXPECTED_JOB_BUNDLE_FOLDER / TEMPLATE,
             job_params,
             path_mapping_rules,
         )
+
+        # Save adaptor output to a log file for easy viewing
+        log_file = tmp_path / f"{bundle_dir}_output.log"
+        log_file.write_text(adaptor_output, encoding="utf-8")
+        print(f"Adaptor output saved to: {log_file}")
 
         # Verify output directory was created
         assert output_path.exists(), f"Output directory was not created: {output_path}"
@@ -356,33 +278,23 @@ class TestPathMappingAdaptors:
                 )
                 print(f"Verified output file exists: {output_file}")
 
-        # Verify path mapping occurred correctly by checking the log file
-        if max_log_path and max_log_path.exists():
-            # Check that VRMesh remapping occurred
-            remap_lines = verify_path_mapping_in_log(
-                max_log_path,
-                expected_source_pattern="assets/Bench.vrmesh",
-                expected_dest_pattern="vray_vrmesh_remap_test/scene/Bench.vrmesh",
-            )
+        # Verify path mapping occurred correctly using captured stdout
+        # This avoids reliance on the Max.log file which can be truncated by 3ds Max.
+        remap_lines = verify_path_mapping_in_output(
+            adaptor_output,
+            expected_source_pattern="assets/Bench.vrmesh",
+            expected_dest_pattern="vray_vrmesh_remap_test/scene/Bench.vrmesh",
+        )
 
-            print(f"\nPath mapping log entries found ({len(remap_lines)}):")
-            for line in remap_lines:
-                print(f"  {line}")
+        print(f"\nPath mapping log entries found ({len(remap_lines)}):")
+        for line in remap_lines:
+            print(f"  {line}")
 
-            # Verify the expected number of proxies were remapped
-            remap_count = get_vrmesh_remap_count_from_log(max_log_path)
-            print(f"\nVRMesh proxies remapped: {remap_count}")
+        # Verify the expected number of proxies were remapped
+        remap_count = get_vrmesh_remap_count_from_output(adaptor_output)
+        print(f"\nVRMesh proxies remapped: {remap_count}")
 
-            assert remap_count >= 1, (
-                f"Expected at least 1 VRMesh proxy to be remapped, but found {remap_count}.\n"
-                f"Check the log file: {max_log_path}"
-            )
-        else:
-            print(
-                f"Log file not found at {max_log_path or 'unknown path'}, "
-                "cannot verify path mapping"
-            )
-            assert False, (
-                f"Log file not found at {max_log_path or 'unknown path'}. "
-                "Cannot verify path mapping occurred correctly."
-            )
+        assert remap_count >= 1, (
+            f"Expected at least 1 VRMesh proxy to be remapped, but found {remap_count}.\n"
+            f"Adaptor stdout did not contain expected remap count line."
+        )

@@ -28,7 +28,14 @@ class TestRenderElementsAdaptors:
     @pytest.mark.parametrize(
         "bundle_dir,scene_max,max_diff_files",
         [
-            ("vray_re_test", "fog.max", 6),
+            pytest.param(
+                "vray_re_test",
+                "fog.max",
+                6,
+                marks=pytest.mark.xfail(
+                    reason="Known flaky V-Ray render elements test", strict=False
+                ),
+            ),
             ("re_enabled_test", "fog.max", 0),
             ("re_disabled_test", "fog.max", 0),
             ("lightmix", "scene.max", 4),

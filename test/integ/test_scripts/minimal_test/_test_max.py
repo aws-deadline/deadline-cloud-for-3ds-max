@@ -27,6 +27,8 @@ def main(job_history_dir: str, output_dir: str):
     settings.include_adaptor_wheels = False
     settings.override_frame_range = True
     settings.frame_list = "1-2"
+    # Set the output filename pattern to use tokens
+    settings.output_filename_pattern = "<stateset>_test_###_<camera>"
 
     widget.shared_job_settings.shared_job_properties_box.set_parameter_value(
         {"name": "deadline:targetTaskRunStatus", "value": "READY"}

@@ -17,6 +17,12 @@ from pymxs import runtime as rt
 
 from deadline.max_adaptor.executable_handler import MaxExecutableHandler
 from deadline.max_shared.utilities.filename_utils import format_output_filename
+from deadline.max_shared.utilities.max_utils import (
+    _configure_render_element_filenames,
+    _configure_render_element_outputs_filename,
+    _set_vray_property,
+    get_render_elements,
+)
 
 if TYPE_CHECKING:
     from deadline.max_adaptor.MaxClient.render_element_manager import RenderElementManager
@@ -142,6 +148,10 @@ class DefaultMaxHandler:
             output_file = output_name + self.output_format
             output_path = os.path.join(self.output_dir, output_file)
 
+            # Update render element filenames with the resolved output name
+            if render_elements_configured:
+                self._update_render_element_filenames(output_name)
+
             # Create the folder(s) if the directory doesn't exist
             if not os.path.exists(self.output_dir):
                 os.makedirs(self.output_dir)
@@ -191,6 +201,58 @@ class DefaultMaxHandler:
         padded_number = zeroes_to_add * "0" + str(number)
         name = name.replace(padding_amount * "#", padded_number)
         return name
+
+    def _update_render_element_filenames(self, resolved_output_name: str) -> None:
+        """
+        Configure render element filenames using the resolved output name.
+
+        Render elements are configured during init with the raw output_name pattern
+        (which may contain unresolved tokens like <camera>). This method updates
+        the render element filenames and V-Ray split buffer path after tokens have
+        been resolved at render time.
+
+        :param resolved_output_name: the fully resolved output name (tokens replaced,
+            frame padding applied)
+        """
+        if self.render_element_manager is None or self.output_dir is None:
+            return
+
+        output_format = self.output_format or ".png"
+        base_filepath = os.path.join(self.output_dir, f"{resolved_output_name}{output_format}")
+
+        render_elements = get_render_elements()
+        if not render_elements:
+            return
+
+        ignore_list = self.render_element_manager._get_ignore_list(
+            self.render_element_manager.cached_settings
+        )
+
+        if self.render_element_manager.is_vray:
+            # Update V-Ray split buffer filename
+            warnings: list[str] = []
+            _set_vray_property("output_splitfilename", base_filepath, warnings)
+            for w in warnings:
+                self.log_to_console(f"Warning: {w}")
+
+            # Update per-element filenames (VRay path)
+            warnings = []
+            _configure_render_element_filenames(
+                render_elements, base_filepath, ignore_list, warnings
+            )
+            for w in warnings:
+                self.log_to_console(f"Warning: {w}")
+        else:
+            # Update per-element filenames (standard/scanline path)
+            warnings = _configure_render_element_outputs_filename(
+                render_elements,
+                self.output_dir,
+                resolved_output_name,
+                output_format,
+                ignore_list,
+            )
+            for w in warnings:
+                self.log_to_console(f"Warning: {w}")
 
     def check_renderer(self) -> None:
         """

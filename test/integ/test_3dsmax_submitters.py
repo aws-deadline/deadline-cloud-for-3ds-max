@@ -93,10 +93,11 @@ class TestSubmitters:
             "parameterValues": [
                 {"name": "MaxSceneFile", "value": str(scene_location)},
                 {"name": "Frames", "value": "1-2"},
+                {"name": "OutputFilePath", "value": str(output_path) + "/"},
+                {"name": "OutputFileName", "value": "<stateset>_test_###_<camera>"},
+                {"name": "OutputFileFormat", "value": ".jpg"},
                 {"name": "ImageWidth", "value": 1280},
                 {"name": "ImageHeight", "value": 720},
-                {"name": "OutputFilePath", "value": str(output_path) + "/"},
-                {"name": "OutputFileFormat", "value": ".jpg"},
                 {"name": "deadline:targetTaskRunStatus", "value": "READY"},
                 {"name": "deadline:maxFailedTasksCount", "value": 20},
                 {"name": "deadline:maxRetriesPerTask", "value": 5},

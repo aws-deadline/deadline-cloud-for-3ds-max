@@ -6,7 +6,7 @@
 
 import logging
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pymxs  # separate import to initialize
 from pymxs import runtime as rt
@@ -343,7 +343,7 @@ def get_render_output_info() -> tuple[str, str, str]:
               If no render output is set, returns scene-based defaults
     """
     if rt.rendOutputFilename:
-        output_path = Path(rt.rendOutputFilename)
+        output_path = PureWindowsPath(rt.rendOutputFilename)
         return str(output_path.parent), output_path.stem, output_path.suffix
     else:
         # Fall back to default scene-based naming

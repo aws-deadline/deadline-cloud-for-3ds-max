@@ -93,6 +93,13 @@ module = [
   "qtpy.*"
 ]
 
+[[tool.mypy.overrides]]
+# winreg is a Windows-only stdlib module whose type stubs are incomplete
+# on non-Windows platforms, causing false attr-defined errors.
+module = "test.integ.conftest"
+warn_unused_ignores = false
+disable_error_code = ["attr-defined"]
+
 # --- RUFF / BLACK ---
 
 [tool.ruff]

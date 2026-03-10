@@ -1,18 +1,5 @@
 ## 0.1.10 (2026-03-10)
 
-
-### Features
-* output filenames customizability with tokens (#203) ([`5abecab`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/5abecaba90a0e69aad868281e1847a9950a68078))
-* add developer option to override adaptor with local wheels ([`5002150`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/5002150084ae0ef5dc758c71e84e3bc453e1fdec))
-* add test packages installation to 3dsmax-dev-setup power ([`eaf1ba9`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/eaf1ba92854a2365a4f3b6a7b9cc29b180a4a99a))
-
-### Bug Fixes
-* enable header check in hatch run test and add missing headers (#204) ([`cbef175`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/cbef1759885994b40479bf64ff35dd276880b916))
-* skip output assets from asset introspection ([`bc5abc5`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/bc5abc5a164c83854a8c581656b2d1655608ca16))
-
-## 0.1.10 (2026-03-10)
-
-
 ### Features
 * output filenames customizability with tokens (#203) ([`5abecab`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/5abecaba90a0e69aad868281e1847a9950a68078))
 * add developer option to override adaptor with local wheels ([`5002150`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/5002150084ae0ef5dc758c71e84e3bc453e1fdec))

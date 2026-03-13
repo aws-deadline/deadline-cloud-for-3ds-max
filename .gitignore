@@ -37,5 +37,10 @@ venv/
 # Temp folder
 tmp/
 
+# Dev helper scripts
+force_reload.ms
+test_job_bundle/
+scene_settings.json
+
 # Kiro specs
 .kiro/specs/

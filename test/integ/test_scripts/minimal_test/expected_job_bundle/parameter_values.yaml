@@ -1,15 +1,17 @@
 parameterValues:
 - name: MaxSceneFile
   value: C:/Users/RDP/Desktop/test.max
-- name: Frames
+- name: State01_Frames
   value: 1-2
-- name: OutputFilePath
+- name: State01_OutputFilePath
   value: C:/Users/RDP/Desktop/
-- name: OutputFileFormat
+- name: State01_OutputFileName
+  value: <stateset>_test_###_<camera>
+- name: State01_OutputFileFormat
   value: .jpg
-- name: ImageWidth
+- name: State01_ImageWidth
   value: 1280
-- name: ImageHeight
+- name: State01_ImageHeight
   value: 720
 - name: deadline:targetTaskRunStatus
   value: READY

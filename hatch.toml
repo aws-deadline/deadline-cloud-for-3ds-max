@@ -58,7 +58,7 @@ MAX_VERSION = "{matrix:max}"
 
 [envs.integ-ci.scripts]
 setup = "python ./pipeline/setup-runner.py --versions {matrix:max} {args}"
-test = "pytest --no-cov {args:test/integ} -vvv --numprocesses=1"
+test = "pytest --no-cov {args:test/integ} -vvv --numprocesses=1 --color=no"
 
 [envs.release]
 detached = true

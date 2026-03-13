@@ -106,22 +106,22 @@ def run_adaptor_test(
     template_path: Path,
     job_params: Dict[str, Any],
     path_mapping_rules: Optional[Dict[str, Any]] = None,
+    expect_failure: bool = False,
 ) -> str:
     """
-    Function to use openjd CLI "run" command to run the 3dsmax adaptor to render image
-    with optional path mapping rules.
+    Run the 3dsmax adaptor via openjd CLI for each step in the template.
 
     Args:
         template_path: Path to the job template YAML file.
         job_params: Dictionary of job parameters to pass to the template.
-        path_mapping_rules: Optional path mapping rules dictionary conforming to
-            the pathmapping-1.0 schema. If provided, these rules will be passed
-            to openjd to remap asset paths during rendering.
+        path_mapping_rules: Optional path mapping rules for asset path remapping.
+        expect_failure: If True, expects at least one step to fail and returns
+            combined stdout+stderr. If False, asserts all steps succeed and
+            returns combined stdout.
 
     Returns:
         Combined output from all steps as a string.
     """
-    # Add the Scripts directory to PATH so openjd command can be found
     scripts_dir = os.path.join(os.path.split(sys.executable)[0])
     current_path = os.environ.get("PATH", "")
     if scripts_dir not in current_path:
@@ -131,13 +131,12 @@ def run_adaptor_test(
     with open(template_path) as f:
         template = yaml.safe_load(f)
 
-    # Filter out deadline-specific parameters that aren't defined in the template
-    # OpenJD validates that all provided parameters are defined in the template
     filtered_params = {
         key: value for key, value in job_params.items() if not key.startswith("deadline:")
     }
 
     combined_output = ""
+    any_failed = False
     for step in template["steps"]:
         command = [
             "openjd",
@@ -149,13 +148,24 @@ def run_adaptor_test(
             json.dumps(filtered_params),
         ]
 
-        # Add path mapping rules if provided
         if path_mapping_rules:
             command.extend(["--path-mapping-rules", json.dumps(path_mapping_rules)])
             print(f"\nPath Mapping Rules:\n{json.dumps(path_mapping_rules, indent=2)}")
 
         output = run_command(command)
-        assert output.returncode == 0
-        combined_output += _decode_bytes(output.stdout)
+
+        if expect_failure:
+            combined_output += _decode_bytes(output.stdout) + _decode_bytes(output.stderr)
+            if output.returncode != 0:
+                any_failed = True
+                break
+        else:
+            assert output.returncode == 0
+            combined_output += _decode_bytes(output.stdout)
+
+    if expect_failure:
+        assert (
+            any_failed
+        ), f"Expected adaptor to fail but all steps succeeded.\nOutput:\n{combined_output}"
 
     return combined_output

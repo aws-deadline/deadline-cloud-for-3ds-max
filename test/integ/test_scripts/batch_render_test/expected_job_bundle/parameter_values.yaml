@@ -1,0 +1,75 @@
+parameterValues:
+- name: MaxSceneFile
+  value: C:/Users/RDP/Documents/3ds Max 2025/scenes/BatchRenderTest2024.max
+- name: B1_cam_only_Frames
+  value: '0'
+- name: B1_cam_only_OutputFilePath
+  value: C:\Users\RDP\Documents\3ds Max 2025\renderoutput
+- name: B1_cam_only_OutputFileName
+  value: cam_only_###
+- name: B1_cam_only_OutputFileFormat
+  value: .jpg
+- name: B1_cam_only_ImageWidth
+  value: 320
+- name: B1_cam_only_ImageHeight
+  value: 240
+- name: B1_cam_only_Camera
+  value: TopCam
+- name: B2_with_state_Frames
+  value: '0'
+- name: B2_with_state_OutputFilePath
+  value: C:\Users\RDP\Documents\3ds Max 2025\renderoutput
+- name: B2_with_state_OutputFileName
+  value: with_state_###
+- name: B2_with_state_OutputFileFormat
+  value: .jpg
+- name: B2_with_state_ImageWidth
+  value: 320
+- name: B2_with_state_ImageHeight
+  value: 240
+- name: B2_with_state_Camera
+  value: SideCam
+- name: B2_with_state_SceneState
+  value: DayLighting
+- name: B3_with_preset_Frames
+  value: '0'
+- name: B3_with_preset_OutputFilePath
+  value: C:\Users\RDP\Documents\3ds Max 2025\renderoutput
+- name: B3_with_preset_OutputFileName
+  value: with_preset_###
+- name: B3_with_preset_OutputFileFormat
+  value: .png
+- name: B3_with_preset_ImageWidth
+  value: 160
+- name: B3_with_preset_ImageHeight
+  value: 120
+- name: B3_with_preset_Camera
+  value: FrontCam
+- name: B3_with_preset_PresetFile
+  value: C:\Users\RDP\deadline-cloud-for-3ds-max\test\integ\test_scripts\batch_render_test\scene\test_preset.rps
+- name: B4_with_override_Frames
+  value: 5-10
+- name: B4_with_override_OutputFilePath
+  value: C:\Users\RDP\Documents\3ds Max 2025\renderoutput
+- name: B4_with_override_OutputFileName
+  value: with_override_###
+- name: B4_with_override_OutputFileFormat
+  value: .bmp
+- name: B4_with_override_ImageWidth
+  value: 10
+- name: B4_with_override_ImageHeight
+  value: 10
+- name: B4_with_override_Camera
+  value: TopCam
+- name: B4_with_override_SceneState
+  value: DayLighting
+- name: B4_with_override_PixelAspect
+  value: '2.0'
+- name: deadline:targetTaskRunStatus
+  value: READY
+- name: deadline:maxFailedTasksCount
+  value: 20
+- name: deadline:maxRetriesPerTask
+  value: 5
+- name: deadline:priority
+  value: 50

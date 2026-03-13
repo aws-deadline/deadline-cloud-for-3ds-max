@@ -1,192 +1,137 @@
 # Integration Testing Guide
 
-How to run and create integration tests for the 3ds Max adaptor using OpenJD run or adaptor run scripts.
+How to run integration tests for the 3ds Max adaptor and submitter.
 
-## Running Integration Tests
+## Prerequisites
 
-### Prerequisites
-
-1. 3ds Max 2025 or 2026 installed
+1. Windows machine with 3ds Max 2025 or 2026 installed
 2. V-Ray installed (for V-Ray tests)
-3. Built wheel in `dist/` directory
+3. 3ds Max Python and executable on PATH
+4. Test dependencies installed
 
-### Choosing the Right Test Script
+## Setup
 
-| Script | Use Case |
-|--------|----------|
-| `test-3dsmax-openjd-run.ps1` | General testing via OpenJD CLI |
-| `test-3dsmax-adapter-run.ps1` | **Path mapping tests** - runs adaptor directly |
-
-**Important**: For path mapping tests, use `test-3dsmax-adapter-run.ps1`. The OpenJD CLI script does NOT pass rules to `map_path()`.
-
-### Script Parameters
+First, determine which version of 3ds Max is installed. Check `C:\Program Files\Autodesk\` for directories like `3ds Max 2025` or `3ds Max 2026`. Use the `MAX_VERSION` variable below to match your installation.
 
 ```powershell
+# Set this to your installed version (2025, 2026, etc.)
+$MAX_VERSION = "2026"
+
+# Add 3ds Max to PATH
+$env:PATH = "C:\Program Files\Autodesk\3ds Max $MAX_VERSION;C:\Program Files\Autodesk\3ds Max $MAX_VERSION\Python;" + $env:PATH
+
+# Set executable
+$env:3DSMAX_EXECUTABLE = "3dsmaxbatch"
+$env:MAX_VERSION = $MAX_VERSION
+
+# Install pip if needed
+python -m ensurepip
+
+# Install test dependencies
+& "C:\Program Files\Autodesk\3ds Max $MAX_VERSION\Python\python.exe" -m pip install -r requirements-integ-testing.txt
+& "C:\Program Files\Autodesk\3ds Max $MAX_VERSION\Python\python.exe" -m pip install "numpy<2"
+```
+
+## Running Tests (pytest — primary method)
+
+Use 3ds Max's Python to run pytest directly. This is the standard way to run integration tests. Replace `$MAX_VERSION` with your installed version if not already set.
+
+### Run all integration tests
+```powershell
+& "C:\Program Files\Autodesk\3ds Max $MAX_VERSION\Python\python.exe" -m pytest test/integ -o addopts="" -v --color=no
+```
+
+### Run submitter tests only
+```powershell
+& "C:\Program Files\Autodesk\3ds Max $MAX_VERSION\Python\python.exe" -m pytest test/integ -m submitter -o addopts="" -v --color=no
+```
+
+### Run adaptor tests only
+```powershell
+& "C:\Program Files\Autodesk\3ds Max $MAX_VERSION\Python\python.exe" -m pytest test/integ -m adaptor -o addopts="" -v --color=no
+```
+
+### Run path mapping tests only
+```powershell
+& "C:\Program Files\Autodesk\3ds Max $MAX_VERSION\Python\python.exe" -m pytest test/integ -m pathmapping -o addopts="" -v --color=no
+```
+
+### Run a specific test
+```powershell
+& "C:\Program Files\Autodesk\3ds Max $MAX_VERSION\Python\python.exe" -m pytest test/integ/test_3dsmax_adaptors.py::TestAdaptors::test_minimal_scene_adaptor -o addopts="" -v --color=no
+```
+
+## Running Tests (hatch — alternative)
+
+Not recommended. Hatch uses Python 3.12 which conflicts with 3ds Max's Python 3.11.
+
+```powershell
+hatch run integ:test              # All integ tests
+hatch run integ:test_submitters   # Submitter tests
+hatch run integ:test_adaptors     # Adaptor tests
+```
+
+## Manual Debugging (PowerShell scripts)
+
+For ad-hoc debugging of individual test bundles outside of pytest. These scripts call `openjd run` directly with a specific job bundle.
+
+```powershell
+# General test via OpenJD CLI
+.\scripts\test-3dsmax-openjd-run.ps1 -JobBundleDir "test/integ/test_scripts/minimal_test/expected_job_bundle"
+
+# Path mapping test (must use adapter script for map_path() support)
 .\scripts\test-3dsmax-adapter-run.ps1 `
-    -JobBundleDir "path/to/job_bundle" `
-    -WheelPath "dist/deadline_cloud_for_3ds_max-*.whl" `
-    -MaxVersion "2026" `
-    -Step 0 `
-    -PathMappingFile "path/to/path_mapping_rules.json" `
-    -SkipInstall `
-    -ShowOutput
+    -JobBundleDir "test/integ/test_scripts/vray_vrmesh_remap_test/expected_job_bundle" `
+    -PathMappingFile "test/integ/test_scripts/vray_vrmesh_remap_test/path_mapping_rules.json"
+
+# Skip wheel installation for faster iteration
+.\scripts\test-3dsmax-openjd-run.ps1 -JobBundleDir "..." -SkipInstall
 ```
 
-## Ready-to-Run Test Commands
+## Test Bundles
 
-### VRMesh Path Mapping Test (V-Ray with path remapping)
+These are the test bundles that exist in `test/integ/test_scripts/`:
+
+| Bundle | Renderer | Description | Pytest Marker |
+|--------|----------|-------------|---------------|
+| `minimal_test` | Scanline (V-Ray active) | Basic render with state sets and cameras | `adaptor`, `submitter` |
+| `re_enabled_test` | Scanline | Render elements enabled | `adaptor` |
+| `re_disabled_test` | Scanline | Render elements disabled | `adaptor` |
+| `vray_re_test` | V-Ray CPU | V-Ray render elements (xfail — known flaky) | `adaptor` |
+| `lightmix` | V-Ray GPU | V-Ray LightMix render elements | `adaptor` |
+| `vray_vrmesh_remap_test` | V-Ray | VRMesh path mapping | `adaptor`, `pathmapping` |
+| `batch_render_test` | Scanline | Batch render with scene states, presets, and overrides | `adaptor` |
+
+## Test Bundle Structure
+
+```
+test/integ/test_scripts/{test_name}/
+├── scene/                      # .max scene file + assets
+├── expected_job_bundle/        # Expected submitter output
+│   ├── template.yaml
+│   ├── parameter_values.yaml
+│   └── asset_references.yaml
+├── expected_images/            # Expected render output (adaptor tests)
+├── _test_max.py                # Submitter test script (submitter tests only)
+└── path_mapping_rules.json     # Path mapping rules (path mapping tests only)
+```
+
+## Common Issues
+
+### PyWin32 DLL registration
 ```powershell
-Remove-Item "test/integ/test_scripts/vray_vrmesh_remap_test/output/*" -Force -ErrorAction SilentlyContinue
-$env:PATH = "C:\Users\RDP\AppData\Roaming\Python\Python311\Scripts;$env:PATH"
-.\scripts\test-3dsmax-openjd-run.ps1 -JobBundleDir "test/integ/test_scripts/vray_vrmesh_remap_test/expected_job_bundle" -PathMappingFile "test/integ/test_scripts/vray_vrmesh_remap_test/path_mapping_rules.json" -SkipInstall 2>&1 | Out-File -FilePath "tmp/vrmesh_remap_test_output.txt" -Encoding utf8
+# Run in elevated shell
+python -m pywin32_postinstall -install
 ```
 
-### V-Ray Render Elements Test (V-Ray CPU or GPU)
+### Wrong Python version
+Ensure 3ds Max Python is being used, not system Python:
 ```powershell
-Remove-Item "test/integ/test_scripts/vray_re_test/output_images/*" -Force -ErrorAction SilentlyContinue
-$env:PATH = "C:\Users\RDP\AppData\Roaming\Python\Python311\Scripts;$env:PATH"
-.\scripts\test-3dsmax-openjd-run.ps1 -JobBundleDir "test/integ/test_scripts/vray_re_test/expected_job_bundle" -SkipInstall 2>&1 | Out-File -FilePath "tmp/vray_test_output.txt" -Encoding utf8
+& "C:\Program Files\Autodesk\3ds Max $MAX_VERSION\Python\python.exe" --version
+# Should show Python 3.11.x for Max 2026, Python 3.10.x for Max 2025
 ```
 
-### LightMix Test (V-Ray GPU)
+### Checking 3ds Max logs
 ```powershell
-Remove-Item "test/integ/test_scripts/lightmix/output_images/*" -Force -ErrorAction SilentlyContinue
-$env:PATH = "C:\Users\RDP\AppData\Roaming\Python\Python311\Scripts;$env:PATH"
-.\scripts\test-3dsmax-openjd-run.ps1 -JobBundleDir "test/integ/test_scripts/lightmix/expected_job_bundle" -SkipInstall 2>&1 | Out-File -FilePath "tmp/lightmix_test_output.txt" -Encoding utf8
+Get-Content "C:\Users\$env:USERNAME\AppData\Local\Autodesk\3dsMax\$MAX_VERSION - 64bit\ENU\Network\Max.log" -Tail 100
 ```
-
-### RE Enabled Test (Standard 3dsMax renderer)
-```powershell
-Remove-Item "test/integ/test_scripts/re_enabled_test/output_images/*" -Force -ErrorAction SilentlyContinue
-$env:PATH = "C:\Users\RDP\AppData\Roaming\Python\Python311\Scripts;$env:PATH"
-.\scripts\test-3dsmax-openjd-run.ps1 -JobBundleDir "test/integ/test_scripts/re_enabled_test/expected_job_bundle" -SkipInstall 2>&1 | Out-File -FilePath "tmp/re_enabled_test_output.txt" -Encoding utf8
-```
-
-### RE Disabled Test (Standard 3dsMax renderer)
-```powershell
-Remove-Item "test/integ/test_scripts/re_disabled_test/output_images/*" -Force -ErrorAction SilentlyContinue
-$env:PATH = "C:\Users\RDP\AppData\Roaming\Python\Python311\Scripts;$env:PATH"
-.\scripts\test-3dsmax-openjd-run.ps1 -JobBundleDir "test/integ/test_scripts/re_disabled_test/expected_job_bundle" -SkipInstall 2>&1 | Out-File -FilePath "tmp/re_disabled_test_output.txt" -Encoding utf8
-```
-
-## Output Locations and Expected Results
-
-| Test | Output Folder | Expected Files |
-|------|---------------|----------------|
-| vray_vrmesh_remap_test | `test/integ/test_scripts/vray_vrmesh_remap_test/output/` | 1 |
-| vray_re_test (CPU) | `test/integ/test_scripts/vray_re_test/output_images/` | ~64 |
-| vray_re_test (GPU) | `test/integ/test_scripts/vray_re_test/output_images/` | ~85 |
-| lightmix | `test/integ/test_scripts/lightmix/output_images/` | 7 |
-| re_enabled_test | `test/integ/test_scripts/re_enabled_test/output_images/` | 23 |
-| re_disabled_test | `test/integ/test_scripts/re_disabled_test/output_images/` | 1 |
-
-## Test Configuration Parameters
-
-Key parameters in `parameter_values.yaml`:
-- `VRayRenderElementsVFBControl: 'false'` - V-Ray VFB handles output (vray_re_test, lightmix)
-- `VRayRenderElementsVFBControl: 'true'` - 3dsMax framebuffer handles output
-- `VRaySplitBufferSupport: 'true'` - Enable split buffer for render elements
-
-Key parameters in `template.yaml`:
-- `renderer: V_Ray_7_Hotfix_2` - V-Ray CPU renderer
-- `renderer: V_Ray_GPU_7_Hotfix_2` - V-Ray GPU renderer
-
-## Available Test Bundles
-
-| Bundle | Description |
-|--------|-------------|
-| `vray_simple_test` | Basic V-Ray render |
-| `vray_vrmesh_test` | V-Ray with VRayProxy |
-| `vray_vrmesh_test_remap` | VRMesh with path mapping |
-| `vray_vrmesh_remap_test` | VRMesh path remapping test |
-| `vray_re_test` | V-Ray render elements (CPU/GPU) |
-| `lightmix` | V-Ray LightMix (GPU) |
-| `re_enabled_test` | Standard renderer with render elements |
-| `re_disabled_test` | Standard renderer without render elements |
-| `scanline_simple_test` | Scanline renderer |
-| `arnold_simple_test` | Arnold renderer |
-
-## Creating New Test Bundles
-
-### Job Bundle Structure
-
-```
-test/integ/test_scripts/my_test/
-├── expected_job_bundle/
-│   ├── template.yaml          # OpenJD job template
-│   └── parameter_values.yaml  # Job parameters
-├── scene/
-│   └── my_scene.max          # 3ds Max scene file
-├── expected_images/          # Expected outputs (optional)
-└── tempout/                  # Render output directory
-```
-
-### Parameter Values Example
-
-```yaml
-parameterValues:
-  - name: MaxSceneFile
-    value: C:/path/to/scene.max
-  - name: Frames
-    value: "0"
-  - name: OutputFilePath
-    value: C:/path/to/output/
-  - name: OutputFileFormat
-    value: ".jpg"
-  - name: ImageWidth
-    value: "320"
-  - name: ImageHeight
-    value: "240"
-```
-
-## Testing Path Mapping
-
-### Path Mapping Rules File
-
-```json
-{
-  "version": "pathmapping-1.0",
-  "path_mapping_rules": [
-    {
-      "source_path_format": "WINDOWS",
-      "source_path": "C:/original/assets",
-      "destination_path": "C:/remapped/assets"
-    }
-  ]
-}
-```
-
-### Running with Path Mapping
-
-```powershell
-.\scripts\test-3dsmax-adapter-run.ps1 `
-    -JobBundleDir "test/integ/test_scripts/vray_vrmesh_test_remap/expected_job_bundle" `
-    -PathMappingFile "test/integ/test_scripts/vray_vrmesh_test_remap/path_mapping_rules.json"
-```
-
-### Important Notes
-
-1. **Absolute paths required**: Path mapping only works with absolute paths
-2. **Use correct script**: `test-3dsmax-adapter-run.ps1` passes rules to adaptor
-3. **On Deadline Cloud**: Worker agent provides actual path mapping rules
-
-## Debugging
-
-### Check 3ds Max Logs
-
-```powershell
-# View recent logs
-Get-Content 'C:\Users\$env:USERNAME\AppData\Local\Autodesk\3dsMax\2026 - 64bit\ENU\Network\Max.log' -Tail 100
-
-# Search for patterns
-Select-String -Path 'C:\Users\$env:USERNAME\AppData\Local\Autodesk\3dsMax\2026 - 64bit\ENU\Network\Max.log' -Pattern "VRMesh|VRayProxy|path mapping" -CaseSensitive:$false
-```
-
-### Common Log Patterns
-
-| Pattern | Description |
-|---------|-------------|
-| `LoadFromFile` | Scene file loading |
-| `VRMesh path mapping` | VRayProxy path mapping |
-| `Remapped VRayProxy` | Successfully remapped proxy |
-| `render_element_manager` | Render element config |

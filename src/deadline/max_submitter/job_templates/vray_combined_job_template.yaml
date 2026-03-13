@@ -1,0 +1,46 @@
+specificationVersion: 'jobtemplate-2023-09'
+name: VRay Export and Render
+parameterDefinitions:
+- name: MaxCmdExecutable
+  type: STRING
+  default: 3dsmaxcmd
+  description: 3dsmaxcmd.exe executable for MAXScript execution
+- name: VRayExecutable
+  type: STRING
+  default: vray
+  description: V-Ray Standalone executable
+- name: SceneFile
+  type: PATH
+  objectType: FILE
+  dataFlow: IN
+  description: The 3ds Max scene file to export
+- name: VRSceneOutputPath
+  type: PATH
+  objectType: FILE
+  dataFlow: INOUT
+  description: Output path for the vrscene file(s)
+- name: OutputDir
+  type: PATH
+  objectType: DIRECTORY
+  dataFlow: OUT
+  description: Output directory for rendered images
+- name: Frames
+  type: STRING
+  description: Frame range
+- name: ExportAnimationMode
+  type: INT
+  default: '1'
+  allowedValues:
+  - '1'
+  - '2'
+  - '3'
+  description: 1=Single File, 2=File Per Frame, 3=File Per Frame (Incremental)
+- name: OutputFileName
+  type: STRING
+  description: Output filename with extension
+- name: RegionColumns
+  type: INT
+  description: Number of region columns
+- name: RegionRows
+  type: INT
+  description: Number of region rows

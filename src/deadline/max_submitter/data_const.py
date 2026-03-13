@@ -109,3 +109,17 @@ STEREO_CAMERA_OPTIONS = [
     ["Left, Right and Center", "All"],
     ["Disable Stereo Camera Submission", "None"],
 ]
+
+# V-Ray Standalone Workflow Constants
+VRSCENE_EXPORT_MODES = [
+    ["Export VRSCENE On This Workstation", 1],
+    ["Export VRSCENE On Deadline", 2],
+]
+
+VRSCENE_EXPORT_ANIMATION_MODES = [
+    ["Single File", 1],
+    ["File Per Frame", 2],
+    ["File Per Frame (Incremental)", 3],
+]
+
+VRSCENE_SUBMITTER_SETTINGS_FILE_EXT = ".deadline_vrscene_settings.json"

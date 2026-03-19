@@ -3,14 +3,63 @@
 
 param(
     [string]$JobBundleDir,
-    [string]$WheelPath = "",
-    [string]$MaxVersion = "2026",
-    [int]$Step = 0,
-    [string]$PathMappingFile = "",
+    [string]$WheelPath,
+    [string]$MaxVersion,
+    [int]$Step = -1,
+    [string]$PathMappingFile,
     [switch]$SkipInstall,
     [switch]$ShowOutput,
     [switch]$Help
 )
+
+# Function to prompt for a value interactively
+function Prompt-ForValue {
+    param(
+        [string]$ParameterName,
+        [string]$Description,
+        [string]$DefaultValue = ""
+    )
+    
+    $prompt = "$ParameterName"
+    if (-not [string]::IsNullOrEmpty($Description)) {
+        $prompt += " ($Description)"
+    }
+    if (-not [string]::IsNullOrEmpty($DefaultValue)) {
+        $prompt += " [default: $DefaultValue]"
+    }
+    $prompt += ": "
+    
+    Write-Host $prompt -ForegroundColor Cyan -NoNewline
+    $value = Read-Host
+    
+    if ([string]::IsNullOrEmpty($value) -and -not [string]::IsNullOrEmpty($DefaultValue)) {
+        return $DefaultValue
+    }
+    return $value
+}
+
+# Function to prompt for step selection from available steps
+function Prompt-ForStep {
+    param([array]$Steps)
+    
+    Write-Host "`nAvailable steps:" -ForegroundColor Yellow
+    for ($i = 0; $i -lt $Steps.Count; $i++) {
+        Write-Host "  [$i] $($Steps[$i].name)" -ForegroundColor Cyan
+    }
+    
+    while ($true) {
+        Write-Host "Select step number [0-$($Steps.Count - 1)]: " -ForegroundColor Cyan -NoNewline
+        $input = Read-Host
+        
+        if ($input -match '^\d+$') {
+            $stepNum = [int]$input
+            if ($stepNum -ge 0 -and $stepNum -lt $Steps.Count) {
+                return $stepNum
+            }
+        }
+        Write-Host "Invalid selection. Please enter a number between 0 and $($Steps.Count - 1)" -ForegroundColor Red
+    }
+}
 
 # Show help if requested
 if ($Help) {
@@ -18,20 +67,21 @@ if ($Help) {
     Write-Host ""
     Write-Host "DESCRIPTION:" -ForegroundColor Yellow
     Write-Host "  Tests the deadline-cloud-for-3ds-max adaptor directly without worker agent setup"
+    Write-Host "  Parameters without values will prompt interactively."
     Write-Host ""
     Write-Host "USAGE:" -ForegroundColor Yellow
     Write-Host "  Run this script from the repository root directory:" -ForegroundColor Yellow
-    Write-Host "  .\scripts\test-3dsmax-openjd-run.ps1 -JobBundleDir <path>" -ForegroundColor Cyan
-    Write-Host "  Example: .\scripts\test-3dsmax-openjd-run.ps1 -JobBundleDir test_bundle" -ForegroundColor Cyan
+    Write-Host "  .\scripts\test-3dsmax-openjd-run.ps1" -ForegroundColor Cyan
+    Write-Host "  .\scripts\test-3dsmax-openjd-run.ps1 -JobBundleDir test_bundle" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "PARAMETERS:" -ForegroundColor Yellow
-    Write-Host "  -JobBundleDir    (Required) Path to the job bundle directory" -ForegroundColor Cyan
-    Write-Host "  -WheelPath       Path to the wheel file to install" -ForegroundColor Cyan
-    Write-Host "  -MaxVersion      3ds Max version (default: 2026)" -ForegroundColor Cyan
-    Write-Host "  -Step            Step number to run (default: 0)" -ForegroundColor Cyan
+    Write-Host "  -JobBundleDir    Path to the job bundle directory (prompts if not provided)" -ForegroundColor Cyan
+    Write-Host "  -WheelPath       Path to the wheel file (auto-detects from dist/ if not provided)" -ForegroundColor Cyan
+    Write-Host "  -MaxVersion      3ds Max version (prompts if not provided, default: 2026)" -ForegroundColor Cyan
+    Write-Host "  -Step            Step number to run (shows list of available steps if not provided)" -ForegroundColor Cyan
     Write-Host "  -PathMappingFile Path to JSON file with path mapping rules (optional)" -ForegroundColor Cyan
-    Write-Host "  -SkipInstall     Skip wheel installation (optional)" -ForegroundColor Cyan
-    Write-Host "  -ShowOutput      Show detailed output (optional)" -ForegroundColor Cyan
+    Write-Host "  -SkipInstall     Skip wheel installation" -ForegroundColor Cyan
+    Write-Host "  -ShowOutput      Show detailed output" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "PREREQUISITES:" -ForegroundColor Yellow
     Write-Host "  Install PowerShell YAML module for proper parameter parsing:"
@@ -40,23 +90,78 @@ if ($Help) {
     exit 0
 }
 
-# Validate required parameters
+# Interactive prompts for missing parameters
+Write-Host "`n=== Parameter Configuration ===" -ForegroundColor Green
+
+# Prompt for JobBundleDir if not provided
 if ([string]::IsNullOrEmpty($JobBundleDir)) {
-    Write-Error "JobBundleDir parameter is required. Use -Help for usage information."
-    Write-Host "Example: .\test-3dsmax-openjd.ps1 -JobBundleDir test_bundle" -ForegroundColor Yellow
+    $JobBundleDir = Prompt-ForValue -ParameterName "JobBundleDir" -Description "Path to job bundle directory"
+    if ([string]::IsNullOrEmpty($JobBundleDir)) {
+        Write-Error "JobBundleDir is required."
+        exit 1
+    }
+}
+
+# Validate job bundle exists before continuing
+if (-not (Test-Path $JobBundleDir)) {
+    Write-Error "Job bundle directory not found: $JobBundleDir"
     exit 1
 }
 
-# Auto-detect wheel file if not provided
+# Prompt for WheelPath if not provided (with auto-detect as default)
 if ([string]::IsNullOrEmpty($WheelPath)) {
-    $wheelFiles = Get-ChildItem "dist\deadline_cloud_for_3ds_max-*.whl" | Sort-Object LastWriteTime -Descending
-    if ($wheelFiles) {
-        $WheelPath = $wheelFiles[0].FullName
-        Write-Host "Auto-detected wheel file: $WheelPath" -ForegroundColor Gray
+    $wheelFiles = Get-ChildItem "dist\deadline_cloud_for_3ds_max-*.whl" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+    $defaultWheel = if ($wheelFiles) { $wheelFiles[0].FullName } else { "" }
+    
+    if (-not [string]::IsNullOrEmpty($defaultWheel)) {
+        $WheelPath = Prompt-ForValue -ParameterName "WheelPath" -Description "Path to wheel file" -DefaultValue $defaultWheel
     } else {
-        Write-Error "No wheel files found in dist directory. Please build the wheel first with 'hatch build' or specify -WheelPath"
+        $WheelPath = Prompt-ForValue -ParameterName "WheelPath" -Description "Path to wheel file"
+    }
+    
+    if ([string]::IsNullOrEmpty($WheelPath)) {
+        Write-Error "No wheel file specified and none found in dist directory. Please build with 'hatch build' first."
         exit 1
     }
+}
+
+# Prompt for MaxVersion if not provided
+if ([string]::IsNullOrEmpty($MaxVersion)) {
+    $MaxVersion = Prompt-ForValue -ParameterName "MaxVersion" -Description "3ds Max version" -DefaultValue "2026"
+}
+
+# Prompt for PathMappingFile if not provided (optional, can be empty)
+if ([string]::IsNullOrEmpty($PathMappingFile)) {
+    $PathMappingFile = Prompt-ForValue -ParameterName "PathMappingFile" -Description "Path to JSON path mapping file, optional"
+}
+
+# Parse template to get available steps for step selection
+$templateFile = Join-Path $JobBundleDir "template.yaml"
+if (-not (Test-Path $templateFile)) {
+    Write-Error "Template file not found: $templateFile"
+    exit 1
+}
+
+# Import PowerShell-Yaml module early for step parsing
+try {
+    Import-Module powershell-yaml -ErrorAction Stop
+} catch {
+    Write-Error "PowerShell-Yaml module is required for YAML parsing."
+    Write-Host "Please install it with: Install-Module powershell-yaml -Force" -ForegroundColor Yellow
+    exit 1
+}
+
+$templateContent = Get-Content $templateFile -Raw
+$templateData = ConvertFrom-Yaml $templateContent
+
+if (-not $templateData.steps -or $templateData.steps.Count -eq 0) {
+    Write-Error "No steps found in template file"
+    exit 1
+}
+
+# Prompt for Step if not provided (show available steps)
+if ($Step -lt 0) {
+    $Step = Prompt-ForStep -Steps $templateData.steps
 }
 
 # Configuration
@@ -187,7 +292,7 @@ function Setup-Environment {
 function Install-Adaptor {
     Write-Host "`n--- Installing Adaptor ---" -ForegroundColor Yellow
     
-    Write-Host "Running: $MaxPythonPath -m pip install $WheelPath --force-reinstall" -ForegroundColor Cyan
+    Write-Host "Running: $MaxPythonPath -m pip install $WheelPath --force-reinstall --no-deps" -ForegroundColor Cyan
     
     try {
         & $MaxPythonPath -m pip install $WheelPath --force-reinstall --no-deps
@@ -206,6 +311,11 @@ function Install-Adaptor {
 
 # Function to build test command from job bundle
 function Build-TestCommand {
+    param(
+        [object]$TemplateData,
+        [int]$StepNumber
+    )
+    
     Write-Host "`n--- Building Test Command ---" -ForegroundColor Yellow
     
     # Read parameter values
@@ -215,17 +325,7 @@ function Build-TestCommand {
         return $null
     }
     
-    # Import PowerShell-Yaml module for proper YAML parsing
-    try {
-        Import-Module powershell-yaml -ErrorAction Stop
-        Write-Host "Using PowerShell-Yaml module for parsing" -ForegroundColor Gray
-    } catch {
-        Write-Error "PowerShell-Yaml module is required for YAML parsing."
-        Write-Host "Please install it with: Install-Module powershell-yaml -Force" -ForegroundColor Yellow
-        return $null
-    }
-    
-    # Parse YAML properly
+    # Parse YAML properly (module already imported)
     $paramContent = Get-Content $paramFile -Raw
     $yamlData = ConvertFrom-Yaml $paramContent
     
@@ -239,54 +339,41 @@ function Build-TestCommand {
         }
     }
     
-    # Get frames for run data
-    $frames = & $getValue "Frames"
+    # Get the selected step (template already parsed and validated)
+    $selectedStep = $TemplateData.steps[$StepNumber]
+    $stepName = $selectedStep.name
+    Write-Host "Selected step: $stepName" -ForegroundColor Green
+    
+    # Get frames for run data using step-specific parameter name
+    $framesParamName = "${stepName}_Frames"
+    $frames = & $getValue $framesParamName
     $frames = if ([string]::IsNullOrEmpty($frames)) { "0" } else { $frames }
+    Write-Host "Frames parameter ($framesParamName): $frames" -ForegroundColor Green
     
-    # Read template file to extract renderer, state_set, and output_file_name
-    $templateFile = Join-Path $JobBundleDir "template.yaml"
-    if (-not (Test-Path $templateFile)) {
-        Write-Error "Template file not found: $templateFile"
-        return $null
-    }
-    
-    $templateContent = Get-Content $templateFile -Raw
-    $templateData = ConvertFrom-Yaml $templateContent
-    
-    # Validate step number against available steps
-    if (-not $templateData.steps -or $templateData.steps.Count -eq 0) {
-        Write-Error "No steps found in template file"
-        return $null
-    }
-    
-    if ($Step -lt 0 -or $Step -ge $templateData.steps.Count) {
-        Write-Error "Step number $Step is out of range. Available steps: 0 to $($templateData.steps.Count - 1)"
-        Write-Host "Available steps:" -ForegroundColor Yellow
-        for ($i = 0; $i -lt $templateData.steps.Count; $i++) {
-            Write-Host "  Step $i`: $($templateData.steps[$i].name)" -ForegroundColor Gray
-        }
-        return $null
-    }
-    
-    # Get the selected step
-    $selectedStep = $templateData.steps[$Step]
-    Write-Host "Selected step: $($selectedStep.name)" -ForegroundColor Green
-    
-    # Extract camera from taskParameterDefinitions
+    # Extract camera from taskParameterDefinitions (if "All Cameras" was selected)
+    # Otherwise camera will be in job params
     $defaultCamera = "Unknown"  # fallback
     if ($selectedStep.parameterSpace -and $selectedStep.parameterSpace.taskParameterDefinitions) {
         $cameraParam = $selectedStep.parameterSpace.taskParameterDefinitions | Where-Object { $_.name -eq "Camera" }
         if ($cameraParam -and $cameraParam.range -and $cameraParam.range.Count -gt 0) {
             $defaultCamera = $cameraParam.range[0]
-            Write-Host "Found camera parameter: $defaultCamera" -ForegroundColor Green
+            Write-Host "Found camera in task parameters: $defaultCamera" -ForegroundColor Green
         }
     }
-    Write-Host "Using camera parameter: $defaultCamera" -ForegroundColor Green
+    # If camera not in task params, check job params
+    if ($defaultCamera -eq "Unknown") {
+        $cameraFromJobParams = & $getValue "Camera"
+        if (-not [string]::IsNullOrEmpty($cameraFromJobParams)) {
+            $defaultCamera = $cameraFromJobParams
+            Write-Host "Found camera in job parameters: $defaultCamera" -ForegroundColor Green
+        }
+    }
+    Write-Host "Using camera: $defaultCamera" -ForegroundColor Green
     
-    # Extract initData section from template
-    $initDataSection = $templateData.steps[0].stepEnvironments[0].script.embeddedFiles | Where-Object { $_.name -eq "initData" }
+    # Extract initData section from the SELECTED step (not steps[0])
+    $initDataSection = $selectedStep.stepEnvironments[0].script.embeddedFiles | Where-Object { $_.name -eq "initData" }
     if (-not $initDataSection) {
-        Write-Error "Could not extract initData section from template file: $templateFile"
+        Write-Error "Could not extract initData section from template"
         Write-Host "Template structure may be invalid or different than expected" -ForegroundColor Red
         return $null
     }
@@ -347,12 +434,26 @@ function Build-TestCommand {
     [System.IO.File]::WriteAllText($runnerJobParamsFile, $filteredJobParamsJson, $utf8NoBom)
     
     # Parse run data to get task parameters and write to JSON file
+    # Build a type map from the template's taskParameterDefinitions
+    $taskParamTypes = @{}
+    if ($selectedStep.parameterSpace -and $selectedStep.parameterSpace.taskParameterDefinitions) {
+        foreach ($paramDef in $selectedStep.parameterSpace.taskParameterDefinitions) {
+            $taskParamTypes[$paramDef.name] = $paramDef.type
+        }
+    }
+    Write-Host "Task parameter types from template: $($taskParamTypes | ConvertTo-Json -Compress)" -ForegroundColor Gray
+    
     $runDataObj = $runData | ConvertFrom-Json
     $taskParamsArray = @()
     $taskParams = @{}
     foreach ($property in $runDataObj.PSObject.Properties) {
-        # Ensure all values are strings for OpenJD compatibility
-        $taskParams[$property.Name] = [string]$property.Value
+        $paramType = $taskParamTypes[$property.Name]
+        # Convert based on type from template (default to string if not found)
+        if ($paramType -eq "INT") {
+            $taskParams[$property.Name] = [int]$property.Value
+        } else {
+            $taskParams[$property.Name] = [string]$property.Value
+        }
     }
     $taskParamsArray += $taskParams
     # Force array structure even with single item
@@ -481,7 +582,7 @@ try {
     }
     
     # Build test command
-    $testCommand = Build-TestCommand
+    $testCommand = Build-TestCommand -TemplateData $templateData -StepNumber $Step
     if (-not $testCommand) {
         exit 1
     }

@@ -6,11 +6,14 @@
 
 import dataclasses
 import json
+import re
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import pymxs  # noqa
+from deadline.max_shared.utilities.max_utils import BatchRenderView
 from deadline.max_submitter.data_const import ALL_CAMERAS_STR, RENDER_SUBMITTER_SETTINGS_FILE_EXT
 from pymxs import runtime as rt
 
@@ -41,6 +44,82 @@ RENDER_ELEMENT_PARAM_MAPPING: Dict[str, str] = {
     "VRaySplitBufferSupport": "vray_split_buffer_support",
     "IgnoreRenderElementsByName": "ignore_render_elements_by_name",
 }
+
+
+# Regex pattern for valid OpenJD parameter definition names.
+# Must start with a letter or underscore, followed by alphanumeric or underscores.
+PARAM_NAME_REGEX = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def sanitize_param_name(name: str) -> str:
+    """
+    Sanitize a name so it is valid as part of an OpenJD parameter definition name.
+
+    Replaces any character that is not alphanumeric or underscore with an underscore,
+    and ensures the result starts with a letter or underscore.
+
+    :param name: the raw name (e.g. a state set name or batch view name)
+    :returns: a sanitized name matching the pattern ``^[A-Za-z_][A-Za-z0-9_]*$``
+    :raises ValueError: if the name is empty or becomes empty after sanitization
+    """
+    if not name:
+        raise ValueError("Parameter name component cannot be empty.")
+
+    # Replace any non-alphanumeric/underscore character with underscore
+    sanitized = re.sub(r"[^A-Za-z0-9_]", "_", name)
+
+    # If it starts with a digit, prefix with underscore
+    if sanitized[0].isdigit():
+        sanitized = f"_{sanitized}"
+
+    return sanitized
+
+
+class SubmissionMode(str, Enum):
+    """Mutually exclusive submission modes for the submitter."""
+
+    DEFAULT = "default"
+    BATCH_RENDER = "batch_render"
+
+
+@dataclass
+class StepData:
+    """Data for a single render step."""
+
+    state_set: Optional["StateSetData"] = None
+    batch_view: Optional[BatchRenderView] = None
+    frame_range: str = ""
+    width: int = 0
+    height: int = 0
+
+    @property
+    def name(self) -> str:
+        """Generate the step name based on state set or batch render view.
+
+        The name is sanitized to be valid as an OpenJD parameter definition name
+        component (alphanumeric and underscores only, starting with a letter or underscore).
+        """
+        if self.batch_view:
+            return sanitize_param_name(self.batch_view.name)
+        elif self.state_set:
+            return sanitize_param_name(self.state_set.state_set)
+        else:
+            raise RuntimeError("Step has no name. Need either batch view or state set.")
+
+
+@dataclass
+class BatchRenderSettings:
+    """
+    Settings for batch render submission workflow.
+
+    batch render views are stored in the 3ds Max scene file and accessed via the
+    batch Render Manager API. This dataclass only stores which views are enabled
+    for submission. All other settings (camera, output, scene state, preset, resolution)
+    are read from the scene at render time.
+    """
+
+    # List of batch view names that are enabled for submission
+    enabled_views: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -99,6 +178,12 @@ class RenderSubmitterUISettings:
     renderer: str = field(default="")
     state_set: str = field(default="")
     state_set_index: str = field(default="")
+
+    # Batch Rendering
+    submission_mode: str = field(default=SubmissionMode.DEFAULT.value, metadata={"sticky": True})
+    batch_render: BatchRenderSettings = field(
+        default_factory=BatchRenderSettings, metadata={"sticky": True}
+    )
 
     # Scene tweaks
     merge_xref_obj: bool = field(default=False, metadata={"sticky": True})
@@ -178,6 +263,10 @@ class RenderSubmitterUISettings:
                     for name, value in sticky_settings.items():
                         # Only set fields that are defined in the dataclass
                         if name in sticky_fields:
+                            field = sticky_fields[name]
+                            # Convert dict back to dataclass for nested dataclasses
+                            if dataclasses.is_dataclass(field.type) and isinstance(value, dict):
+                                value = field.type(**value)  # type: ignore[operator]
                             setattr(self, name, value)
             except (OSError, json.JSONDecodeError):
                 # If something bad happened to the sticky settings file, just use the defaults instead of
@@ -197,11 +286,14 @@ class RenderSubmitterUISettings:
         scene = rt.maxFilePath + rt.maxFileName
         sticky_settings_filename = Path(scene).with_suffix(RENDER_SUBMITTER_SETTINGS_FILE_EXT)
         with open(sticky_settings_filename, "w", encoding="utf8") as fh:
-            obj = {
-                field.name: getattr(self, field.name)
-                for field in dataclasses.fields(self)
-                if field.metadata.get("sticky")
-            }
+            obj = {}
+            for field in dataclasses.fields(self):
+                if field.metadata.get("sticky"):
+                    value = getattr(self, field.name)
+                    # Convert nested dataclasses to dict for JSON serialization
+                    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+                        value = dataclasses.asdict(value)
+                    obj[field.name] = value
             json.dump(obj, fh, indent=1)
 
     def validate_render_element_names(self) -> list[str]:

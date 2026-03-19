@@ -82,6 +82,35 @@ For information about the other submitter tabs, see the [AWS Deadline Cloud guid
 
 You can monitor job progress using the Deadline Cloud monitor. For more information, see the [AWS Deadline Cloud guide for using the monitor](https://docs.aws.amazon.com/deadline-cloud/latest/userguide/working-with-deadline-monitor.html).
 
+## Known Limitations
+
+### Maximum number of state sets / batch views per job
+
+The [Open Job Description (OpenJD) specification](https://github.com/OpenJobDescription/openjd-specifications/wiki/2023-09-Template-Schemas) limits a job to a maximum of 50 job parameters. Because the submitter creates per-step parameters for each state set or batch view, this places a practical ceiling on how many can be included in a single job submission.
+
+The submitter uses a fixed set of global parameters, plus per-step parameters that scale with the number of state sets or batch views:
+
+| Parameter group | Count |
+|---|---|
+| Base parameters (scene file, error checking) | 2 |
+| Camera parameter (when a specific camera is selected) | 0 or 1 |
+| Render element parameters (when scene has render elements) | up to 10 |
+| Per state set in Default mode (frames, output path/name/format, resolution) | 6 each |
+| Per batch view in Batch Render mode (frames, output path/name/format, resolution, camera, scene state, preset, pixel aspect) | 10 each |
+
+The practical limits are:
+
+| Submission mode | Render elements | Specific camera | Max per job |
+|---|---|---|---|
+| Default | No | No | 8 state sets |
+| Default | No | Yes | 7 state sets |
+| Default | Yes | No | 6 state sets |
+| Default | Yes | Yes | 6 state sets |
+| Batch Render | No | N/A | 4 batch views |
+| Batch Render | Yes | N/A | 3 batch views |
+
+Submitting a job that exceeds 50 parameters will fail with a validation error. If you need to render more state sets or batch views than the limit allows, split them across multiple job submissions.
+
 ## Getting help
 
 - Contact AWS Support

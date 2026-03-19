@@ -36,3 +36,6 @@ venv/
 
 # Temp folder
 tmp/
+
+# Kiro specs
+.kiro/specs/

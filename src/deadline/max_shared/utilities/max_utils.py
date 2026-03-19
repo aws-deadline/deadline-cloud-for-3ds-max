@@ -92,6 +92,132 @@ class RenderElementState:
         self.vray_vfb_states = []
 
 
+@dataclass
+class BatchRenderView:
+    """
+    Data class representing a view from 3ds Max's Batch Render dialog.
+    """
+
+    name: str
+    index: int = 0
+    enabled: bool = True
+    camera: Optional[str] = None
+    output_filename: str = ""
+    scene_state: Optional[str] = None
+    preset_file: Optional[str] = None
+    override_preset: bool = False
+    frame_start: Optional[int] = None
+    frame_end: Optional[int] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    pixel_aspect: Optional[float] = None
+
+    @property
+    def has_all_overrides(self) -> bool:
+        """Check if all override values are provided, allowing preset loading to be skipped."""
+        return (
+            self.override_preset
+            and self.frame_start is not None
+            and self.frame_end is not None
+            and self.width is not None
+            and self.height is not None
+        )
+
+
+def _view_to_batch_render_view(view, index: int) -> BatchRenderView:
+    """
+    Convert a pymxs batch render view to a BatchRenderView dataclass.
+
+    :param view: pymxs batch render view object
+    :param index: 1-based index of the view (used for fallback name)
+    :returns: BatchRenderView dataclass instance
+    """
+    name = str(view.name) if view.name else f"View_{index}"
+    enabled = bool(view.enabled)
+
+    # Extract camera name
+    camera = None
+    if view.camera is not None and view.camera != rt.undefined:
+        camera = str(view.camera.name)
+
+    # Extract output filename
+    output_filename = str(view.outputFilename) if view.outputFilename else ""
+
+    # Extract scene state (note: attribute is sceneStateName in submitter context)
+    scene_state = None
+    if (
+        hasattr(view, "sceneStateName")
+        and view.sceneStateName
+        and view.sceneStateName != rt.undefined
+    ):
+        scene_state = str(view.sceneStateName)
+    elif (
+        hasattr(view, "sceneState")
+        and view.sceneState is not None
+        and view.sceneState != rt.undefined
+    ):
+        scene_state = str(view.sceneState)
+
+    # Extract preset file
+    preset_file = str(view.presetFile) if view.presetFile else None
+
+    # Extract override settings
+    override_preset = bool(view.overridePreset)
+
+    frame_start = int(view.startFrame) if override_preset and view.startFrame is not None else None
+    frame_end = int(view.endFrame) if override_preset and view.endFrame is not None else None
+    width = int(view.width) if override_preset and view.width is not None else None
+    height = int(view.height) if override_preset and view.height is not None else None
+    pixel_aspect = (
+        float(view.pixelAspect) if override_preset and view.pixelAspect is not None else None
+    )
+
+    return BatchRenderView(
+        name=name,
+        index=index,
+        enabled=enabled,
+        camera=camera,
+        output_filename=output_filename,
+        scene_state=scene_state,
+        preset_file=preset_file,
+        override_preset=override_preset,
+        frame_start=frame_start,
+        frame_end=frame_end,
+        width=width,
+        height=height,
+        pixel_aspect=pixel_aspect,
+    )
+
+
+def get_batch_render_views() -> list[BatchRenderView]:
+    """
+    Extract all batch render views from 3ds Max's Batch Render Manager.
+
+    :returns: list of BatchRenderView dataclass instances
+    :raises RuntimeError: if Batch Render Manager is not available
+    """
+    batch_mgr = rt.batchRenderMgr
+    if not batch_mgr:
+        raise RuntimeError("Batch Render Manager not available")
+
+    batch_views: list[BatchRenderView] = []
+    num_items = batch_mgr.numViews
+    _logger.debug(f"Found {num_items} batch render views")
+
+    for i in range(1, num_items + 1):
+        view = batch_mgr.getView(i)
+        if not view:
+            raise RuntimeError(f"Could not get batch view at index {i}")
+
+        batch_view = _view_to_batch_render_view(view, i)
+        batch_views.append(batch_view)
+        _logger.debug(
+            f"Extracted batch render view: {batch_view.name} (enabled: {batch_view.enabled})"
+        )
+
+    return batch_views
+
+
 # V-Ray RT class IDs (GPU renderer)
 _VRAY_RT_CLASS_IDS: list[str] = [
     "#(1770671000, 1323107829)",
@@ -444,38 +570,6 @@ def configure_render_element_paths(
     return warnings
 
 
-def set_vray_output_path(
-    output_path: str,
-    output_name: str,
-    output_format: str = ".exr",
-) -> None:
-    """
-    Set V-Ray split buffer output path for both standard V-Ray and V-Ray RT.
-
-    Only sets the output path (output_splitfilename).
-    Split buffer flags are controlled by configure_vray_render_elements().
-
-    :param output_path: base output directory path
-    :param output_name: base output filename
-    :param output_format: output file format/extension (default: .exr)
-    :raises RuntimeError: if V-Ray output path cannot be set
-    """
-    split_filepath: str = os.path.join(output_path, f"{output_name}{output_format}")
-    warnings: list[str] = []
-
-    _logger.debug(
-        f"[set_vray_output_path] Attempting to set output_splitfilename = {split_filepath}"
-    )
-    _set_vray_property("output_splitfilename", split_filepath, warnings)
-
-    if warnings:
-        error_msg: str = f"[set_vray_output_path] Failed to set V-Ray output path: {warnings}"
-        _logger.error(error_msg)
-        raise RuntimeError(error_msg)
-
-    _logger.info(f"[set_vray_output_path] V-Ray output path set to: {split_filepath}")
-
-
 def is_vray_raw_output_format(output_format: str) -> bool:
     """
     Check if the output format requires V-Ray raw output pipeline.
@@ -517,8 +611,13 @@ def configure_vray_raw_output(
 
     try:
         # Build output filename with correct extension
+        # Strip any existing extension from output_name to avoid double extensions
+        # (e.g. output_name="render.exr" + extension=".exr" would produce "render.exr.exr")
         extension: str = output_format if output_format.startswith(".") else f".{output_format}"
-        raw_filename: str = os.path.join(output_path, f"{output_name}{extension}")
+        base_name: str = output_name
+        if output_name.endswith(extension):
+            base_name = output_name[: -len(extension)]
+        raw_filename: str = os.path.join(output_path, f"{base_name}{extension}")
 
         # Step 1: Enable V-Ray Frame Buffer (required for raw output)
         _set_vray_property("output_userigbe", True, warnings)

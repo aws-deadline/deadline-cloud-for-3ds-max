@@ -27,12 +27,20 @@ from deadline.max_adaptor.MaxAdaptor.regex_callback_handler import MaxRegexCallb
 _logger = logging.getLogger(__name__)
 
 
+# 3ds Max's MaxScript log buffer truncates lines beyond this limit.
+_MAX_LOG_LINE_LENGTH = 512
+
+
 class MaxNotRunningError(Exception):
     """Error that is raised when attempting to use Max while it is not running"""
 
 
 # Renderer needs extra steps
-_FIRST_MAX_ACTIONS = ["scene_file", "state_set"]  # Actions which must be queued before any others
+_FIRST_MAX_ACTIONS = [
+    "scene_file",
+    "state_set",
+    "scene_state",
+]  # Actions which must be queued before any others
 
 # Render elements feature on/off control key
 _ENABLED_MODIFY_RENDER_ELEMENTS_KEY = "enabled_modify_render_elements"
@@ -59,6 +67,8 @@ _MAX_INIT_KEYS = {
     "output_file_path",
     "output_file_name",
     "output_file_format",
+    "preset_file",
+    "pixel_aspect",
 }
 
 
@@ -97,7 +107,7 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
 
     @property
     def integration_data_interface_version(self) -> SemanticVersion:
-        return SemanticVersion(major=0, minor=1)
+        return SemanticVersion(major=0, minor=3)
 
     @staticmethod
     def _get_timer(timeout: int | float) -> Callable[[], bool]:
@@ -286,9 +296,12 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
         )
         deadline_namespace_dir = os.path.dirname(os.path.dirname(deadline.max_adaptor.__file__))
         python_path_addition = f"{openjd_namespace_dir}{os.pathsep}{deadline_namespace_dir}"
+        # Prepend (not append) so the adaptor's own packages take priority over any
+        # pre-existing site-packages on PYTHONPATH.  Without this, the system-installed
+        # adaptor version can shadow the override wheels during development.
         if "PYTHONPATH" in os.environ:
             os.environ["PYTHONPATH"] = (
-                f"{os.environ['PYTHONPATH']}{os.pathsep}{python_path_addition}"
+                f"{python_path_addition}{os.pathsep}{os.environ['PYTHONPATH']}"
             )
         else:
             os.environ["PYTHONPATH"] = python_path_addition
@@ -311,8 +324,14 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
             Action("renderer", {"renderer": self.init_data["renderer"]})
         )
 
+        # Only enqueue actions whose keys are actually present in init_data.
+        # In Batch Render mode, "state_set" is absent (replaced by "scene_state"),
+        # and in Default mode "scene_state" is absent.  Skipping missing keys
+        # avoids a KeyError and keeps the two submission modes compatible with
+        # the same ordered action list.
         for action_name in _FIRST_MAX_ACTIONS:
-            self._action_queue.enqueue_action(self._action_from_action_item(action_name))
+            if action_name in self.init_data:
+                self._action_queue.enqueue_action(self._action_from_action_item(action_name))
 
         for action_name in _MAX_INIT_KEYS:
             if action_name in self.init_data:
@@ -342,6 +361,53 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
             _logger.info(
                 "Render element modification is disabled, skipping render element configuration"
             )
+
+    def _dump_max_log_on_error(self) -> None:
+        """
+        Reads and logs the full 3ds Max network log file.
+
+        MaxScript's log buffer truncates output at 512 characters per line, so the
+        STDOUT captured by the adaptor may be incomplete. The on-disk Max.log contains
+        the untruncated output. This method is called on failure so the full error
+        context is available in the worker logs.
+
+        Lines longer than _MAX_LOG_LINE_LENGTH are split into chunks to avoid any
+        downstream truncation in log pipelines.
+        """
+        import glob
+
+        local_appdata = os.environ.get("LOCALAPPDATA", "")
+        if not local_appdata:
+            _logger.warning("LOCALAPPDATA not set, cannot locate Max.log")
+            return
+
+        pattern = os.path.join(
+            local_appdata, "Autodesk", "3dsMax", "*", "ENU", "Network", "Max.log"
+        )
+        log_files = glob.glob(pattern)
+
+        if not log_files:
+            _logger.info("No Max.log files found at %s", pattern)
+            return
+
+        for log_file in log_files:
+            try:
+                _logger.info("--- Begin 3ds Max Full Log (%s) ---", log_file)
+                with open(log_file, "r", errors="replace") as f:
+                    line = f.readline()
+                    while line != "":
+                        line = line.rstrip("\n")
+                        if len(line) <= _MAX_LOG_LINE_LENGTH:
+                            _logger.info(line)
+                        else:
+                            # Split long lines into chunks to prevent truncation
+                            for i in range(0, len(line), _MAX_LOG_LINE_LENGTH):
+                                chunk = line[i : i + _MAX_LOG_LINE_LENGTH]
+                                _logger.info(chunk if i == 0 else f"\t{chunk}")
+                        line = f.readline()
+                _logger.info("--- End 3ds Max Full Log ---")
+            except OSError as e:
+                _logger.warning("Failed to read Max.log at %s: %s", log_file, e)
 
     def on_start(self) -> None:
         """
@@ -376,6 +442,7 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
             time.sleep(0.1)  # Busy wait for max to finish initialization
 
         if len(self._action_queue) > 0:
+            self._dump_max_log_on_error()
             if is_not_timed_out():
                 raise RuntimeError(
                     "Max encountered an error and was not able to complete initialization actions."
@@ -411,6 +478,7 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
             # error case because the Max Client should still be running and waiting for the next command.
             # If the thread finished, then we cannot continue
             exit_code = self._max_client.returncode
+            self._dump_max_log_on_error()
             raise RuntimeError(
                 f"Max exited early and did not render successfully, please check render logs. Exit code {exit_code}"
             )

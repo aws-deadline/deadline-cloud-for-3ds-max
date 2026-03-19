@@ -49,6 +49,10 @@ class DefaultMaxHandler:
             # Render elements integration actions
             "configure_render_elements": self.configure_render_elements,
             "cleanup_render_elements": self.cleanup_render_elements,
+            # New batch render submission-time actions
+            "scene_state": self.set_scene_state,
+            "preset_file": self.set_preset_file,
+            "pixel_aspect": self.set_pixel_aspect,
         }
         self.camera_node = None
         self.output_dir = None
@@ -84,7 +88,10 @@ class DefaultMaxHandler:
 
     def start_render(self, data: dict) -> None:
         """
-        Starts a render in the scanline renderer.
+        Starts a render. Resolves output tokens, calls _configure_renderer for
+        renderer-specific setup, then renders.
+
+        Subclasses should override _configure_renderer instead of this method.
 
         :param data: The data given from the Adaptor. Keys expected: ['frame']
         :type data: dict
@@ -120,22 +127,34 @@ class DefaultMaxHandler:
             rt.rendTimeType = 1  # Set to single frame
             rt.sliderTime = frame
 
-            output_name = ""
             camera = data.get("camera")
             if camera is not None:
                 logger.debug("Setting camera with run data")
                 camera = self.get_camera_to_render(camera)
                 self.camera_node = rt.getNodeByName(camera)
 
-            # Since camera can be set by both init and run data, this isn't a required parameter in either schema.
+            # If no camera was set by init or run data, use the scene's active camera
             if self.camera_node is None:
-                self.log_to_console("Error: MaxClient: start_render called without a camera.")
-                raise RuntimeError("MaxClient: start_render called without a camera.")
+                cameras = list(rt.cameras)
+                if cameras:
+                    self.camera_node = cameras[0]
+                    self.log_to_console(
+                        f"No camera specified, using scene default: {self.camera_node.name}"
+                    )
+                else:
+                    self.log_to_console("Error: MaxClient: No cameras found in scene.")
+                    raise RuntimeError("MaxClient: No cameras found in scene.")
 
             # Resolve all tokens in the output filename pattern
             scene_name = Path(rt.maxFileName).stem if rt.maxFileName else ""
             state_set_name = self.state_set_name or ""
-            camera_name = camera or ""
+            # Camera name: prefer run data camera, fall back to init-data camera (self.camera_node)
+            if camera:
+                camera_name = camera
+            elif self.camera_node is not None:
+                camera_name = str(self.camera_node.name)
+            else:
+                camera_name = ""
 
             output_name = format_output_filename(
                 pattern=self.output_name,
@@ -145,6 +164,22 @@ class DefaultMaxHandler:
             )
 
             output_name = self.reformat_framenumber_padding(output_name, frame)
+
+            # Let subclasses configure renderer-specific settings with the resolved name
+            self.log_to_console(
+                f"DEBUG start_render: output_dir='{self.output_dir}', output_name='{output_name}', output_format='{self.output_format}'"
+            )
+
+            # If output_name is a full path (e.g. from batch view output_filename),
+            # extract just the filename portion. The directory comes from self.output_dir.
+            output_name = os.path.basename(output_name)
+
+            renderer_handles_output = self._configure_renderer_output(
+                output_name=output_name,
+                output_dir=self.output_dir,
+                output_format=self.output_format,
+            )
+
             output_file = output_name + self.output_format
             output_path = os.path.join(self.output_dir, output_file)
 
@@ -160,7 +195,13 @@ class DefaultMaxHandler:
             if os.path.exists(output_path):
                 os.remove(output_path)
 
-            rt.render(camera=self.camera_node, outputFile=output_path, quiet=True)
+            # If the renderer handles its own output (e.g. V-Ray raw/split buffer),
+            # don't pass outputFile to rt.render to avoid duplicate files.
+            if renderer_handles_output:
+                rt.render(camera=self.camera_node, quiet=True)
+            else:
+                self.log_to_console(f"Rendering to {output_path}")
+                rt.render(camera=self.camera_node, outputFile=output_path, quiet=True)
 
             self.log_to_console(f"MaxClient: Finished Rendering Frame {frame}")
 
@@ -174,6 +215,23 @@ class DefaultMaxHandler:
                     self.cleanup_render_elements(data)
                 except Exception as e:
                     self.log_to_console(f"Warning: Render elements cleanup failed: {e}")
+
+    def _configure_renderer_output(
+        self, output_name: str, output_dir: str, output_format: str
+    ) -> bool:
+        """
+        Hook for subclasses to configure renderer-specific settings before rendering.
+
+        Called by start_render after output tokens have been resolved. Subclasses
+        should override this instead of start_render to set up renderer-specific
+        output paths, render settings, etc.
+
+        :param output_name: The fully resolved output filename (tokens replaced, frame padding applied)
+        :param output_dir: The output directory path
+        :param output_format: The output file format extension (e.g. ".exr", ".png")
+        :returns: True if the renderer handles output file writing (suppresses rt.render outputFile)
+        """
+        return False
 
     def reformat_framenumber_padding(self, name: str, number: int) -> str:
         """
@@ -300,6 +358,9 @@ class DefaultMaxHandler:
         """
         Sets the output file path.
 
+        Note: Path mapping is already applied by Deadline Cloud to job parameter values
+        before they reach the adaptor, so no additional mapping is needed here.
+
         :param data: The data given from the Adaptor. Keys expected: ['output_file_path']
         :type data: dict
         """
@@ -377,8 +438,78 @@ class DefaultMaxHandler:
                 f"Error: The specified state set, '{state_set_name}', does not exist."
             )
             raise RuntimeError(f"The specified state set, '{state_set_name}', does not exist.")
+        else:
+            self.log_to_console(f"Set state set to: {state_set_name}")
 
         self.check_renderer()
+
+    def set_scene_state(self, data: dict) -> None:
+        """
+        Restore a scene state via rt.sceneStateMgr.
+
+        This is distinct from set_state_set which uses the Autodesk.Max.StateSets.Plugin API.
+        Scene states are used in batch render mode, while state sets are used in default mode.
+
+        :param data: The data given from the Adaptor. Keys expected: ['scene_state']
+        :type data: dict
+
+        :raises RuntimeError: If the scene state does not exist or fails to restore
+        """
+        scene_state_name = data.get("scene_state")
+        if not scene_state_name:
+            return
+        scene_state_mgr = rt.sceneStateMgr
+        index = scene_state_mgr.FindSceneState(scene_state_name)
+        if index < 0:
+            raise RuntimeError(f"Scene State '{scene_state_name}' does not exist in the scene")
+        result = scene_state_mgr.RestoreAllParts(scene_state_name)
+        if not result:
+            raise RuntimeError(f"Failed to restore scene state '{scene_state_name}'")
+        self.log_to_console(f"Applied scene state: {scene_state_name}")
+
+    def set_preset_file(self, data: dict) -> None:
+        """
+        Load a render preset file with path mapping.
+
+        :param data: The data given from the Adaptor. Keys expected: ['preset_file']
+        :type data: dict
+
+        :raises RuntimeError: If the preset file does not exist after path mapping or fails to load
+        """
+        preset_path = data.get("preset_file")
+        if not preset_path:
+            return
+        if self.map_path is not None:
+            preset_path = self.map_path(preset_path)
+        if not os.path.exists(preset_path):
+            raise RuntimeError(f"Preset file '{preset_path}' does not exist after path mapping")
+        result = rt.renderPresets.LoadAll(0, preset_path)
+        if not result:
+            raise RuntimeError(
+                f"Failed to load preset file '{preset_path}' — may be incompatible with current renderer"
+            )
+        self.log_to_console(f"Loaded render preset: {preset_path}")
+
+    def set_pixel_aspect(self, data: dict) -> None:
+        """
+        Set the render pixel aspect ratio.
+
+        :param data: The data given from the Adaptor. Keys expected: ['pixel_aspect']
+        :type data: dict
+
+        :raises RuntimeError: If the pixel aspect value is not a positive number
+        """
+        pixel_aspect_str = data.get("pixel_aspect")
+        if not pixel_aspect_str:
+            return
+        try:
+            pixel_aspect = float(pixel_aspect_str)
+        except (ValueError, TypeError):
+            raise RuntimeError(f"Invalid pixel aspect: '{pixel_aspect_str}' (not a number)")
+        if pixel_aspect <= 0:
+            raise RuntimeError(f"Invalid pixel aspect: {pixel_aspect} (must be a positive number)")
+        rt.renderPixelAspect = pixel_aspect
+        self.log_to_console(f"Set pixel aspect: {pixel_aspect}")
 
     def set_scene_file(self, data: dict) -> None:
         """
@@ -417,17 +548,12 @@ class DefaultMaxHandler:
 
     def log_to_console(self, message: str) -> None:
         """
-        Handles logging to both stdout and Max.log file for better debugging.
-        :param message: The text to log to the stdout and Max.log.
+        Log message to both stdout and Max.log file.
+        Delegates to module-level log_to_console function.
+
+        :param message: The text to log
         """
-        # When using 3dsmaxbatch (batch mode), log to Max.log file only
-        try:
-            # When using 3dsmax (interactive mode), print to stdout
-            print(message, flush=True)
-            rt.logsystem.logEntry(message, broadcast=True)
-        except Exception:
-            # If logsystem fails, continue without breaking execution
-            pass
+        log_to_console(message)
 
     def configure_render_elements(self, data: dict) -> None:
         """
@@ -502,3 +628,19 @@ class DefaultMaxHandler:
                 self.log_to_console(f"Warning: Render elements cleanup had issues: {error_msg}")
         except Exception as e:
             self.log_to_console(f"Warning: Error during render elements cleanup: {e}")
+
+
+def log_to_console(message: str) -> None:
+    """
+    Log message to both stdout and Max.log file.
+
+    :param message: The text to log
+    """
+    # When using 3dsmaxbatch (batch mode), log to Max.log file only
+    try:
+        # When using 3dsmax (interactive mode), print to stdout
+        print(message, flush=True)
+        rt.logsystem.logEntry(message, broadcast=True)
+    except Exception:
+        # If logsystem fails, continue without breaking execution
+        pass

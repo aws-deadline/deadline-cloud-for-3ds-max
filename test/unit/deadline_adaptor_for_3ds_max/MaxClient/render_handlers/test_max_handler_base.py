@@ -164,3 +164,91 @@ class TestDefaultMaxHandler:
 
         # THEN
         mock_render_element_manager.restore_render_elements.assert_called_once()
+
+
+class TestBatchRender:
+    """Tests for batch rendering functionality in DefaultMaxHandler."""
+
+    class TestStartRender:
+        """Tests for start_render with batch_render_view in output filename."""
+
+        @pytest.fixture(autouse=True)
+        def mock_rt(self):
+            """Mock the pymxs runtime for all tests in this class."""
+            with patch(
+                "deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.rt"
+            ) as mock:
+                yield mock
+
+        @pytest.fixture(autouse=True)
+        def mock_os_path_exists(self):
+            """Mock os.path.exists for all tests in this class."""
+            with patch(
+                "deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.os.path.exists"
+            ) as mock:
+                mock.return_value = True
+                yield mock
+
+        @pytest.fixture(autouse=True)
+        def mock_os_makedirs(self):
+            """Mock os.makedirs for all tests in this class."""
+            with patch(
+                "deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.os.makedirs"
+            ) as mock:
+                yield mock
+
+        @pytest.fixture(autouse=True)
+        def mock_os_remove(self):
+            """Mock os.remove for all tests in this class."""
+            with patch(
+                "deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.os.remove"
+            ) as mock:
+                yield mock
+
+        @pytest.mark.parametrize(
+            "output_pattern,run_data,expected_in_output,not_expected_in_output",
+            [
+                ("render_####", {"frame": 10}, [], []),
+                (
+                    "<camera>_render_####",
+                    {"frame": 10, "camera": "Camera001"},
+                    ["Camera001"],
+                    [],
+                ),
+            ],
+            ids=["basic_render", "with_camera"],
+        )
+        def test_output_filename_composition(
+            self,
+            maxhandlerbase: DefaultMaxHandler,
+            mock_rt: Mock,
+            output_pattern: str,
+            run_data: dict,
+            expected_in_output: list,
+            not_expected_in_output: list,
+        ):
+            """Verify output filename includes correct components based on camera."""
+            maxhandlerbase.output_dir = "/output"
+            maxhandlerbase.output_name = output_pattern
+            maxhandlerbase.output_format = ".png"
+
+            if "camera" in run_data:
+                maxhandlerbase.camera_node = None
+                # Create a mock camera with proper name attribute
+                mock_camera = Mock()
+                mock_camera.name = "Camera001"
+                mock_rt.cameras = [mock_camera]
+                mock_rt.getNodeByName.return_value = Mock()
+            else:
+                maxhandlerbase.camera_node = Mock()
+
+            maxhandlerbase.start_render(run_data)
+
+            mock_rt.render.assert_called_once()
+            # Output filename is passed as outputFile kwarg to rt.render()
+            render_kwargs = mock_rt.render.call_args
+            output_filename = render_kwargs.kwargs.get("outputFile", "")
+            for expected in expected_in_output:
+                assert expected in output_filename
+            for not_expected in not_expected_in_output:
+                assert not_expected not in output_filename

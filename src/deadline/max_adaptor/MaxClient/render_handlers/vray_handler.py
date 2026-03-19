@@ -7,16 +7,13 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 import math
 import os
 import sys
-from pathlib import Path
 from typing import Any
 
 from pymxs import runtime as rt
 
-from deadline.max_shared.utilities.filename_utils import format_output_filename
 from deadline.max_shared.utilities.max_utils import (
     configure_vray_raw_output,
     is_vray_raw_output_format,
-    set_vray_output_path,
 )
 
 from .default_max_handler import DefaultMaxHandler
@@ -175,47 +172,35 @@ class VrayHandler(DefaultMaxHandler):
 
         self.log_to_console(f"VRMesh path mapping complete: {mapped_count} proxies remapped")
 
-    def start_render(self, data: dict[str, Any]) -> None:
+    def _configure_renderer_output(
+        self, output_name: str, output_dir: str, output_format: str
+    ) -> bool:
         """
-        Override to set V-Ray output path before rendering.
+        Configure V-Ray output settings before rendering.
 
         Resolves output filename tokens before setting V-Ray output paths,
         so the split buffer filename matches the resolved main output.
 
         Automatically uses raw output pipeline for .vrimg and .exr formats,
         which stores all render elements in a single multichannel container file.
-        For other formats, uses standard V-Ray split buffer output.
+        For other formats, does nothing and defers output configuration to 3dsMax.
         """
-        if self.output_dir and self.output_name:
-            output_format = self.output_format or ".exr"
+        # Auto-detect raw output mode based on format
+        if not is_vray_raw_output_format(output_format):
+            # Only need to configure output for raw formats
+            return False
 
-            camera_name = data.get("camera", "") or ""
-            scene_name = Path(rt.maxFileName).stem if rt.maxFileName else ""
-            state_set_name = self.state_set_name or ""
+        # If output_name is a full path (e.g. from batch view output_filename),
+        # extract just the filename portion. The directory comes from output_dir.
+        output_name = os.path.basename(output_name)
+        self.log_to_console(f"V-Ray raw output mode enabled for format: {output_format}")
+        warnings = configure_vray_raw_output(
+            output_path=output_dir,
+            output_name=output_name,
+            output_format=output_format,
+        )
+        for warning in warnings:
+            self.log_to_console(f"Warning: {warning}")
 
-            resolved_name = format_output_filename(
-                pattern=self.output_name,
-                camera_name=camera_name,
-                state_set_name=state_set_name,
-                scene_name=scene_name,
-            )
-
-            # Auto-detect raw output mode based on format
-            if is_vray_raw_output_format(output_format):
-                self.log_to_console(f"V-Ray raw output mode enabled for format: {output_format}")
-                warnings = configure_vray_raw_output(
-                    output_path=self.output_dir,
-                    output_name=resolved_name,
-                    output_format=output_format,
-                )
-                for warning in warnings:
-                    self.log_to_console(f"Warning: {warning}")
-            else:
-                # Standard V-Ray output path for other formats
-                set_vray_output_path(
-                    output_path=self.output_dir,
-                    output_name=resolved_name,
-                    output_format=output_format,
-                )
-
-        super().start_render(data)
+        # V-Ray manages its own output file writing for raw output mode
+        return True

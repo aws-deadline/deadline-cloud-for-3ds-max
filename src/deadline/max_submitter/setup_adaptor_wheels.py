@@ -72,13 +72,28 @@ def main():
     # Update PATH to include venv
     if system == "Windows":
         venv_bin = str(venv_dir / "Scripts")
+        venv_site_packages = str(venv_dir / "Lib" / "site-packages")
     else:
         venv_bin = str(venv_dir / "bin")
+        # Find the Python version directory for site-packages
+        lib_dir = venv_dir / "lib"
+        python_dirs = list(lib_dir.glob("python*"))
+        if python_dirs:
+            venv_site_packages = str(python_dirs[0] / "site-packages")
+        else:
+            venv_site_packages = str(lib_dir / "site-packages")
 
     if "PATH" in after_env:
         after_env["PATH"] = f"{venv_bin}{os.pathsep}{after_env['PATH']}"
     else:
         after_env["PATH"] = venv_bin
+
+    # Set PYTHONPATH so the venv packages take priority over system-installed packages
+    # when running inside host applications (e.g. 3ds Max's embedded Python)
+    if "PYTHONPATH" in after_env:
+        after_env["PYTHONPATH"] = f"{venv_site_packages}{os.pathsep}{after_env['PYTHONPATH']}"
+    else:
+        after_env["PYTHONPATH"] = venv_site_packages
 
     # Load initial environment
     with open(env_file, "r", encoding="utf8") as f:

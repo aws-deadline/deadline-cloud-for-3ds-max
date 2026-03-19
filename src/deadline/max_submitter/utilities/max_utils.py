@@ -7,6 +7,11 @@
 import logging
 import os
 from pathlib import Path, PureWindowsPath
+from contextlib import contextmanager
+from typing import Any
+
+from data_const import TEMP_BACKUP_FILENAME
+from utilities import submission_utils
 
 import pymxs  # separate import to initialize
 from pymxs import runtime as rt
@@ -344,7 +349,108 @@ def get_render_output_info() -> tuple[str, str, str]:
     """
     if rt.rendOutputFilename:
         output_path = PureWindowsPath(rt.rendOutputFilename)
-        return str(output_path.parent), output_path.stem, output_path.suffix
+        return str(output_path.parent.as_posix()), output_path.stem, output_path.suffix
     else:
         # Fall back to default scene-based naming
         return get_scene_dir(), get_scene_name() + "_###", ""
+
+
+@contextmanager
+def hold_and_fetch_scene():
+    """
+    Context manager that holds the scene state on entry and fetches (restores) it on exit.
+
+    Uses the robust save_max_backup_file and restore_max_copy functions which properly
+    handle edge cases like preserving existing hold files. Guarantees restoration even
+    if an exception occurs.
+
+    Usage:
+        with hold_and_fetch_scene():
+            # Make temporary changes to scene
+            # Changes will be reverted on exit
+    """
+    backup_path = rt.execute("GetDir #temp") + "\\" + TEMP_BACKUP_FILENAME
+
+    _logger.debug(f"Holding Max scene to {backup_path}...")
+    result = submission_utils.save_max_backup_file(backup_path, use_max_hold=True)
+    if result != "undefined":
+        raise RuntimeError(f"Failed to hold scene: {result}")
+    _logger.debug("Hold successful")
+
+    try:
+        yield
+    finally:
+        _logger.debug("Fetching Max scene...")
+        result = submission_utils.restore_max_copy(backup_path)
+        if result != "undefined":
+            _logger.error(f"Failed to restore scene: {result}")
+        else:
+            _logger.debug("Fetch successful")
+
+
+def extract_settings_from_preset(preset_file: str) -> dict:
+    """
+    Extract render settings from a render preset file.
+
+    Automatically holds and restores the scene state to prevent preset loading
+    from polluting the current render settings.
+
+    :param preset_file: path to the .rps preset file
+    :return: dict with keys 'frame_range', 'width', 'height' (values may be None)
+    """
+    _logger.debug(f"Extracting settings from preset: {preset_file}")
+
+    settings: dict[str, Any] = {
+        "frame_range": None,
+        "width": None,
+        "height": None,
+    }
+
+    # Validate preset file exists
+    if not os.path.exists(preset_file):
+        _logger.warning(f"Preset file does not exist: {preset_file}")
+        return settings
+
+    with hold_and_fetch_scene():
+        _logger.debug("Loading preset file...")
+        result = rt.renderPresets.LoadAll(0, preset_file)
+        _logger.debug(f"LoadAll result: {result}")
+
+        # Extract frame range based on render time type
+        _logger.debug(
+            f"After loading - rendTimeType: {rt.rendTimeType}, rendStart: {rt.rendStart}, "
+            f"rendEnd: {rt.rendEnd}, renderWidth: {rt.renderWidth}, renderHeight: {rt.renderHeight}"
+        )
+
+        # Extract frame range
+        frame_range = ""
+        if rt.rendTimeType == 1:  # Single frame
+            current_frame = int(rt.sliderTime)
+            frame_range = str(current_frame)
+            _logger.debug(f"rendTimeType=1 (Single frame): {frame_range}")
+        elif rt.rendTimeType == 2:  # Active time segment
+            frame_start = int(rt.animationRange.start)
+            frame_end = int(rt.animationRange.end)
+            frame_range = f"{frame_start}-{frame_end}"
+            _logger.debug(f"rendTimeType=2 (Active time segment): {frame_range}")
+        elif rt.rendTimeType == 3:  # User chosen range
+            frame_start = int(rt.rendStart)
+            frame_end = int(rt.rendEnd)
+            frame_range = f"{frame_start}-{frame_end}"
+            _logger.debug(f"rendTimeType=3 (User chosen range): {frame_range}")
+        elif rt.rendTimeType == 4:  # Pick up frames
+            frame_range = str(rt.rendPickupFrames)
+            _logger.debug(f"rendTimeType=4 (Pick up frames): {frame_range}")
+        else:
+            _logger.debug(f"Unknown rendTimeType: {rt.rendTimeType}")
+
+        if frame_range:
+            settings["frame_range"] = frame_range
+            _logger.debug(f"Extracted frame range from preset {preset_file}: {frame_range}")
+
+        # Extract resolution
+        settings["width"] = int(rt.renderWidth)
+        settings["height"] = int(rt.renderHeight)
+        _logger.debug(f"Extracted resolution: {settings['width']}x{settings['height']}")
+
+    return settings

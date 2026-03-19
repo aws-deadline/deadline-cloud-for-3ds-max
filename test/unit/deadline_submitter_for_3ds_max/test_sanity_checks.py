@@ -1,12 +1,15 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+import logging
 import random
 import string
 
 from unittest.mock import patch, Mock
 from pytest import fixture, raises
 
+from deadline.max_shared.utilities.max_utils import BatchRenderView
 from deadline.max_submitter.sanity_checks import (
     check_sanity,
+    check_sanity_batch_render,
     check_sanity_specific_state_set,
     JOB_PARAMETER_MAX_STRING_LENGTH,
     STEP_NAME_MAX_STRING_LENGTH,
@@ -14,7 +17,11 @@ from deadline.max_submitter.sanity_checks import (
     ALL_STATE_SETS_STR,
     ALLOWED_RENDERERS,
 )
-from deadline.max_submitter.data_classes import RenderSubmitterUISettings
+from deadline.max_submitter.data_classes import (
+    BatchRenderSettings,
+    RenderSubmitterUISettings,
+    SubmissionMode,
+)
 
 
 @fixture(scope="function", autouse=True)
@@ -225,3 +232,128 @@ class TestSanityChecks:
                         f"This could cause incorrect renderer detection. "
                         f"Consider using more specific renderer names or reordering the list."
                     )
+
+
+class TestCheckSanityBatchRender:
+    """Tests for check_sanity_batch_render function."""
+
+    @fixture
+    def batch_settings(self) -> RenderSubmitterUISettings:
+        """Create settings with batch rendering enabled."""
+        settings = RenderSubmitterUISettings()
+        settings.name = "test_job"
+        settings.submission_mode = SubmissionMode.BATCH_RENDER.value
+        settings.batch_render = BatchRenderSettings(enabled_views=["Item1", "view2"])
+        return settings
+
+    @patch("deadline.max_submitter.sanity_checks.get_batch_render_views")
+    def test_skips_checks_when_batch_disabled(
+        self, mock_get_batch_views, default_settings: RenderSubmitterUISettings
+    ):
+        """Verify no checks are performed when batch rendering is disabled."""
+        default_settings.submission_mode = SubmissionMode.DEFAULT.value
+
+        # Should not raise and should not call get_batch_render_views
+        check_sanity_batch_render(default_settings)
+        mock_get_batch_views.assert_not_called()
+
+    @patch("deadline.max_submitter.sanity_checks.get_batch_render_views")
+    def test_raises_when_no_enabled_views(
+        self, mock_get_batch_views, batch_settings: RenderSubmitterUISettings
+    ):
+        """Verify exception is raised when no batch views are enabled."""
+        # Return items but none are enabled
+        mock_get_batch_views.return_value = [
+            BatchRenderView(name="view1", enabled=False),
+            BatchRenderView(name="Item3", enabled=False),
+        ]
+
+        with raises(
+            Exception,
+            match="No enabled batch views found. Please enable at least one view in the Batch Render Manager.",
+        ):
+            check_sanity_batch_render(batch_settings)
+
+    @patch("deadline.max_submitter.sanity_checks.get_batch_render_views")
+    def test_passes_with_enabled_views(
+        self, mock_get_batch_views, batch_settings: RenderSubmitterUISettings
+    ):
+        """Verify no exception when enabled batch views exist."""
+        mock_get_batch_views.return_value = [
+            BatchRenderView(name="view1", enabled=True, output_filename="C:/output/render.png"),
+            BatchRenderView(name="view2", enabled=True, output_filename="C:/output/render2.png"),
+        ]
+
+        # Should not raise
+        check_sanity_batch_render(batch_settings)
+
+    @patch("deadline.max_submitter.sanity_checks.max_utils.get_camera_names")
+    @patch("deadline.max_submitter.sanity_checks.get_batch_render_views")
+    def test_raises_on_missing_output_filename(
+        self,
+        mock_get_batch_views,
+        mock_get_camera_names,
+        batch_settings: RenderSubmitterUISettings,
+    ):
+        """Verify exception lists all batch views missing output filenames."""
+        mock_get_camera_names.return_value = ["Camera001"]
+        mock_get_batch_views.return_value = [
+            BatchRenderView(name="view1", enabled=True, output_filename=""),
+            BatchRenderView(name="view2", enabled=True, output_filename=""),
+            BatchRenderView(name="view3", enabled=True, output_filename="C:/output/render.png"),
+        ]
+
+        with raises(
+            Exception,
+            match=r"(?s)- view1.*- view2",
+        ):
+            check_sanity_batch_render(batch_settings)
+
+    @patch("deadline.max_submitter.sanity_checks.max_utils.get_camera_names")
+    @patch("deadline.max_submitter.sanity_checks.get_batch_render_views")
+    def test_warns_on_conflicting_output_paths(
+        self,
+        mock_get_batch_views,
+        mock_get_camera_names,
+        batch_settings: RenderSubmitterUISettings,
+        caplog,
+    ):
+        """Verify warning is logged when multiple items write to same output."""
+        mock_get_camera_names.return_value = ["Camera001"]
+        mock_get_batch_views.return_value = [
+            BatchRenderView(name="view1", enabled=True, output_filename="C:/output/render.png"),
+            BatchRenderView(
+                name="view2", enabled=True, output_filename="C:/output/render.png"
+            ),  # Same
+        ]
+
+        with caplog.at_level(logging.WARNING):
+            check_sanity_batch_render(batch_settings)
+
+        assert "Multiple batch views write to the same output path" in caplog.text
+
+    @patch("deadline.max_submitter.sanity_checks.max_utils.get_camera_names")
+    @patch("deadline.max_submitter.sanity_checks.get_batch_render_views")
+    def test_warns_on_missing_camera(
+        self,
+        mock_get_batch_views,
+        mock_get_camera_names,
+        batch_settings: RenderSubmitterUISettings,
+        caplog,
+    ):
+        """Verify warning is logged when batch view references non-existent camera."""
+
+        mock_get_camera_names.return_value = ["Camera001", "Camera002"]
+        mock_get_batch_views.return_value = [
+            BatchRenderView(
+                name="Item1",
+                enabled=True,
+                camera="NonExistentCamera",
+                output_filename="C:/output/render.png",
+            ),
+        ]
+
+        with caplog.at_level(logging.WARNING):
+            check_sanity_batch_render(batch_settings)
+
+        assert "does not exist in scene" in caplog.text

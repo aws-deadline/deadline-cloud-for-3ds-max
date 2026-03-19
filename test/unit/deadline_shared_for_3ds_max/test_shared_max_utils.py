@@ -553,81 +553,6 @@ def test_configure_render_element_outputs_filename_with_special_characters(mock_
 
 
 @patch("deadline.max_shared.utilities.max_utils.rt")
-def test_set_vray_output_path_standard_vray(mock_rt: MagicMock) -> None:
-    """Test set_vray_output_path sets path for standard V-Ray only."""
-    from deadline.max_shared.utilities.max_utils import set_vray_output_path
-
-    # GIVEN - Mock standard V-Ray renderer
-    mock_renderer = MagicMock()
-    mock_renderer.classid = "#(1941615238, 2012806412)"
-    mock_renderer.__str__.return_value = "V_Ray_6"  # type: ignore[attr-defined]
-    mock_rt.renderers.current = mock_renderer
-
-    output_path: str = "C:/output"
-    output_name: str = "test_render"
-    output_format: str = ".exr"
-
-    # WHEN - Set V-Ray output path
-    set_vray_output_path(output_path, output_name, output_format)
-
-    # THEN - Should set path on standard renderer only
-    expected_path: str = f"C:/output{os.sep}test_render.exr"
-    assert mock_renderer.output_splitfilename == expected_path
-
-
-@patch("deadline.max_shared.utilities.max_utils.rt")
-def test_set_vray_output_path_vray_rt(mock_rt: MagicMock) -> None:
-    """Test set_vray_output_path sets path for both standard V-Ray and V-Ray RT."""
-    from deadline.max_shared.utilities.max_utils import set_vray_output_path
-
-    # GIVEN - Mock V-Ray RT renderer
-    mock_renderer = MagicMock()
-    mock_renderer.classid = "#(1770671000, 1323107829)"
-    mock_renderer.__str__.return_value = "V_Ray_GPU_6"  # type: ignore[attr-defined]
-    mock_vray_settings = MagicMock()
-    mock_renderer.V_Ray_settings = mock_vray_settings
-    mock_rt.renderers.current = mock_renderer
-
-    output_path: str = "C:/output"
-    output_name: str = "test_render"
-    output_format: str = ".png"
-
-    # WHEN - Set V-Ray output path
-    set_vray_output_path(output_path, output_name, output_format)
-
-    # THEN - Should set path on both standard renderer and RT settings
-    expected_path: str = f"C:/output{os.sep}test_render.png"
-    assert mock_renderer.output_splitfilename == expected_path
-    assert mock_vray_settings.output_splitfilename == expected_path
-
-
-@patch("deadline.max_shared.utilities.max_utils.rt")
-def test_set_vray_output_path_raises_on_failure(mock_rt: MagicMock) -> None:
-    """Test set_vray_output_path raises RuntimeError when setting path fails."""
-    import pytest
-
-    from deadline.max_shared.utilities.max_utils import set_vray_output_path
-
-    # GIVEN - Mock renderer that raises exception when setting output_splitfilename
-    mock_renderer = MagicMock()
-    mock_renderer.classid = "#(1941615238, 2012806412)"
-    mock_renderer.__str__.return_value = "V_Ray_6"  # type: ignore[attr-defined]
-    type(mock_renderer).output_splitfilename = property(
-        fget=lambda self: None,
-        fset=MagicMock(side_effect=Exception("V-Ray API error")),
-    )
-    mock_rt.renderers.current = mock_renderer
-
-    output_path: str = "C:/output"
-    output_name: str = "test_render"
-    output_format: str = ".exr"
-
-    # WHEN/THEN - Should raise RuntimeError
-    with pytest.raises(RuntimeError, match="Failed to set V-Ray output path"):
-        set_vray_output_path(output_path, output_name, output_format)
-
-
-@patch("deadline.max_shared.utilities.max_utils.rt")
 def test_configure_vray_render_elements_sets_rt_settings(mock_rt: MagicMock) -> None:
     """Test configure_vray_render_elements sets both standard and RT settings."""
     from deadline.max_shared.utilities.max_utils import (
@@ -872,3 +797,235 @@ def test_configure_vray_raw_output_handles_exception(mock_rt: MagicMock) -> None
     # THEN - Should return warnings instead of raising
     assert len(warnings) > 0
     assert any("Failed to set V-Ray property" in w for w in warnings)
+
+
+class TestBatchRenderView:
+    """Tests for BatchRenderView dataclass."""
+
+    @pytest.mark.parametrize(
+        "override_preset,frame_start,frame_end,width,height,expected",
+        [
+            (True, 1, 100, 1920, 1080, True),
+            (False, 1, 100, 1920, 1080, False),
+            (True, None, 100, 1920, 1080, False),
+            (True, 1, None, 1920, 1080, False),
+            (True, 1, 100, None, 1080, False),
+            (True, 1, 100, 1920, None, False),
+        ],
+        ids=[
+            "all_overrides",
+            "override_disabled",
+            "missing_frame_start",
+            "missing_frame_end",
+            "missing_width",
+            "missing_height",
+        ],
+    )
+    def test_has_all_overrides(
+        self, override_preset, frame_start, frame_end, width, height, expected
+    ):
+        """Verify has_all_overrides property correctly identifies complete overrides."""
+        from deadline.max_shared.utilities.max_utils import BatchRenderView
+
+        item = BatchRenderView(
+            name="Test",
+            override_preset=override_preset,
+            frame_start=frame_start,
+            frame_end=frame_end,
+            width=width,
+            height=height,
+        )
+
+        assert item.has_all_overrides is expected
+
+
+class TestViewToBatchRenderView:
+    """Tests for _view_to_batch_render_view function."""
+
+    @pytest.fixture(autouse=True)
+    def mock_rt(self):
+        """Mock the pymxs runtime for all tests in this class."""
+        with patch("deadline.max_shared.utilities.max_utils.rt") as mock:
+            yield mock
+
+    def test_converts_full_view(self, mock_rt):
+        """Verify _view_to_batch_render_view converts a fully populated view."""
+        from deadline.max_shared.utilities.max_utils import _view_to_batch_render_view
+
+        mock_view = Mock()
+        mock_view.name = "TestView"
+        mock_view.enabled = True
+        mock_view.camera.name = "Camera001"
+        mock_view.outputFilename = "C:/output/render.png"
+        mock_view.sceneStateName = "MySceneState"
+        mock_view.presetFile = "C:/presets/render.rps"
+        mock_view.overridePreset = True
+        mock_view.startFrame = 1
+        mock_view.endFrame = 100
+        mock_view.width = 1920
+        mock_view.height = 1080
+        mock_view.pixelAspect = 1.5
+
+        result = _view_to_batch_render_view(mock_view, 1)
+
+        assert result.name == "TestView"
+        assert result.enabled is True
+        assert result.camera == "Camera001"
+        assert result.output_filename == "C:/output/render.png"
+        assert result.scene_state == "MySceneState"
+        assert result.preset_file == "C:/presets/render.rps"
+        assert result.override_preset is True
+        assert result.frame_start == 1
+        assert result.frame_end == 100
+        assert result.width == 1920
+        assert result.height == 1080
+        assert result.pixel_aspect == 1.5
+
+    def test_uses_fallback_name(self, mock_rt):
+        """Verify _view_to_batch_render_view uses fallback name when view.name is empty."""
+        from deadline.max_shared.utilities.max_utils import _view_to_batch_render_view
+
+        mock_view = Mock()
+        mock_view.name = ""
+        mock_view.enabled = True
+        mock_view.camera = None
+        mock_view.outputFilename = ""
+        mock_view.presetFile = None
+        mock_view.overridePreset = False
+
+        result = _view_to_batch_render_view(mock_view, 3)
+
+        assert result.name == "View_3"
+
+    def test_handles_undefined_camera(self, mock_rt):
+        """Verify _view_to_batch_render_view handles undefined camera."""
+        from deadline.max_shared.utilities.max_utils import _view_to_batch_render_view
+
+        mock_view = Mock()
+        mock_view.name = "Test"
+        mock_view.enabled = True
+        mock_view.camera = mock_rt.undefined
+        mock_view.outputFilename = ""
+        mock_view.presetFile = None
+        mock_view.overridePreset = False
+
+        result = _view_to_batch_render_view(mock_view, 1)
+
+        assert result.camera is None
+
+    def test_handles_scene_state_attribute(self, mock_rt):
+        """Verify _view_to_batch_render_view handles sceneState attribute (adaptor context)."""
+        from deadline.max_shared.utilities.max_utils import _view_to_batch_render_view
+
+        mock_view = Mock(
+            spec=[
+                "name",
+                "enabled",
+                "camera",
+                "outputFilename",
+                "presetFile",
+                "overridePreset",
+                "sceneState",
+            ]
+        )
+        mock_view.name = "Test"
+        mock_view.enabled = True
+        mock_view.camera = None
+        mock_view.outputFilename = ""
+        mock_view.presetFile = None
+        mock_view.overridePreset = False
+        mock_view.sceneState = "AdaptorSceneState"
+
+        result = _view_to_batch_render_view(mock_view, 1)
+
+        assert result.scene_state == "AdaptorSceneState"
+
+    def test_override_values_only_when_enabled(self, mock_rt):
+        """Verify override values are only extracted when overridePreset is True."""
+        from deadline.max_shared.utilities.max_utils import _view_to_batch_render_view
+
+        mock_view = Mock()
+        mock_view.name = "Test"
+        mock_view.enabled = True
+        mock_view.camera = None
+        mock_view.outputFilename = ""
+        mock_view.presetFile = None
+        mock_view.overridePreset = False
+        mock_view.startFrame = 1
+        mock_view.endFrame = 100
+        mock_view.width = 1920
+        mock_view.height = 1080
+        mock_view.pixelAspect = 1.5
+
+        result = _view_to_batch_render_view(mock_view, 1)
+
+        assert result.frame_start is None
+        assert result.frame_end is None
+        assert result.width is None
+        assert result.height is None
+        assert result.pixel_aspect is None
+
+
+class TestGetbatchRenderviews:
+    """Tests for get_batch_render_views function."""
+
+    @pytest.fixture(autouse=True)
+    def mock_rt(self):
+        """Mock the pymxs runtime for all tests in this class."""
+        with patch("deadline.max_shared.utilities.max_utils.rt") as mock:
+            mock.undefined = object()
+            yield mock
+
+    def test_returns_all_items(self, mock_rt):
+        """Verify get_batch_render_items returns all batch views."""
+        from deadline.max_shared.utilities.max_utils import get_batch_render_views
+
+        mock_view1 = Mock()
+        mock_view1.name = "View1"
+        mock_view1.enabled = True
+        mock_view1.camera = None
+        mock_view1.outputFilename = ""
+        mock_view1.presetFile = None
+        mock_view1.overridePreset = False
+
+        mock_view2 = Mock()
+        mock_view2.name = "View2"
+        mock_view2.enabled = False
+        mock_view2.camera = None
+        mock_view2.outputFilename = ""
+        mock_view2.presetFile = None
+        mock_view2.overridePreset = False
+
+        mock_batch_mgr = Mock()
+        mock_batch_mgr.numViews = 2
+        mock_batch_mgr.getView.side_effect = lambda i: {1: mock_view1, 2: mock_view2}[i]
+        mock_rt.batchRenderMgr = mock_batch_mgr
+
+        result = get_batch_render_views()
+
+        assert len(result) == 2
+        assert result[0].name == "View1"
+        assert result[0].enabled is True
+        assert result[1].name == "View2"
+        assert result[1].enabled is False
+
+    def test_raises_when_manager_unavailable(self, mock_rt):
+        """Verify get_batch_render_views raises when Batch Render Manager is unavailable."""
+        from deadline.max_shared.utilities.max_utils import get_batch_render_views
+
+        mock_rt.batchRenderMgr = None
+
+        with pytest.raises(RuntimeError, match="Batch Render Manager not available"):
+            get_batch_render_views()
+
+    def test_raises_when_view_not_found(self, mock_rt):
+        """Verify get_batch_render_views raises when a view cannot be retrieved."""
+        from deadline.max_shared.utilities.max_utils import get_batch_render_views
+
+        mock_batch_mgr = Mock()
+        mock_batch_mgr.numViews = 1
+        mock_batch_mgr.getView.return_value = None
+        mock_rt.batchRenderMgr = mock_batch_mgr
+
+        with pytest.raises(RuntimeError, match="Could not get batch view at index 1"):
+            get_batch_render_views()

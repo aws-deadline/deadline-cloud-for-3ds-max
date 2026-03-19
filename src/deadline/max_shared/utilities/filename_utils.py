@@ -50,11 +50,6 @@ def format_output_filename(
         ...     camera_name="RenderCam", state_set_name="DayLight", scene_name="myScene")
         'RenderCam_DayLight_myScene_###'
 
-        >>> format_output_filename(
-        ...     "<camera>_<stateset>_<scene>_###",
-        ...     camera_name="", state_set_name="", scene_name="myScene")
-        '__myScene_###'
-
         >>> format_output_filename("myRender_###")
         'myRender_###'
 

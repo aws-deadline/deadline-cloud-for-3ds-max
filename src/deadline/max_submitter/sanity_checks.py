@@ -4,11 +4,19 @@
 3ds Max Deadline Cloud Submitter - Sanity checks for job bundle creation
 """
 
+import logging
+
 import pymxs  # noqa
 from pymxs import runtime as rt
 
+from deadline.max_shared.utilities.max_utils import get_batch_render_views
 from deadline.max_submitter.utilities import max_utils
-from deadline.max_submitter.data_classes import RenderSubmitterUISettings
+from deadline.max_submitter.data_classes import (
+    PARAM_NAME_REGEX,
+    RenderSubmitterUISettings,
+    SubmissionMode,
+    sanitize_param_name,
+)
 from deadline.max_submitter.data_const import (
     ALL_CAMERAS_STR,
     ALL_STEREO_CAMERAS_STR,
@@ -24,11 +32,12 @@ JOB_PARAMETER_MAX_STRING_LENGTH: int = 1024
 STEP_NAME_MAX_STRING_LENGTH: int = 64
 
 
-def check_sanity(settings: RenderSubmitterUISettings):
+def check_sanity(settings: RenderSubmitterUISettings) -> list[str]:
     """
     All sanity checks that need to be performed at submission.
 
     :param settings: a RenderSubmitterUISettings object containing the latest UI settings
+    :returns: list of non-blocking warning messages (caller should present to user)
     """
     # Check if 3ds Max scene is saved
     # -> Still needed because you can open a new scene with the UI open
@@ -58,8 +67,13 @@ def check_sanity(settings: RenderSubmitterUISettings):
             f"The output filename {settings.output_name} is too long. The max length allowed is {JOB_PARAMETER_MAX_STRING_LENGTH}."
         )
 
-    check_sanity_cameras(settings)
-    check_sanity_state_sets(settings)
+    warnings: list[str] = []
+
+    if settings.submission_mode == SubmissionMode.BATCH_RENDER.value:
+        warnings.extend(check_sanity_batch_render(settings))
+    else:
+        check_sanity_cameras(settings)
+        check_sanity_state_sets(settings)
 
     if settings.override_frame_range:
         if not settings.frame_list:
@@ -86,6 +100,16 @@ def check_sanity(settings: RenderSubmitterUISettings):
 
     if not settings.name:
         raise Exception("No Job Name was given")
+
+    # Warn if the output filename pattern has no frame padding token (default mode only)
+    if settings.submission_mode == SubmissionMode.DEFAULT.value:
+        if "#" not in settings.output_filename_pattern:
+            warnings.append(
+                "The output filename pattern does not contain a frame padding token (#). "
+                "Each rendered frame will overwrite the previous one."
+            )
+
+    return warnings
 
 
 def check_sanity_cameras(settings: RenderSubmitterUISettings):
@@ -129,6 +153,17 @@ def check_sanity_state_sets(settings: RenderSubmitterUISettings):
     """
     state_sets = max_utils.get_state_set_names()
     state_set_names = [state[0] for state in state_sets]
+
+    # Warn if "All State Sets" is selected but the output filename pattern
+    # doesn't contain the <stateset> token — outputs would overwrite each other
+    if settings.state_set == ALL_STATE_SETS_STR and len(state_sets) > 1:
+        if "<stateset>" not in settings.output_filename_pattern:
+            raise Exception(
+                "The output filename pattern does not contain the <stateset> token. "
+                "Without it, all state sets will write to the same output file "
+                "and overwrite each other."
+            )
+
     if settings.state_set == ALL_STATE_SETS_STR:
         for state_set in state_sets:
             # Set the current state set
@@ -177,6 +212,14 @@ def check_sanity_specific_state_set(settings: RenderSubmitterUISettings, state_s
             f"The state set name {state_set} is too long. The max length allowed is {STEP_NAME_MAX_STRING_LENGTH}."
         )
 
+    # Validate that the sanitized state set name produces a valid parameter name component
+    sanitized = sanitize_param_name(state_set)
+    if not PARAM_NAME_REGEX.match(sanitized):
+        raise Exception(
+            f"The state set name '{state_set}' cannot be converted to a valid parameter name. "
+            "Names must contain at least one alphanumeric character or underscore."
+        )
+
     renderer_name = str(rt.renderers.current).split(":")[0]
 
     # Check if renderer is supported - either exact match or starts with an allowed renderer
@@ -217,3 +260,71 @@ def check_sanity_specific_state_set(settings: RenderSubmitterUISettings, state_s
             raise Exception(
                 f"Output filename for {state_set} isn't set in render settings or in submitter UI"
             )
+
+
+def check_sanity_batch_render(settings: RenderSubmitterUISettings) -> list[str]:
+    """
+    All batch render related sanity checks.
+
+    :param settings: a RenderSubmitterUISettings object containing the latest UI settings
+    :returns: list of non-blocking warning messages
+    """
+    # Only perform batch render checks if batch render mode is selected
+    if settings.submission_mode != SubmissionMode.BATCH_RENDER.value:
+        return []
+
+    # Get all batch render views from the scene
+    all_batch_views = get_batch_render_views()
+
+    # Filter to only enabled items
+    enabled_batch_views = [item for item in all_batch_views if item.enabled]
+
+    # Check if any batch views are enabled
+    if not enabled_batch_views:
+        raise Exception(
+            "No enabled batch views found. Please enable at least one view in the Batch Render Manager."
+        )
+
+    # Collect warnings (non-blocking issues)
+    warnings = []
+
+    # Check for missing output filenames — in batch render mode, each view must have
+    # its own output filename configured in the scene.
+    views_missing_output = [item.name for item in enabled_batch_views if not item.output_filename]
+    if views_missing_output:
+        names = "\n".join(f"  - {name}" for name in views_missing_output)
+        raise Exception(
+            "The following batch views have no output filename configured in the "
+            f"Batch Render Manager:\n{names}\n"
+            "Configure an output file for each enabled batch view."
+        )
+
+    # Check for conflicting output paths
+    output_paths: dict[str, str] = {}
+    for item in enabled_batch_views:
+        output_path = item.output_filename
+        if output_path:
+            if output_path in output_paths:
+                warnings.append(
+                    f"Multiple batch views write to the same output path: {output_path} "
+                    f"(items: {output_paths[output_path]}, {item.name})"
+                )
+                output_paths[output_path] += f", {item.name}"
+            else:
+                output_paths[output_path] = item.name
+
+    # Check for missing cameras
+    scene_cameras = max_utils.get_camera_names()
+    for item in enabled_batch_views:
+        if item.camera and item.camera not in scene_cameras:
+            warnings.append(
+                f"Camera '{item.camera}' specified in batch item '{item.name}' does not exist in scene."
+            )
+
+    # Log warnings
+    if warnings:
+        _logger = logging.getLogger(__name__)
+        for warning in warnings:
+            _logger.warning(f"Batch render validation: {warning}")
+
+    return warnings

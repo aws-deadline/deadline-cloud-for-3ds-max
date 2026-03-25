@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QProgressDialog
+from qtpy.QtCore import Qt  # type: ignore
+from qtpy.QtWidgets import QApplication, QProgressDialog  # type: ignore
 
 from data_classes import (
     RENDER_ELEMENT_PARAMS,
@@ -875,7 +875,10 @@ def _get_job_parameters(
                         default_resolution=(scene_width, scene_height),
                     )
 
-                    # Validate batch view settings before creating parameters
+                    # Validate batch view settings before creating parameters.
+                    # Note: preset file existence is NOT checked here because the
+                    # path stored in the scene may be from a different machine and
+                    # will be resolved via path mapping at render time.
                     bv = step.batch_view
                     if bv.camera:
                         scene_cameras = [
@@ -894,9 +897,10 @@ def _get_job_parameters(
                             )
                     if bv.preset_file:
                         if not os.path.exists(bv.preset_file):
-                            raise ValueError(
+                            _logger.warning(
                                 f"Batch view '{bv.name}' references preset file "
-                                f"'{bv.preset_file}' which does not exist"
+                                f"'{bv.preset_file}' which does not exist locally. "
+                                f"It will be resolved via path mapping at render time."
                             )
                     if bv.override_preset and bv.pixel_aspect is not None:
                         if bv.pixel_aspect <= 0:

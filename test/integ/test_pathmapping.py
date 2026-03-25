@@ -246,9 +246,9 @@ class TestPathMappingAdaptors:
         for param in parameter_data["parameterValues"]:
             job_params[param["name"]] = param["value"]
 
-        # Override only MaxSceneFile and OutputFilePath from test parameters
+        # Override only MaxSceneFile and State01_OutputFilePath from test parameters
         job_params["MaxSceneFile"] = str(scene_location)
-        job_params["OutputFilePath"] = str(output_path)
+        job_params["State01_OutputFilePath"] = str(output_path)
 
         adaptor_output = run_adaptor_test(
             test_file_location / EXPECTED_JOB_BUNDLE_FOLDER / TEMPLATE,

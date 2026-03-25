@@ -50,28 +50,38 @@ hatch run test -k "test_vray"
 
 ## Step 4: Run Integration Tests
 
-Integration tests require 3ds Max to be installed.
+Integration tests require 3ds Max to be installed. See `integration-testing.md` for full setup.
 
-### Basic V-Ray Test
+Set `$MAX_VERSION` to your installed version (2025, 2026, etc.):
 
 ```powershell
-.\scripts\test-3dsmax-openjd-run.ps1 -JobBundleDir "test/integ/test_scripts/vray_simple_test/expected_job_bundle"
+$MAX_VERSION = "2026"
 ```
 
-### Test with Path Mapping
-
-**Important**: Use `test-3dsmax-adapter-run.ps1` for path mapping tests:
+### Run all integration tests (primary method)
 
 ```powershell
-.\scripts\test-3dsmax-adapter-run.ps1 `
-    -JobBundleDir "test/integ/test_scripts/vray_vrmesh_test_remap/expected_job_bundle" `
-    -PathMappingFile "test/integ/test_scripts/vray_vrmesh_test_remap/path_mapping_rules.json"
+& "C:\Program Files\Autodesk\3ds Max $MAX_VERSION\Python\python.exe" -m pytest test/integ -o addopts="" -v --color=no
 ```
 
-### Skip Wheel Installation (faster iteration)
+### Run submitter tests only
 
 ```powershell
-.\scripts\test-3dsmax-openjd-run.ps1 -JobBundleDir "test/integ/test_scripts/vray_simple_test/expected_job_bundle" -SkipInstall
+& "C:\Program Files\Autodesk\3ds Max $MAX_VERSION\Python\python.exe" -m pytest test/integ -m submitter -o addopts="" -v --color=no
+```
+
+### Run adaptor tests only
+
+```powershell
+& "C:\Program Files\Autodesk\3ds Max $MAX_VERSION\Python\python.exe" -m pytest test/integ -m adaptor -o addopts="" -v --color=no
+```
+
+### Manual debugging with PowerShell scripts
+
+For ad-hoc debugging of individual test bundles:
+
+```powershell
+.\scripts\test-3dsmax-openjd-run.ps1 -JobBundleDir "test/integ/test_scripts/minimal_test/expected_job_bundle" -SkipInstall
 ```
 
 ## Step 5: Build Adaptor Wheels (Developer Option)
@@ -146,7 +156,7 @@ Select-String -Path 'C:\Users\$env:USERNAME\AppData\Local\Autodesk\3dsMax\2026 -
 ### Wrong Python Version
 Ensure 3ds Max Python is being used:
 ```powershell
-& "C:\Program Files\Autodesk\3ds Max 2026\Python\python.exe" --version
+& "C:\Program Files\Autodesk\3ds Max $MAX_VERSION\Python\python.exe" --version
 ```
 
 ### Wheel Not Found

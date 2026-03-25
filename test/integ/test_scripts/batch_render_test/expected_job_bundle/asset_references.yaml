@@ -1,0 +1,14 @@
+assetReferences:
+  inputs:
+    directories: []
+    filenames:
+    - C:\Users\RDP\Documents\3ds Max 2025\renderoutput\cam_only_###.jpg
+    - C:\Users\RDP\Documents\3ds Max 2025\renderoutput\with_override_###.bmp
+    - C:\Users\RDP\Documents\3ds Max 2025\renderoutput\with_preset_###.png
+    - C:\Users\RDP\Documents\3ds Max 2025\renderoutput\with_state_###.jpg
+    - C:\Users\RDP\Documents\3ds Max 2025\scenes\BatchRenderTest2024.max
+    - C:\Users\RDP\deadline-cloud-for-3ds-max\test\integ\test_scripts\batch_render_test\scene\test_preset.rps
+  outputs:
+    directories:
+    - C:/Users/RDP/Documents/3ds Max 2025/scenes/
+  referencedPaths: []

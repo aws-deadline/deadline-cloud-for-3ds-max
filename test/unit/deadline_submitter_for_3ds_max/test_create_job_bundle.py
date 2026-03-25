@@ -707,7 +707,11 @@ class TestGetJobParameters:
         mock_os_exists,
         mock_settings,
     ):
-        """Verify ValueError is raised when batch view preset file does not exist."""
+        """Verify a warning is logged when batch view preset file does not exist locally.
+
+        The submitter should not raise because the preset file path will be
+        resolved via path mapping at render time on the worker.
+        """
         from deadline.max_submitter.create_job_bundle import _get_job_parameters
 
         mock_get_scene_path.return_value = "C:/scenes/test.max"
@@ -721,7 +725,12 @@ class TestGetJobParameters:
         mock_settings.override_frame_range = False
         mock_settings.frame_list = ""
 
-        bv = BatchRenderView(name="TestView", enabled=True, preset_file="C:/presets/missing.rps")
+        bv = BatchRenderView(
+            name="TestView",
+            enabled=True,
+            preset_file="C:/presets/missing.rps",
+            output_filename="C:/output/test.png",
+        )
         mock_get_batch_views.return_value = [bv]
         mock_get_render_elements.return_value = []
         mock_progress_dialog.return_value = Mock()
@@ -733,8 +742,12 @@ class TestGetJobParameters:
 
         mock_os_exists.return_value = False
 
-        with pytest.raises(ValueError, match="does not exist"):
-            _get_job_parameters(mock_settings, [])
+        # Should NOT raise — preset file validation is deferred to render time
+        params = _get_job_parameters(mock_settings, [])
+        # The preset file path should still be included in the parameters
+        preset_params = [p for p in params if p["name"].endswith("_PresetFile")]
+        assert len(preset_params) == 1
+        assert preset_params[0]["value"] == "C:/presets/missing.rps"
 
     @patch("deadline.max_submitter.create_job_bundle._get_batch_view_settings")
     @patch("deadline.max_submitter.create_job_bundle.QProgressDialog")

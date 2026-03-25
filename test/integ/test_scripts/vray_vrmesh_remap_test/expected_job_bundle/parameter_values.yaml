@@ -1,16 +1,18 @@
 parameterValues:
 - name: MaxSceneFile
   value: C:/Users/RDP/deadline-cloud-for-3ds-max/test/integ/test_scripts/vray_vrmesh_remap_test/scene/fog.max
-- name: Frames
+- name: State01_Frames
   value: '0'
-- name: OutputFilePath
-  value: C:/Users/RDP/deadline-cloud-for-3ds-max/test/integ/test_scripts/vray_vrmesh_remap_test/output/
-- name: OutputFileFormat
-  value: .jpg
-- name: ImageWidth
-  value: 320
-- name: ImageHeight
+- name: State01_ImageHeight
   value: 240
+- name: State01_ImageWidth
+  value: 320
+- name: State01_OutputFileFormat
+  value: .jpg
+- name: State01_OutputFileName
+  value: State01_fog_###
+- name: State01_OutputFilePath
+  value: C:/Users/RDP/deadline-cloud-for-3ds-max/test/integ/test_scripts/vray_vrmesh_remap_test/output/
 - name: RenderElementsModified
   value: 'true'
 - name: RenderElements

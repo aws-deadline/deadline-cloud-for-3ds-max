@@ -51,41 +51,47 @@ hatch run test -k "test_vray"              # Pattern match
 
 ### Integration Tests
 
-Two scripts available:
-
-| Script | Use Case |
-|--------|----------|
-| `test-3dsmax-openjd-run.ps1` | General testing via OpenJD CLI |
-| `test-3dsmax-adapter-run.ps1` | **Path mapping tests** - runs adaptor directly |
+Run with 3ds Max's Python (requires Windows + 3ds Max installed). Set `$MAX_VERSION` to your installed version (2025, 2026, etc.):
 
 ```powershell
-# Basic V-Ray test
-.\scripts\test-3dsmax-openjd-run.ps1 -JobBundleDir "test/integ/test_scripts/vray_simple_test/expected_job_bundle"
+$MAX_VERSION = "2026"
 
-# Path mapping test (use adapter script!)
-.\scripts\test-3dsmax-adapter-run.ps1 `
-    -JobBundleDir "test/integ/test_scripts/vray_vrmesh_test_remap/expected_job_bundle" `
-    -PathMappingFile "test/integ/test_scripts/vray_vrmesh_test_remap/path_mapping_rules.json"
+# All integration tests
+& "C:\Program Files\Autodesk\3ds Max $MAX_VERSION\Python\python.exe" -m pytest test/integ -o addopts="" -v --color=no
+
+# Submitter tests only
+& "C:\Program Files\Autodesk\3ds Max $MAX_VERSION\Python\python.exe" -m pytest test/integ -m submitter -o addopts="" -v --color=no
+
+# Adaptor tests only
+& "C:\Program Files\Autodesk\3ds Max $MAX_VERSION\Python\python.exe" -m pytest test/integ -m adaptor -o addopts="" -v --color=no
+```
+
+For ad-hoc debugging of individual bundles, PowerShell scripts are also available:
+
+```powershell
+.\scripts\test-3dsmax-openjd-run.ps1 -JobBundleDir "test/integ/test_scripts/minimal_test/expected_job_bundle" -SkipInstall
 ```
 
 ## Test Bundles
 
-| Bundle | Description |
-|--------|-------------|
-| `vray_simple_test` | Basic V-Ray render |
-| `vray_vrmesh_test` | V-Ray with VRayProxy |
-| `vray_vrmesh_test_remap` | VRMesh with path mapping |
-| `scanline_simple_test` | Scanline renderer |
-| `arnold_simple_test` | Arnold renderer |
+| Bundle | Renderer | Description |
+|--------|----------|-------------|
+| `minimal_test` | Scanline (V-Ray active) | Basic render with state sets and cameras |
+| `re_enabled_test` | Scanline | Render elements enabled |
+| `re_disabled_test` | Scanline | Render elements disabled |
+| `vray_re_test` | V-Ray CPU | V-Ray render elements |
+| `lightmix` | V-Ray GPU | V-Ray LightMix render elements |
+| `vray_vrmesh_remap_test` | V-Ray | VRMesh path mapping |
+| `batch_render_test` | Scanline | Batch render with scene states, presets, and overrides |
 
 ## Checking Logs
 
 ```powershell
 # View recent logs
-Get-Content 'C:\Users\$env:USERNAME\AppData\Local\Autodesk\3dsMax\2026 - 64bit\ENU\Network\Max.log' -Tail 100
+Get-Content "C:\Users\$env:USERNAME\AppData\Local\Autodesk\3dsMax\$MAX_VERSION - 64bit\ENU\Network\Max.log" -Tail 100
 
 # Search for errors
-Select-String -Path 'C:\Users\$env:USERNAME\AppData\Local\Autodesk\3dsMax\2026 - 64bit\ENU\Network\Max.log' -Pattern "error|exception" -CaseSensitive:$false
+Select-String -Path "C:\Users\$env:USERNAME\AppData\Local\Autodesk\3dsMax\$MAX_VERSION - 64bit\ENU\Network\Max.log" -Pattern "error|exception" -CaseSensitive:$false
 ```
 
 ## Project Structure

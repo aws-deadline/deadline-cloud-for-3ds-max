@@ -1,3 +1,10 @@
+## 0.2.0 (2026-03-26)
+
+
+### Features
+* add batch rendering support (#205) ([`9ca4016`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/9ca401658a972b2e4662c261ae3897e9aed6321a))
+
+
 ## 0.1.10 (2026-03-10)
 
 ### Features

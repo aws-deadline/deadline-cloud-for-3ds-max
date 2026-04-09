@@ -16,9 +16,25 @@ This project is a Python package that provides:
 - **3ds Max Adaptor**: Runs 3ds Max renders on Deadline Cloud workers
 - **3ds Max Submitter**: UI for submitting jobs from 3ds Max to Deadline Cloud
 
+## MCP Tools
+
+This power includes the **Autodesk Product Help MCP** server (`autodesk-product-help`), which provides direct access to Autodesk's official documentation for 110+ products including 3ds Max, V-Ray, and MAXScript.
+
+Use it to:
+- Look up 3ds Max SDK/MAXScript documentation while developing adaptor or submitter code
+- Search for V-Ray render settings and parameters
+- Find official Autodesk troubleshooting guides for 3ds Max issues
+
+The server exposes two tools:
+- `get_available_products` - List all supported Autodesk products and their release codes
+- `search_help_content` - Search Autodesk documentation by product, release, and query
+
+When searching, use product code `3DSMAX` for 3ds Max documentation.
+
 ## Available Steering Files
 
 - **build-and-test.md** - Complete build and test workflow
+- **dev-guide.md** - Development guide and conventions
 - **integration-testing.md** - Guide for running and creating integration tests
 - **troubleshooting.md** - Common issues and solutions
 

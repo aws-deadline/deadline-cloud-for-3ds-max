@@ -59,9 +59,24 @@ def export_vrscene(self, data: dict) -> None:
 4. **Flag new sections** with `<!-- REVIEW: description -->` comments in the appendix
 5. **Don't include review tags** in final generated code
 
+## MCP Tools
+
+This power includes the **Autodesk Product Help MCP** server (`autodesk-product-help`), which provides direct access to Autodesk's official documentation for 110+ products including 3ds Max, V-Ray, and MAXScript.
+
+Use it to:
+- Research 3ds Max SDK/MAXScript APIs during design work
+- Look up V-Ray render settings, parameters, and scripting interfaces
+- Find official Autodesk documentation for feature design references
+
+The server exposes two tools:
+- `get_available_products` - List all supported Autodesk products and their release codes
+- `search_help_content` - Search Autodesk documentation by product, release, and query
+
+When searching, use product code `3DSMAX` for 3ds Max documentation.
+
 ## Research Requirements
 
-Before finalizing any design, research 3ds Max/V-Ray APIs, Deadline 10 implementation, and internet sources. Refer to **research-guide.md** for details.
+Before finalizing any design, research 3ds Max/V-Ray APIs, Deadline 10 implementation, and internet sources. Use the Autodesk Product Help MCP to look up official documentation. Refer to **research-guide.md** for details.
 
 ## Key Technical Patterns
 

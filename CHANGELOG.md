@@ -1,3 +1,11 @@
+## 0.3.0 (2026-04-13)
+
+
+### Features
+* add V-Ray export workflow with tile rendering ([`2c93e8a`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/2c93e8a761037aad35f3ff6754bd705c4e977c04))
+* add Autodesk Product Help MCP to dev and design powers ([`355a636`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/355a636a73bbc690a51ce107737d20d8d580725c))
+
+
 ## 0.2.0 (2026-03-26)
 
 

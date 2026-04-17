@@ -33,7 +33,7 @@ classifiers = [
 # 2026 - 3.11: https://help.autodesk.com/view/MAXDEV/2026/ENU/?guid=MAXDEV_Python_what_s_new_in_3ds_max_python_api_html
 
 dependencies = [
-    "deadline == 0.52.*",
+    "deadline >= 0.55.1,< 0.56",
     "openjd-adaptor-runtime == 0.9.*",
 ]
 

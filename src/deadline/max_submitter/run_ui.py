@@ -10,6 +10,7 @@ from deadline.client.config import config_file
 from max_render_submitter import show_job_bundle_submitter
 from pymxs import runtime as rt
 from qtpy.QtWidgets import QMessageBox  # type: ignore
+from update_utils import check_and_show_update_dialog
 from utilities.log_utils import configure_logging
 
 
@@ -33,6 +34,9 @@ def show_ui():
         return_value = msg.exec()
         if return_value == QMessageBox.Ok:
             return
+
+    if check_and_show_update_dialog():
+        return
 
     show_job_bundle_submitter()
 

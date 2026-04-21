@@ -6,6 +6,7 @@ This can be called from MAXScript or directly from Python.
 """
 
 import logging
+from update_utils import check_and_show_update_dialog
 
 # Configure logging
 logging.basicConfig(
@@ -21,6 +22,9 @@ def main():
     Main entry point for V-Ray Standalone submitter.
     """
     try:
+        if check_and_show_update_dialog():
+            return None
+
         from vray_standalone_submitter import show_vray_standalone_submitter
 
         _logger.info("Launching V-Ray Standalone submitter...")

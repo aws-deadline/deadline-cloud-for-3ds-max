@@ -495,7 +495,13 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
         """
         self._performing_cleanup = True
 
+        # Restore render elements to their original state before closing Max.
+        # This is done here (once per session) rather than after each frame,
+        # so that render element configuration persists across tasks in the
+        # same session.
         self._action_queue.enqueue_action(Action("close"), front=True)
+        if self.init_data.get(_ENABLED_MODIFY_RENDER_ELEMENTS_KEY, "false").lower() == "true":
+            self._action_queue.enqueue_action(Action("cleanup_render_elements", {}), front=True)
         is_not_timed_out = self._get_timer(self._MAX_END_TIMEOUT_SECONDS)
         while self._max_is_running and is_not_timed_out():
             time.sleep(0.1)

@@ -1,3 +1,10 @@
+## 0.3.1 (2026-04-23)
+
+### Features
+* The submitter now notifies you if a newer version is available, helping you stay up to date with the latest features and fixes. (#240)
+
+### Bug Fixes
+* Render element cleanup now occurs at session end instead of after every frame, improving per-frame rendering performance. (#242)
 ## 0.3.0 (2026-04-13)
 
 

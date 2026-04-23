@@ -44,3 +44,20 @@ parameterDefinitions:
 - name: RegionRows
   type: INT
   description: Number of region rows
+- name: RenderEngine
+  type: INT
+  default: 0
+  allowedValues: [0, 5, 7]
+  description: 'V-Ray render engine: 0=CPU, 5=CUDA, 7=RTX'
+- name: RTTimeout
+  type: FLOAT
+  default: 0.0
+  description: RT engine frame timeout in minutes (0=no limit)
+- name: RTNoise
+  type: FLOAT
+  default: 0.001
+  description: RT engine noise threshold
+- name: RTSampleLevel
+  type: INT
+  default: 0
+  description: RT engine max samples per pixel (0=no limit)

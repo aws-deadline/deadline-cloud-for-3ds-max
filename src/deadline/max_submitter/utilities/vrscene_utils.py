@@ -95,7 +95,12 @@ def export_vrscene_local(
 
 
 def validate_vrscene_export_settings(settings) -> List[str]:
-    """Validate settings, return list of error messages (empty if valid)."""
+    """Validate settings, return list of error messages (empty if valid).
+
+    Validation is centralised here rather than in the UI so it also runs
+    inside the job-bundle callback, catching invalid values regardless of
+    how the settings were constructed.
+    """
     errors = []
 
     # Check if V-Ray is the current renderer
@@ -124,6 +129,24 @@ def validate_vrscene_export_settings(settings) -> List[str]:
 
     if settings.vrscene_render_region_rows < 1 or settings.vrscene_render_region_rows > 10:
         errors.append("Region rows must be between 1 and 10")
+
+    # Validate render engine
+    from data_const import VRAY_ENGINE_ALLOWED
+
+    if settings.vrscene_render_engine not in VRAY_ENGINE_ALLOWED:
+        errors.append(
+            f"Invalid render engine: {settings.vrscene_render_engine}. "
+            f"Must be one of {VRAY_ENGINE_ALLOWED} (0=CPU, 5=CUDA, 7=RTX)"
+        )
+
+    # Validate RT engine parameters (only relevant for GPU engines)
+    if settings.vrscene_render_engine != 0:
+        if settings.vrscene_rt_timeout < 0:
+            errors.append("RT Frame Timeout must be >= 0 (0 = no limit)")
+        if not (0.0 <= settings.vrscene_rt_noise <= 1.0):
+            errors.append("RT Noise Threshold must be between 0.0 and 1.0")
+        if settings.vrscene_rt_sample_level < 0:
+            errors.append("RT Max Samples must be >= 0 (0 = no limit)")
 
     return errors
 

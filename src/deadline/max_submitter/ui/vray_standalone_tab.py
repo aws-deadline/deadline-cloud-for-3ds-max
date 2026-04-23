@@ -8,12 +8,16 @@ import os
 
 from data_const import (
     VRSCENE_EXPORT_ANIMATION_MODES,
+    VRAY_ENGINE_CPU,
+    VRAY_ENGINE_CUDA,
+    VRAY_ENGINE_RTX,
 )
 from utilities.vrscene_utils import is_vray_renderer
 from qtpy.QtCore import Qt  # type: ignore
 from qtpy.QtWidgets import (  # type: ignore
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -175,6 +179,61 @@ class VRayStandaloneSettingsWidget(QWidget):
         self.region_rows_spin.setToolTip("Number of rows to divide the image into")
         region_layout.addWidget(self.region_rows_spin, 0, 3)
 
+        # Render Engine dropdown
+        region_layout.addWidget(QLabel("Render Engine:"), 1, 0)
+        self.render_engine_combo = QComboBox()
+        self.render_engine_combo.addItem("CPU", VRAY_ENGINE_CPU)
+        self.render_engine_combo.addItem("CUDA (NVIDIA GPU)", VRAY_ENGINE_CUDA)
+        self.render_engine_combo.addItem("RTX (NVIDIA RTX GPU)", VRAY_ENGINE_RTX)
+        self.render_engine_combo.setToolTip(
+            "CPU: Standard V-Ray CPU rendering.\n"
+            "CUDA: GPU rendering on all NVIDIA GPUs.\n"
+            "RTX: GPU rendering on NVIDIA RTX GPUs only (fastest for supported scenes)."
+        )
+        region_layout.addWidget(self.render_engine_combo, 1, 1, 1, 3)
+        self.render_engine_combo.currentIndexChanged.connect(self._on_render_engine_changed)
+
+        # RT Engine settings (GPU only) — control when the progressive renderer stops.
+        # Only visible when CUDA or RTX engine is selected.
+        # Timeout: max render time in minutes (0=no limit)
+        # Noise: stop when image noise drops below threshold (lower = higher quality, longer render)
+        # Samples: max samples per pixel (0=no limit, noise threshold controls stopping)
+        self._rt_timeout_label = QLabel("Frame Timeout (min):")
+        self._rt_timeout_label.setVisible(False)
+        region_layout.addWidget(self._rt_timeout_label, 2, 0)
+        self.rt_timeout_spin = QDoubleSpinBox()
+        self.rt_timeout_spin.setMinimum(0.0)
+        self.rt_timeout_spin.setMaximum(9999.0)
+        self.rt_timeout_spin.setValue(0.0)
+        self.rt_timeout_spin.setDecimals(2)
+        self.rt_timeout_spin.setToolTip("Maximum render time in minutes. 0 = no limit.")
+        self.rt_timeout_spin.setVisible(False)
+        region_layout.addWidget(self.rt_timeout_spin, 2, 1)
+
+        self._rt_noise_label = QLabel("Noise Threshold:")
+        self._rt_noise_label.setVisible(False)
+        region_layout.addWidget(self._rt_noise_label, 2, 2)
+        self.rt_noise_spin = QDoubleSpinBox()
+        self.rt_noise_spin.setMinimum(0.0)
+        self.rt_noise_spin.setMaximum(1.0)
+        self.rt_noise_spin.setValue(0.001)
+        self.rt_noise_spin.setDecimals(4)
+        self.rt_noise_spin.setSingleStep(0.0001)  # Fine-grained control for noise threshold
+        self.rt_noise_spin.setToolTip("Stop rendering when noise drops below this threshold.")
+        self.rt_noise_spin.setVisible(False)
+        region_layout.addWidget(self.rt_noise_spin, 2, 3)
+
+        self._rt_sample_label = QLabel("Max Samples:")
+        self._rt_sample_label.setVisible(False)
+        region_layout.addWidget(self._rt_sample_label, 3, 0)
+        self.rt_sample_spin = QSpinBox()
+        self.rt_sample_spin.setMinimum(0)
+        self.rt_sample_spin.setMaximum(999999)
+        self.rt_sample_spin.setValue(0)
+        self.rt_sample_spin.setToolTip("Maximum number of samples per pixel. 0 = no limit.")
+        self.rt_sample_spin.setVisible(False)
+        region_layout.addWidget(self.rt_sample_spin, 3, 1)
+
         # Movie creation (deferred to future release)
         self.create_movie_check = QCheckBox("Create Movie from Frames")
         self.create_movie_check.setToolTip("Coming in a future release")
@@ -247,6 +306,16 @@ class VRayStandaloneSettingsWidget(QWidget):
         self.radio_local_export.toggled.connect(self._update_rollout_title)
         self.radio_farm_export.toggled.connect(self._update_rollout_title)
 
+    def _on_render_engine_changed(self, index):
+        """Show/hide RT settings based on selected engine."""
+        is_gpu = self.render_engine_combo.currentData() != 0
+        self._rt_timeout_label.setVisible(is_gpu)
+        self.rt_timeout_spin.setVisible(is_gpu)
+        self._rt_noise_label.setVisible(is_gpu)
+        self.rt_noise_spin.setVisible(is_gpu)
+        self._rt_sample_label.setVisible(is_gpu)
+        self.rt_sample_spin.setVisible(is_gpu)
+
     def _on_enable_changed(self, state):
         enabled = state == 2
         self.vray_export_group.setEnabled(enabled)
@@ -278,6 +347,17 @@ class VRayStandaloneSettingsWidget(QWidget):
         # Set region settings
         self.region_columns_spin.setValue(settings.vrscene_render_region_columns)
         self.region_rows_spin.setValue(settings.vrscene_render_region_rows)
+
+        # Set render engine
+        index = self.render_engine_combo.findData(settings.vrscene_render_engine)
+        if index >= 0:
+            self.render_engine_combo.setCurrentIndex(index)
+        self._on_render_engine_changed(index)
+
+        # Set RT settings
+        self.rt_timeout_spin.setValue(settings.vrscene_rt_timeout)
+        self.rt_noise_spin.setValue(settings.vrscene_rt_noise)
+        self.rt_sample_spin.setValue(settings.vrscene_rt_sample_level)
 
         # Set movie settings
         self.create_movie_check.setChecked(settings.vrscene_create_movie)
@@ -349,6 +429,10 @@ class VRayStandaloneSettingsWidget(QWidget):
         # Region settings
         settings.vrscene_render_region_columns = self.region_columns_spin.value()
         settings.vrscene_render_region_rows = self.region_rows_spin.value()
+        settings.vrscene_render_engine = self.render_engine_combo.currentData()
+        settings.vrscene_rt_timeout = self.rt_timeout_spin.value()
+        settings.vrscene_rt_noise = self.rt_noise_spin.value()
+        settings.vrscene_rt_sample_level = self.rt_sample_spin.value()
 
         # Movie settings
         settings.vrscene_create_movie = self.create_movie_check.isChecked()

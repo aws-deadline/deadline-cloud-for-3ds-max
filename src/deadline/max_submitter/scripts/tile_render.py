@@ -22,6 +22,10 @@ def main():
     image_height = int(r"{{Param.ImageHeight}}")
     total_cols = int(r"{{Param.RegionColumns}}")
     total_rows = int(r"{{Param.RegionRows}}")
+    render_engine = int(r"{{Param.RenderEngine}}")
+    rt_timeout = r"{{Param.RTTimeout}}"
+    rt_noise = r"{{Param.RTNoise}}"
+    rt_sample_level = r"{{Param.RTSampleLevel}}"
 
     # Convert 1-based OpenJD params to 0-based
     col = int(r"{{Task.Param.RegionCol}}") - 1
@@ -84,6 +88,20 @@ def main():
         "-display=0",
         *remap_args,
     ]
+    if render_engine != 0:
+        # GPU engine selected — add RT stopping conditions.
+        # RT params are only passed for GPU engines; CPU ignores them.
+        # Values are set by the user in the submitter UI and persist across sessions.
+        cmd.append(f"-rtEngine={render_engine}")
+        engine_names = {5: "CUDA", 7: "RTX"}
+        print(f"Render engine: {render_engine} ({engine_names.get(render_engine, 'Unknown')})")
+        cmd.extend(
+            [
+                f"-rtTimeOut={rt_timeout}",
+                f"-rtNoise={rt_noise}",
+                f"-rtSampleLevel={rt_sample_level}",
+            ]
+        )
 
     print(f"\nExecuting V-Ray:\n  {' '.join(cmd)}\n")
 

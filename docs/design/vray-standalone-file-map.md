@@ -9,10 +9,13 @@ src/deadline/max_submitter/
 │                                         script loading, vrscene path fix script loading,
 │                                         tile rendering integration
 ├── vrscene_settings.py                 — Settings dataclass with sticky persistence (export
-│                                         mode, region grid, output format, movie settings)
+│                                         mode, region grid, render engine, RT params,
+│                                         output format, movie settings)
 ├── ui/
 │   └── vray_standalone_tab.py          — Qt UI tab: export mode radios, job options, region
-│                                         grid spinners, output format dropdown, browse button
+│                                         grid spinners, render engine dropdown (CPU/CUDA/RTX),
+│                                         RT engine params (timeout/noise/samples), output
+│                                         format dropdown, browse button
 ├── utilities/
 │   ├── vrscene_job_submission.py       — Job template loading and parameter builders:
 │   │                                     tile coordinate calculation, script injection,
@@ -25,8 +28,10 @@ src/deadline/max_submitter/
 │   ├── fix_vrscene_paths.py            — Farm script: runs 3dsmaxcmd export then reverses
 │   │                                     session paths so render -remapPath works correctly
 │   ├── path_mapping_render.py          — Farm script: reads path mapping rules and calls
-│   │                                     vray.exe with -remapPath arguments
-│   ├── tile_render.py                  — Farm script: renders a single tile region with vray.exe
+│   │                                     vray.exe with -remapPath arguments; supports
+│   │                                     GPU engines via -rtEngine flag with RT params
+│   ├── tile_render.py                  — Farm script: renders a single tile region with vray.exe;
+│   │                                     supports GPU engines via -rtEngine flag with RT params
 │   ├── tile_merge.py                   — Farm script: merges tile images into complete frames
 │   │                                     using Pillow (PNG/JPEG/TIFF) or OpenEXR
 │   ├── create_movie.py                 — Farm script: creates MP4 from frames (future release)
@@ -109,3 +114,39 @@ The V-Ray feature is a parallel workflow that shares the dialog shell but has it
 - Farm scripts (`scripts/`)
 
 Everything is additive. The only modified existing files are `submit_dialog.py` (callback wrapper + tab injection) and `data_const.py` (one constant).
+
+### GPU Rendering Behavior
+
+V-Ray GPU (CUDA/RTX) uses a **progressive RT renderer** that renders iteratively until a stopping
+condition is met. Without explicit stopping conditions, V-Ray uses whatever is baked into the
+vrscene file — which can cause incomplete renders (missing background, dark tiles) if the
+baked-in limits are too conservative.
+
+**Required RT parameters for GPU rendering:**
+
+When GPU engine is selected, the following flags are passed to `vray.exe`:
+- `-rtTimeOut=0.0` — no time limit
+- `-rtNoise=<threshold>` — stop when noise drops below threshold (default 0.001)
+- `-rtSampleLevel=0` — no sample limit
+
+These override the vrscene-baked stopping conditions and ensure the renderer runs long enough
+to fully render each tile including the background/environment.
+
+**Local export vs farm export:**
+
+The vrscene content differs based on the active renderer at export time:
+- V-Ray CPU active → exports CPU-optimized vrscene (~1.16 GB) — may be missing GPU-specific
+  environment data, causing missing background when rendered with GPU
+- V-Ray GPU active → exports complete vrscene (~1.24 GB) — includes full GPU environment data
+
+**Recommendation:** Set V-Ray GPU as the active renderer before doing a local export if you
+intend to render on GPU farm workers.
+
+**Tested GPU instances (AWS Deadline Cloud):**
+
+| GPU | Architecture | CUDA | RTX | Notes |
+|-----|-------------|------|-----|-------|
+| A10G 24 GiB | Ampere | ✅ | ✅ | Recommended |
+| L4 22 GiB | Ada Lovelace | ✅ | ✅ | Recommended |
+| L40S 44 GiB | Ada Lovelace | ✅ | ✅ | Recommended |
+| T4 16 GiB | Turing | ❌ | ❌ | Driver 582.16 too old, needs 595.97 |

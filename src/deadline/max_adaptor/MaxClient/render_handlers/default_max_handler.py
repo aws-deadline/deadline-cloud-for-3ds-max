@@ -208,13 +208,6 @@ class DefaultMaxHandler:
         except Exception:
             # Re-raise the exception after cleanup
             raise
-        finally:
-            # Restore render elements after rendering if they were configured
-            if render_elements_configured:
-                try:
-                    self.cleanup_render_elements(data)
-                except Exception as e:
-                    self.log_to_console(f"Warning: Render elements cleanup failed: {e}")
 
     def _configure_renderer_output(
         self, output_name: str, output_dir: str, output_format: str

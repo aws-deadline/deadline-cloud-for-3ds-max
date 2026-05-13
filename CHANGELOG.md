@@ -1,3 +1,7 @@
+## 0.3.2 (2026-05-13)
+
+### Features
+* Added support for VRay 5 renderer in 3ds Max jobs submitted to AWS Deadline Cloud. (#246)
 ## 0.3.1 (2026-04-23)
 
 ### Features

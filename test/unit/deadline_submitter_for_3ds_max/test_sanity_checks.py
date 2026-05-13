@@ -163,6 +163,18 @@ class TestSanityChecks:
         with raises(Exception):
             check_sanity(default_settings)
 
+    def test_check_sanity_specific_state_set_vray_5_update_renderer(
+        self,
+        mock_pymx_runtime: Mock,
+        default_settings: RenderSubmitterUISettings,
+    ) -> None:
+        """Test that V_Ray_5__update_2_3 renderer is accepted (starts with V_Ray_5)"""
+        mock_pymx_runtime.renderers.current = "V_Ray_5__update_2_3:V-Ray 5, update 2.3"
+        mock_pymx_runtime.rendOutputFilename = ""
+
+        # Should not raise an exception
+        check_sanity_specific_state_set(default_settings, "test_state_set")
+
     def test_check_sanity_specific_state_set_vray_6_update_renderer(
         self,
         mock_pymx_runtime: Mock,

@@ -24,6 +24,8 @@ ALLOWED_RENDERERS = [
     "Default_Scanline_Renderer",
     "ART_Renderer",
     "Corona",
+    "V_Ray_5",
+    "V_Ray_GPU_5",
     "V_Ray_6",
     "V_Ray_GPU_6",
     "V_Ray_7",

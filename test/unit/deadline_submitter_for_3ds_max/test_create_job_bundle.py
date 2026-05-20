@@ -224,6 +224,7 @@ class TestCreateStepDefinitions:
         settings.batch_render.enabled_views = []
         settings.camera_selection = "Camera001"
         settings.renderer = "V_Ray_6"
+        settings.task_run_timeout_seconds = 0
         return settings
 
     @patch("deadline.max_submitter.create_job_bundle.get_batch_render_views")

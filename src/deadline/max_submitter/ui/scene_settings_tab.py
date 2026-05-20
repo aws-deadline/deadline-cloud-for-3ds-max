@@ -39,6 +39,7 @@ from qtpy.QtWidgets import (  # type: ignore
     QRadioButton,
     QSizePolicy,
     QSpacerItem,
+    QSpinBox,
     QStyledItemDelegate,
     QTableWidget,
     QTableWidgetItem,
@@ -299,7 +300,37 @@ class SceneSettingsWidget(QWidget):
             )
             lyt.addWidget(self.include_adaptor_wheels, 8, 0, 1, 2)
 
-        lyt.addItem(QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding), 9, 0)
+        # Task run timeout row
+        timeout_row_widget = QWidget(self)
+        timeout_row_lyt = QHBoxLayout(timeout_row_widget)
+        timeout_row_lyt.setContentsMargins(0, 0, 0, 0)
+
+        self.task_timeout_chck = QCheckBox("Override Task Run Timeout", self)
+        self.task_timeout_chck.setToolTip(
+            "When checked, a frame render that exceeds the timeout will be cancelled.\n"
+            "Leave unchecked to allow renders to run until complete."
+        )
+
+        self.task_timeout_spinbox = QSpinBox(self)
+        self.task_timeout_spinbox.setMinimum(1)
+        self.task_timeout_spinbox.setMaximum(86400)
+        self.task_timeout_spinbox.setSingleStep(60)
+        self.task_timeout_spinbox.setSuffix(" s")
+        self.task_timeout_spinbox.setToolTip(
+            "Maximum seconds a single frame render may run before it is cancelled.\n"
+            "Examples: 3600 = 1 hour, 7200 = 2 hours, 86400 = 24 hours."
+        )
+
+        timeout_row_lyt.addWidget(self.task_timeout_chck)
+        timeout_row_lyt.addWidget(self.task_timeout_spinbox)
+        timeout_row_lyt.addStretch()
+
+        lyt.addWidget(timeout_row_widget, 9, 0, 1, 2)
+
+        self.task_timeout_chck.toggled.connect(self._on_task_timeout_toggled)
+        self.task_timeout_spinbox.valueChanged.connect(self._on_task_timeout_value_changed)
+
+        lyt.addItem(QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding), 10, 0)
 
         self._fill_cameras_box(0)
 
@@ -713,6 +744,14 @@ class SceneSettingsWidget(QWidget):
         if settings.submission_mode == SubmissionMode.BATCH_RENDER.value:
             self._refresh_batch_views()
 
+        # Restore task run timeout state
+        timeout_enabled = settings.task_run_timeout_seconds > 0
+        self.task_timeout_chck.setChecked(timeout_enabled)
+        self.task_timeout_spinbox.setValue(
+            settings.task_run_timeout_seconds if timeout_enabled else 3600
+        )
+        self.task_timeout_spinbox.setEnabled(timeout_enabled)
+
         # Sync group box enabled states with the selected radio button
         self._on_submission_mode_changed()
 
@@ -773,6 +812,12 @@ class SceneSettingsWidget(QWidget):
             enabled_views = []
         settings.batch_render.enabled_views = enabled_views
 
+        # Task run timeout
+        if self.task_timeout_chck.isChecked():
+            settings.task_run_timeout_seconds = self.task_timeout_spinbox.value()
+        else:
+            settings.task_run_timeout_seconds = 0
+
     def activate_frame_override_changed(self, state):
         """
         Set the activated/deactivated status of the Frame override text box
@@ -784,6 +829,18 @@ class SceneSettingsWidget(QWidget):
         Set the activated/deactivated status of the Custom material combo box
         """
         self.custom_mat_box.setEnabled(Qt.CheckState(state) == Qt.Checked)
+
+    def _on_task_timeout_toggled(self, checked: bool) -> None:
+        """
+        Enable/disable the timeout spin box and update the settings value.
+        """
+        self.task_timeout_spinbox.setEnabled(checked)
+
+    def _on_task_timeout_value_changed(self, value: int) -> None:
+        """
+        Keep the spin box value in sync (actual settings write happens in update_settings).
+        """
+        pass  # update_settings reads the widget state; no extra action needed here
 
     def _update_renderer(self):
         """

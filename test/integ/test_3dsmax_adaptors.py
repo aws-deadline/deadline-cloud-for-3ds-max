@@ -198,6 +198,44 @@ class TestBatchRenderAdaptors:
         ), f"Expected error about invalid pixel aspect, got:\n{output}"
 
 
+@pytest.mark.adaptor
+class TestTaskRunTimeoutAdaptor:
+    """
+    Verifies that the onRun timeout field is enforced by the OpenJD session runtime.
+
+    The test template has timeout: 5 on onRun and a Start-Sleep -Seconds 30 in
+    runRender, so the sleep always outlasts the timeout. We assert that:
+      1. The step exits with a non-zero return code (task cancelled).
+      2. The OpenJD TIMEOUT message appears in the output.
+    """
+
+    def test_task_run_timeout_adaptor(self, script_location: Path, tmp_path: Path) -> None:
+        test_file_location = script_location / "task_run_timeout_test"
+        scene_location = script_location / "minimal_test" / TEST_SCENE_FOLDER / "test.max"
+        output_path = tmp_path / OUTPUT_FOLDER
+
+        job_params = {
+            "MaxSceneFile": str(scene_location),
+            "State01_Frames": "1",
+            "State01_OutputFilePath": str(output_path),
+            "State01_OutputFileName": "timeout_test_###",
+            "State01_OutputFileFormat": ".jpg",
+            "State01_ImageWidth": 320,
+            "State01_ImageHeight": 240,
+        }
+
+        output = run_adaptor_test(
+            test_file_location / EXPECTED_JOB_BUNDLE_FOLDER / TEMPLATE,
+            job_params,
+            expect_failure=True,
+        )
+
+        assert "TIMEOUT" in output, (
+            "Expected 'TIMEOUT' in adaptor output when onRun timeout is exceeded.\n"
+            f"Actual output:\n{output}"
+        )
+
+
 def _load_job_params(test_file_location: Path) -> dict:
     """
     Load job parameters from the parameter_values.yaml file in the expected job bundle.

@@ -593,6 +593,13 @@ def _create_step_definitions(
                 init_data_key = RENDER_ELEMENT_PARAM_MAPPING.get(param, param.lower())
                 init_data["data"] += f"{init_data_key}: '{{{{Param.{param}}}}}'\n"
 
+        # Inject per-task run timeout when the user has configured one.
+        # The timeout field on onRun is enforced by the OpenJD session runtime;
+        # no adaptor changes are needed.
+        if settings.task_run_timeout_seconds > 0:
+            on_run_action = step["script"]["actions"]["onRun"]
+            on_run_action["timeout"] = settings.task_run_timeout_seconds
+
         job_template["steps"].append(step)
 
     return job_template

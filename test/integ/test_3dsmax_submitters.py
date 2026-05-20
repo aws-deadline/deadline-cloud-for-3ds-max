@@ -381,3 +381,47 @@ class TestSubmitters:
             assert (
                 frames_value == "1-2"
             ), f"Step '{step_name}' frame range should be '1-2' (override), got '{frames_value}'"
+
+    def test_task_run_timeout_submitter(self, script_location: Path, tmp_path: Path) -> None:
+        """
+        Verify that setting task_run_timeout_seconds on the submitter settings
+        produces a job template where every step's onRun action has the correct
+        timeout value.
+        """
+        EXPECTED_TIMEOUT = 30
+
+        job_history_dir = tmp_path / JOB_HISTORY_FOLDER
+        # Reuse the minimal_test scene — no render output needed for this test.
+        output_path = script_location / "minimal_test" / TEST_SCENE_FOLDER
+        scene_location = script_location / "minimal_test" / TEST_SCENE_FOLDER / "test.max"
+
+        self._cleanup_sticky_settings(scene_location, script_location)
+
+        os.makedirs(job_history_dir, exist_ok=True)
+        os.makedirs(output_path, exist_ok=True)
+
+        max_exec = MaxExecutableHandler()
+
+        run_submitter_test(
+            max_exec.max_executable.full_path,
+            str(script_location / "task_run_timeout_test" / "_test_max.py"),
+            str(scene_location),
+            str(job_history_dir),
+            str(output_path),
+        )
+
+        assert is_valid_template(job_history_dir / TEMPLATE)
+
+        with open(job_history_dir / TEMPLATE) as f:
+            template = yaml.safe_load(f)
+
+        assert template["steps"], "Template has no steps"
+        for step in template["steps"]:
+            on_run = step["script"]["actions"]["onRun"]
+            assert (
+                "timeout" in on_run
+            ), f"Step '{step['name']}' onRun action is missing 'timeout' field"
+            assert on_run["timeout"] == EXPECTED_TIMEOUT, (
+                f"Step '{step['name']}' onRun timeout: "
+                f"expected {EXPECTED_TIMEOUT}, got {on_run['timeout']}"
+            )

@@ -243,6 +243,9 @@ class RenderSubmitterUISettings:
     # Developer options
     include_adaptor_wheels: bool = field(default=False, metadata={"sticky": True})
 
+    # Per-task render timeout in seconds. 0 means no timeout (preserves current behaviour).
+    task_run_timeout_seconds: int = field(default=0, metadata={"sticky": True})
+
     def load_sticky_settings(self) -> None:
         """
         Reads sticky settings from the sticky settings json file saved alongside the max scene

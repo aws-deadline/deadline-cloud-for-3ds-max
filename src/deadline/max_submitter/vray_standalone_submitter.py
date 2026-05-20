@@ -271,6 +271,10 @@ def _create_combined_export_render_job_bundle(
         {"name": "OutputFileName", "value": output_filename},
         {"name": "RegionColumns", "value": str(settings.vrscene_render_region_columns)},
         {"name": "RegionRows", "value": str(settings.vrscene_render_region_rows)},
+        {"name": "RenderEngine", "value": str(settings.vrscene_render_engine)},
+        {"name": "RTTimeout", "value": str(settings.vrscene_rt_timeout)},
+        {"name": "RTNoise", "value": str(settings.vrscene_rt_noise)},
+        {"name": "RTSampleLevel", "value": str(settings.vrscene_rt_sample_level)},
     ]
 
     if tile_rendering:
@@ -420,6 +424,10 @@ def _create_vrscene_render_job_bundle(
             {"name": "ImageHeight", "value": str(settings.image_height)},
             {"name": "RegionColumns", "value": str(settings.vrscene_render_region_columns)},
             {"name": "RegionRows", "value": str(settings.vrscene_render_region_rows)},
+            {"name": "RenderEngine", "value": str(settings.vrscene_render_engine)},
+            {"name": "RTTimeout", "value": str(settings.vrscene_rt_timeout)},
+            {"name": "RTNoise", "value": str(settings.vrscene_rt_noise)},
+            {"name": "RTSampleLevel", "value": str(settings.vrscene_rt_sample_level)},
             {"name": "CreateMovie", "value": "true" if settings.vrscene_create_movie else "false"},
             {"name": "MovieFilename", "value": settings.vrscene_movie_filename},
             {"name": "FrameRate", "value": str(settings.vrscene_movie_framerate)},
@@ -436,6 +444,7 @@ def _create_vrscene_render_job_bundle(
             settings,
             vrscene_path,
             settings.output_path,
+            output_filename,
             start_frame,
             end_frame,
             vray_executable,
@@ -479,6 +488,24 @@ def show_vray_standalone_submitter():
     # Get image resolution for tile coordinate calculation
     vrscene_settings.image_width = rt.renderWidth
     vrscene_settings.image_height = rt.renderHeight
+
+    # Read RT settings from V-Ray render settings if available.
+    # V-Ray CPU uses V_Ray_settings.progressive_* properties.
+    # V-Ray GPU uses renderers.current.max_render_time and max_paths_per_pixel directly.
+    try:
+        renderer = rt.renderers.current
+        renderer_class = str(rt.classof(renderer))
+        if "GPU" in renderer_class:
+            vrscene_settings.vrscene_rt_timeout = float(renderer.max_render_time)
+            vrscene_settings.vrscene_rt_sample_level = int(renderer.max_paths_per_pixel)
+            # GPU noise threshold not directly exposed — keep default
+        else:
+            vray_settings = renderer.V_Ray_settings
+            vrscene_settings.vrscene_rt_noise = float(vray_settings.progressive_noise_threshold)
+            vrscene_settings.vrscene_rt_timeout = float(vray_settings.progressive_max_render_time)
+            vrscene_settings.vrscene_rt_sample_level = int(vray_settings.progressive_maxSamples)
+    except Exception as e:
+        _logger.debug(f"Could not read RT settings from scene, using defaults: {e}")
 
     # Load sticky settings
     vrscene_settings.load_sticky_settings()

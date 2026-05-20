@@ -42,6 +42,11 @@ class VRSceneRenderSubmitterUISettings:
     # V-Ray Standalone Render Options
     vrscene_render_region_columns: int = field(default=2, metadata={"sticky": True})
     vrscene_render_region_rows: int = field(default=2, metadata={"sticky": True})
+    vrscene_render_engine: int = field(default=0, metadata={"sticky": True})  # 0=CPU, 5=CUDA, 7=RTX
+    # RT engine stopping conditions — defaults work for most scenes, can be adjusted in the UI
+    vrscene_rt_timeout: float = field(default=0.0, metadata={"sticky": True})  # minutes, 0=no limit
+    vrscene_rt_noise: float = field(default=0.001, metadata={"sticky": True})  # noise threshold
+    vrscene_rt_sample_level: int = field(default=0, metadata={"sticky": True})  # 0=no limit
     vrscene_create_movie: bool = field(default=False, metadata={"sticky": True})
     vrscene_movie_filename: str = field(default="output.mp4", metadata={"sticky": True})
     vrscene_movie_framerate: int = field(default=24, metadata={"sticky": True})

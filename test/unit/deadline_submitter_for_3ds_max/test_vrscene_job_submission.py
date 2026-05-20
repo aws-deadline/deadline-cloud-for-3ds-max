@@ -127,3 +127,144 @@ class TestGetFrameRangeFromString:
 
     def test_large_range(self):
         assert get_frame_range_from_string("0-9999") == (0, 9999)
+
+
+class TestCreateVrsceneRenderJobParameters:
+    """Tests for create_vrscene_render_job_parameters."""
+
+    def _make_settings(self, render_engine=0, columns=1, rows=1):
+        from unittest.mock import MagicMock
+
+        settings = MagicMock()
+        settings.vrscene_render_engine = render_engine
+        settings.vrscene_render_region_columns = columns
+        settings.vrscene_render_region_rows = rows
+        return settings
+
+    def test_render_engine_cpu_not_in_params(self):
+        from deadline.max_submitter.utilities.vrscene_job_submission import (
+            create_vrscene_render_job_parameters,
+        )
+
+        settings = self._make_settings(render_engine=0)
+        params = create_vrscene_render_job_parameters(
+            settings, "/scene.vrscene", "/output", "scene.png", 1, 1, "vray.exe"
+        )
+        names = [p["name"] for p in params]
+        assert "RenderEngine" in names
+        render_engine_param = next(p for p in params if p["name"] == "RenderEngine")
+        assert render_engine_param["value"] == "0"
+
+    def test_render_engine_cuda_in_params(self):
+        from deadline.max_submitter.utilities.vrscene_job_submission import (
+            create_vrscene_render_job_parameters,
+        )
+
+        settings = self._make_settings(render_engine=5)
+        params = create_vrscene_render_job_parameters(
+            settings, "/scene.vrscene", "/output", "scene.png", 1, 1, "vray.exe"
+        )
+        render_engine_param = next(p for p in params if p["name"] == "RenderEngine")
+        assert render_engine_param["value"] == "5"
+
+    def test_render_engine_rtx_in_params(self):
+        from deadline.max_submitter.utilities.vrscene_job_submission import (
+            create_vrscene_render_job_parameters,
+        )
+
+        settings = self._make_settings(render_engine=7)
+        params = create_vrscene_render_job_parameters(
+            settings, "/scene.vrscene", "/output", "scene.png", 1, 1, "vray.exe"
+        )
+        render_engine_param = next(p for p in params if p["name"] == "RenderEngine")
+        assert render_engine_param["value"] == "7"
+
+    def test_output_filename_respected(self):
+        from deadline.max_submitter.utilities.vrscene_job_submission import (
+            create_vrscene_render_job_parameters,
+        )
+
+        settings = self._make_settings()
+        params = create_vrscene_render_job_parameters(
+            settings, "/scene.vrscene", "/output", "scene.tiff", 1, 1, "vray.exe"
+        )
+        output_param = next(p for p in params if p["name"] == "OutputFileName")
+        assert output_param["value"] == "scene.tiff"
+
+    def test_output_filename_not_hardcoded_png(self):
+        from deadline.max_submitter.utilities.vrscene_job_submission import (
+            create_vrscene_render_job_parameters,
+        )
+
+        settings = self._make_settings()
+        params = create_vrscene_render_job_parameters(
+            settings, "/scene.vrscene", "/output", "scene.exr", 1, 1, "vray.exe"
+        )
+        output_param = next(p for p in params if p["name"] == "OutputFileName")
+        assert output_param["value"] == "scene.exr"
+        assert output_param["value"] != "scene.png"
+
+
+class TestRTEngineParameters:
+    """Tests for RT engine parameters in create_vrscene_render_job_parameters."""
+
+    def _make_settings(self, render_engine=0, rt_timeout=0.0, rt_noise=0.001, rt_sample_level=0):
+        from unittest.mock import MagicMock
+
+        settings = MagicMock()
+        settings.vrscene_render_engine = render_engine
+        settings.vrscene_rt_timeout = rt_timeout
+        settings.vrscene_rt_noise = rt_noise
+        settings.vrscene_rt_sample_level = rt_sample_level
+        settings.vrscene_render_region_columns = 1
+        settings.vrscene_render_region_rows = 1
+        return settings
+
+    def _get_param(self, params, name):
+        return next((p for p in params if p["name"] == name), None)
+
+    def test_rt_timeout_in_params(self):
+        from deadline.max_submitter.utilities.vrscene_job_submission import (
+            create_vrscene_render_job_parameters,
+        )
+
+        settings = self._make_settings(rt_timeout=5.0)
+        params = create_vrscene_render_job_parameters(
+            settings, "/scene.vrscene", "/output", "scene.png", 1, 1, "vray.exe"
+        )
+        assert self._get_param(params, "RTTimeout")["value"] == "5.0"
+
+    def test_rt_noise_in_params(self):
+        from deadline.max_submitter.utilities.vrscene_job_submission import (
+            create_vrscene_render_job_parameters,
+        )
+
+        settings = self._make_settings(rt_noise=0.005)
+        params = create_vrscene_render_job_parameters(
+            settings, "/scene.vrscene", "/output", "scene.png", 1, 1, "vray.exe"
+        )
+        assert self._get_param(params, "RTNoise")["value"] == "0.005"
+
+    def test_rt_sample_level_in_params(self):
+        from deadline.max_submitter.utilities.vrscene_job_submission import (
+            create_vrscene_render_job_parameters,
+        )
+
+        settings = self._make_settings(rt_sample_level=1000)
+        params = create_vrscene_render_job_parameters(
+            settings, "/scene.vrscene", "/output", "scene.png", 1, 1, "vray.exe"
+        )
+        assert self._get_param(params, "RTSampleLevel")["value"] == "1000"
+
+    def test_rt_defaults(self):
+        from deadline.max_submitter.utilities.vrscene_job_submission import (
+            create_vrscene_render_job_parameters,
+        )
+
+        settings = self._make_settings()
+        params = create_vrscene_render_job_parameters(
+            settings, "/scene.vrscene", "/output", "scene.png", 1, 1, "vray.exe"
+        )
+        assert self._get_param(params, "RTTimeout")["value"] == "0.0"
+        assert self._get_param(params, "RTNoise")["value"] == "0.001"
+        assert self._get_param(params, "RTSampleLevel")["value"] == "0"

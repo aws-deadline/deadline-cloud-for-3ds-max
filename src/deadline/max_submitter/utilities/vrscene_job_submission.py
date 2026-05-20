@@ -157,6 +157,7 @@ def create_vrscene_render_job_parameters(
     settings,
     vrscene_path: str,
     output_path: str,
+    output_filename: str,
     start_frame: int,
     end_frame: int,
     vray_executable: str,
@@ -168,10 +169,6 @@ def create_vrscene_render_job_parameters(
     else:
         frames = f"{start_frame}-{end_frame}"
 
-    # Get output filename from vrscene
-    vrscene_name = Path(vrscene_path).stem
-    output_filename = f"{vrscene_name}.png"
-
     parameters = [
         {"name": "VRayExecutable", "value": vray_executable},
         {"name": "VRSceneOutputPath", "value": vrscene_path},
@@ -180,6 +177,10 @@ def create_vrscene_render_job_parameters(
         {"name": "Frames", "value": frames},
         {"name": "RegionColumns", "value": str(settings.vrscene_render_region_columns)},
         {"name": "RegionRows", "value": str(settings.vrscene_render_region_rows)},
+        {"name": "RenderEngine", "value": str(settings.vrscene_render_engine)},
+        {"name": "RTTimeout", "value": str(settings.vrscene_rt_timeout)},
+        {"name": "RTNoise", "value": str(settings.vrscene_rt_noise)},
+        {"name": "RTSampleLevel", "value": str(settings.vrscene_rt_sample_level)},
     ]
 
     return parameters

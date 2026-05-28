@@ -1,3 +1,8 @@
+## 0.3.3 (2026-05-28)
+
+### Features
+* Added a timeout for the onRun action, improving reliability when 3ds Max becomes unresponsive during rendering. (#248)
+* Added V-Ray GPU support with configurable RT engine parameters, allowing users to select and configure V-Ray GPU rendering when submitting jobs. (#244)
 ## 0.3.2 (2026-05-13)
 
 ### Features

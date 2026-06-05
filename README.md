@@ -1,6 +1,6 @@
 # AWS Deadline Cloud for 3ds Max
 
-### [User guide](https://aws-deadline.github.io/) | [Service documentation](https://docs.aws.amazon.com/deadline-cloud/) | [Deadline Cloud on GitHub](https://github.com/aws-deadline/) 
+### [User guide](https://docs.aws.amazon.com/deadline-cloud/latest/userguide/autodesk-3ds-max.html) | [Service documentation](https://docs.aws.amazon.com/deadline-cloud/) | [Deadline Cloud on GitHub](https://github.com/aws-deadline/) 
 
 [![pypi](https://img.shields.io/pypi/v/deadline-cloud-for-3ds-max.svg?style=flat)](https://pypi.python.org/pypi/deadline-cloud-for-3ds-max)
 [![python](https://img.shields.io/pypi/pyversions/deadline-cloud-for-3ds-max.svg?style=flat)](https://pypi.python.org/pypi/deadline-cloud-for-3ds-max)
@@ -109,7 +109,7 @@ See [CONTRIBUTING](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/bl
 
 ## Telemetry
 
-See [telemetry](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/blob/release/docs/telemetry.md) for more information.
+See [telemetry](https://docs.aws.amazon.com/deadline-cloud/latest/userguide/opt-out.html) for more information.
 
 ## License
 

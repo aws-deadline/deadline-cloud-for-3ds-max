@@ -31,6 +31,7 @@ ALLOWED_RENDERERS = [
     "V_Ray_7",
     "V_Ray_GPU_7",
     "Redshift_Renderer",
+    "Arnold",
 ]
 
 # Possible output extensions

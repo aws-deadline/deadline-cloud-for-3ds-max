@@ -56,7 +56,8 @@
                         "Default_Scanline_Renderer",
                         "ART_Renderer",
                         "Corona",
-                        "Redshift_Renderer"
+                        "Redshift_Renderer",
+                        "Arnold"
                     ]
                 }
             ]

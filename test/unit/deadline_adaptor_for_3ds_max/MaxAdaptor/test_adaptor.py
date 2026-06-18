@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.resources
 import json
 import re
 from pathlib import Path
@@ -96,6 +97,47 @@ class TestMaxAdaptor_semantic_version:
         """Tests that the adaptor semantic version is in the expected format"""
         adaptor = MaxAdaptor(init_data)
         assert adaptor.integration_data_interface_version == SemanticVersion(major=0, minor=3)
+
+    @pytest.mark.parametrize(
+        "renderer_value",
+        [
+            "Default_Scanline_Renderer",
+            "ART_Renderer",
+            "Corona",
+            "Redshift_Renderer",
+            "Arnold",
+            "V_Ray_6_Hotfix_3",
+            "V_Ray_GPU_7",
+        ],
+        ids=[
+            "scanline",
+            "art",
+            "corona",
+            "redshift",
+            "arnold",
+            "vray_cpu_versioned",
+            "vray_gpu_versioned",
+        ],
+    )
+    def test_init_data_schema_accepts_supported_renderers(
+        self, init_data: dict, renderer_value: str
+    ) -> None:
+        """Init-data schema should accept every supported renderer name."""
+        # Load the schema as a package resource so this test is independent of
+        # repo layout (matches the production code in MaxAdaptor.adaptor, which
+        # resolves the schema dir relative to its own __file__).
+        schema_text = (
+            importlib.resources.files("deadline.max_adaptor.MaxAdaptor")
+            .joinpath("schemas/init_data.schema.json")
+            .read_text(encoding="utf-8")
+        )
+        init_data_schema = json.loads(schema_text)
+
+        payload = dict(init_data)
+        payload["renderer"] = renderer_value
+
+        # Should not raise
+        jsonschema.validate(payload, init_data_schema)
 
     def test_if_init_data_and_run_data_schema_are_changed_schema_version_is_bumped(
         self, init_data: dict

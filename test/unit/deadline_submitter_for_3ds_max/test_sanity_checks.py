@@ -245,6 +245,12 @@ class TestSanityChecks:
                         f"Consider using more specific renderer names or reordering the list."
                     )
 
+    def test_arnold_is_in_allowed_renderers(self) -> None:
+        """Arnold (MAXtoA) should be present in ALLOWED_RENDERERS so the submitter
+        accepts it as a valid renderer choice and the sanity check passes scenes
+        where the active renderer is Arnold."""
+        assert "Arnold" in ALLOWED_RENDERERS
+
 
 class TestCheckSanityBatchRender:
     """Tests for check_sanity_batch_render function."""

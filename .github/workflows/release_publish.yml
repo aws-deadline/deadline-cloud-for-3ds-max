@@ -47,13 +47,6 @@ jobs:
       tag: ${{ needs.TagRelease.outputs.tag }}
       os: windows
 
-  ManualTestGate:
-    needs: [TagRelease, BuildAndStageInstallers]
-    runs-on: ubuntu-latest
-    environment: release-gate
-    steps:
-      - run: echo "Manual testing approved for ${{ needs.TagRelease.outputs.tag }}"
-
   PreRelease:
       needs: [TagRelease, UnitTests, IntegrationTests]
       uses: aws-deadline/.github/.github/workflows/reusable_prerelease.yml@mainline
@@ -77,7 +70,7 @@ jobs:
       oses: "['Windows']"
 
   Release:
-      needs: [TagRelease, PreRelease, ManualTestGate]
+      needs: [TagRelease, PreRelease]
       uses: aws-deadline/.github/.github/workflows/reusable_release.yml@mainline
       secrets: inherit
       permissions:

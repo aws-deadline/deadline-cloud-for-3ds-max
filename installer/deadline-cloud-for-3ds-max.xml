@@ -72,10 +72,10 @@
                 <isTrue value="${individual_install}"/>
             </conditionRuleList>
             <actionList>
-                <setInstallerVariable name="max_installdir" value="${installdir}"/>
+                <setInstallerVariable name="max_installdir" value="${installdir}" persist="1"/>
             </actionList>
             <elseActionList>
-                <setInstallerVariable name="max_installdir" value="${installdir}/Submitters/3dsMax"/>
+                <setInstallerVariable name="max_installdir" value="${installdir}/Submitters/3dsMax" persist="1"/>
             </elseActionList>
         </if>
 	</readyToInstallActionList>
@@ -84,10 +84,27 @@
 			<value>Deadline Cloud for 3ds Max 2024 - 2026
 - Compatible with 3ds Max 2024 - 2026.
 - Install the integrated 3ds Max submitter files to the installation directory.
-- Register the plug-in with 3ds Max by creating or updating the multiple environment variables.</value>
+- Register the plug-in with 3ds Max by creating or updating 3ds-Max-specific environment variables (ADSK_3DSMAX_STARTUPSCRIPTS_ADDON_DIR, ADSK_3DSMAX_MACROS_ADDON_DIR, ADSK_3DSMAX_SCRIPTS_ADDON_DIR, MAX_SUBMITTER).</value>
 		</stringParameter>
 	</parameterList>
     <postInstallationActionList>
+        <!--
+            Clean up any stale PYTHONPATH entry left behind by earlier versions of this installer
+            (versions <=0.3.3, which globally polluted PYTHONPATH with the submitter scripts dir).
+            Sweep both user and system scope. Safe no-op if not present.
+            Runs first so that an upgrade-in-place fully heals a broken machine — the customer
+            does not need to uninstall 3ds Max first.
+        -->
+        <fnRemovePathFromEnvironmentVariable>
+            <name>PYTHONPATH</name>
+            <value>${max_installdir}/scripts</value>
+            <scope>user</scope>
+        </fnRemovePathFromEnvironmentVariable>
+        <fnRemovePathFromEnvironmentVariable>
+            <name>PYTHONPATH</name>
+            <value>${max_installdir}/scripts</value>
+            <scope>system</scope>
+        </fnRemovePathFromEnvironmentVariable>
         <fnAddPathEnvironmentVariable>
 			<progressText>Registering plug-in with 3ds Max</progressText>
 			<name>ADSK_3DSMAX_STARTUPSCRIPTS_ADDON_DIR</name>
@@ -112,13 +129,6 @@
         <fnAddPathEnvironmentVariable>
 			<progressText>Registering 3ds Max submitter path</progressText>
 			<name>MAX_SUBMITTER</name>
-			<value>${max_installdir}/scripts</value>
-			<scope>${installscope}</scope>
-			<insertAt>end</insertAt>
-		</fnAddPathEnvironmentVariable>
-        <fnAddPathEnvironmentVariable>
-			<progressText>Adding scripts directory to Python path</progressText>
-			<name>PYTHONPATH</name>
 			<value>${max_installdir}/scripts</value>
 			<scope>${installscope}</scope>
 			<insertAt>end</insertAt>

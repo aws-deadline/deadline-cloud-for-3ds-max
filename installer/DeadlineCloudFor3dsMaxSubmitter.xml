@@ -83,33 +83,13 @@
         <actionDefinition name="fnRemovePathFromEnvironmentVariable">
             <!--
                 Removes a single directory entry from a PATH-like environment variable
-                (semicolon-separated on Windows). Windows-only implementation via PowerShell;
-                no-op on other platforms (3ds Max is Windows-only).
+                using InstallBuilder-native actions only. Avoid runProgram/PowerShell
+                because those are brittle on Windows and can be blocked or skipped.
 
-                The primary user of this action is one-time cleanup of a bug introduced in
-                earlier releases of the 3ds Max submitter installer, which added the submitter
-                scripts directory to the GLOBAL PYTHONPATH env var. That leaked into every Python
-                process on the machine (including Maya, Nuke, etc.) and caused the bundled
-                'deadline' package from 3ds Max to shadow the correct one shipped with those
-                other DCC submitters.
-
-                Parameter marshalling: user-controlled values (`name`, `value`, `scope`) are
-                passed to the PowerShell child by writing them to the installer's own process
-                environment via <setEnvironmentVariable> — a non-persistent action that lives
-                only for the current installer run and is inherited by children launched via
-                <runProgram>. The PowerShell command text itself contains no interpolation of
-                user-controlled data, so install paths containing shell-meaningful characters
-                (single quotes, `$`, etc.) cannot break parsing.
-
-                Comparison inside PowerShell is case-insensitive and slash-insensitive to match
-                Windows path semantics, so entries stored with either forward or back slashes
-                are removed.
-
-                Best-effort: PowerShell body is wrapped in try/catch, and the runProgram sets
-                abortOnError=0 / showMessageOnError=0. If anything unusual happens (e.g., a
-                user-scope install attempting a system-scope registry write and getting a
-                SecurityException), the cleanup is silently skipped rather than failing the
-                enclosing install or uninstall.
+                The regular expression removes the target when it appears as the
+                only entry, first entry, middle entry, or last entry in a semicolon
+                separated value. If the result is empty, delete the environment
+                variable; otherwise write back the cleaned value.
             -->
             <parameterList>
                 <stringParameter name="name"/>
@@ -117,28 +97,40 @@
                 <stringParameter name="scope" default="user"/>
             </parameterList>
             <actionList>
-                <setEnvironmentVariable>
-                    <name>_DEADLINE_MAX_CLEANUP_VAR_NAME</name>
-                    <value>${name}</value>
-                </setEnvironmentVariable>
-                <setEnvironmentVariable>
-                    <name>_DEADLINE_MAX_CLEANUP_VAR_VALUE</name>
-                    <value>${value}</value>
-                </setEnvironmentVariable>
-                <setEnvironmentVariable>
-                    <name>_DEADLINE_MAX_CLEANUP_VAR_SCOPE</name>
-                    <value>${scope}</value>
-                </setEnvironmentVariable>
-                <runProgram>
-                    <progressText>Removing stale ${name} entry (${scope})</progressText>
-                    <program>powershell.exe</program>
-                    <programArguments>-NoProfile -ExecutionPolicy Bypass -Command "&amp; { try { $VarName = $env:_DEADLINE_MAX_CLEANUP_VAR_NAME; $Target = $env:_DEADLINE_MAX_CLEANUP_VAR_VALUE; $ScopeName = $env:_DEADLINE_MAX_CLEANUP_VAR_SCOPE; if ($VarName -and $ScopeName) { $s = if ($ScopeName -eq 'system') { 'Machine' } else { 'User' }; $norm = { param($p) if ($p) { $p.Replace('/','\').TrimEnd('\').ToLowerInvariant() } else { '' } }; $tn = &amp; $norm $Target; $cur = [Environment]::GetEnvironmentVariable($VarName,$s); if ($cur) { $kept = @($cur.Split(';') | Where-Object { $_ -and ((&amp; $norm $_) -ne $tn) }); if ($kept.Count -eq 0) { [Environment]::SetEnvironmentVariable($VarName,$null,$s) } else { [Environment]::SetEnvironmentVariable($VarName,($kept -join ';'),$s) } } } } catch { } }</programArguments>
-                    <abortOnError>0</abortOnError>
-                    <showMessageOnError>0</showMessageOnError>
+                <actionGroup>
+                    <actionList>
+                        <setInstallerVariableFromRegEx>
+                            <name>_cleaned_env_value</name>
+                            <text>${env(${name})}</text>
+                            <pattern>(^|;)${value.escape_backslashes}(;|$)</pattern>
+                            <substitution>\1</substitution>
+                        </setInstallerVariableFromRegEx>
+                        <setInstallerVariableFromRegEx>
+                            <name>_cleaned_env_value</name>
+                            <text>${_cleaned_env_value}</text>
+                            <pattern>;$</pattern>
+                            <substitution></substitution>
+                        </setInstallerVariableFromRegEx>
+                        <deleteEnvironmentVariable>
+                            <name>${name}</name>
+                            <scope>${scope}</scope>
+                            <ruleList>
+                                <compareTextLength text="${_cleaned_env_value}" logic="equals" length="0"/>
+                            </ruleList>
+                        </deleteEnvironmentVariable>
+                        <addEnvironmentVariable>
+                            <name>${name}</name>
+                            <value>${_cleaned_env_value}</value>
+                            <scope>${scope}</scope>
+                            <ruleList>
+                                <compareTextLength text="${_cleaned_env_value}" logic="does_not_equal" length="0"/>
+                            </ruleList>
+                        </addEnvironmentVariable>
+                    </actionList>
                     <ruleList>
-                        <platformTest type="windows"/>
+                        <regExMatch text="${env(${name})}" logic="matches" pattern="(^|;)${value.escape_backslashes}(;|$)"/>
                     </ruleList>
-                </runProgram>
+                </actionGroup>
             </actionList>
         </actionDefinition>
     </functionDefinitionList>

@@ -1,3 +1,10 @@
+## 0.3.4 (2026-07-08)
+
+### Features
+* Arnold renderer is now supported. You can submit Arnold scenes to AWS Deadline Cloud from 3ds Max, and the adaptor will correctly set Arnold as the active renderer on the worker. (#254)
+
+### Bug Fixes
+* The installer no longer writes to the global PYTHONPATH environment variable. Previously, the 3ds Max submitter installer added its scripts directory to the system-wide PYTHONPATH, which caused the bundled `deadline` package to shadow other Deadline Cloud integrations (e.g., the Maya submitter). Existing polluted PYTHONPATH entries are now cleaned up during installation. (#261)
 ## 0.3.3 (2026-05-28)
 
 ### Features

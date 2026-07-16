@@ -1,8 +1,8 @@
 <!-- Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved. --><!-- Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved. -->
 <component>
     <name>deadline_cloud_for_3ds_max</name>
-    <description>Deadline Cloud for 3ds Max 2024 - 2026</description>
-	<detailedDescription>3ds Max plugin for submitting jobs to AWS Deadline Cloud. Compatible with 3ds Max 2024 - 2026.</detailedDescription>
+    <description>Deadline Cloud for 3ds Max 2024 - 2027</description>
+	<detailedDescription>3ds Max plugin for submitting jobs to AWS Deadline Cloud. Compatible with 3ds Max 2024 - 2027.</detailedDescription>
     <canBeEdited>1</canBeEdited>
     <selected>0</selected>
     <show>1</show>
@@ -81,8 +81,8 @@
 	</readyToInstallActionList>
 	<parameterList>
 		<stringParameter name="deadline_cloud_for_max_summary" ask="0" cliOptionShow="0">
-			<value>Deadline Cloud for 3ds Max 2024 - 2026
-- Compatible with 3ds Max 2024 - 2026.
+			<value>Deadline Cloud for 3ds Max 2024 - 2027
+- Compatible with 3ds Max 2024 - 2027.
 - Install the integrated 3ds Max submitter files to the installation directory.
 - Register the plug-in with 3ds Max by creating or updating 3ds-Max-specific environment variables (ADSK_3DSMAX_STARTUPSCRIPTS_ADDON_DIR, ADSK_3DSMAX_MACROS_ADDON_DIR, ADSK_3DSMAX_SCRIPTS_ADDON_DIR, MAX_SUBMITTER).</value>
 		</stringParameter>

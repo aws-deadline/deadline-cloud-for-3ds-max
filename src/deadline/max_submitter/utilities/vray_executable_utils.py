@@ -7,6 +7,8 @@ import os
 
 from pymxs import runtime as rt
 
+from deadline.max_shared.utilities.max_utils import get_max_version_year
+
 _logger = logging.getLogger(__name__)
 
 
@@ -24,7 +26,7 @@ def get_vray_executable_path() -> str:
 
     # Fallback: derive from V-Ray's own env vars (set by V-Ray installer)
     try:
-        max_version = 2000 + (int(rt.maxVersion()[0] / 1000.0) - 2)
+        max_version = get_max_version_year()
         vray_main = os.environ.get(f"VRAY_FOR_3DSMAX{max_version}_MAIN", "")
         if vray_main:
             candidate = os.path.join(vray_main, "vray.exe")

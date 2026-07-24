@@ -9,6 +9,7 @@ and management.
 """
 
 import logging
+import math
 import os
 import re
 from dataclasses import dataclass, field
@@ -19,6 +20,21 @@ import pymxs  # separate import to initialize  # noqa: F401
 from pymxs import runtime as rt
 
 _logger = logging.getLogger(__name__)
+
+
+def get_max_version_year() -> int:
+    """
+    Get the 3ds Max release year (e.g. 2025) from the running application.
+
+    3ds Max's internal major version number (``rt.maxVersion()[0]``) encodes the
+    release as ``(year - 1998) * 1000`` (e.g. 27000 for 2025). This converts it
+    back to the human-readable release year.
+
+    :returns: the 3ds Max release year, e.g. 2025
+    """
+    # int() handles both real values and mocked values used in tests
+    version_major: int = int(rt.maxVersion()[0])
+    return 2000 + math.ceil(version_major / 1000.0) - 2
 
 
 @dataclass

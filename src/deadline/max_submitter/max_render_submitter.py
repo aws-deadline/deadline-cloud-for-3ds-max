@@ -5,7 +5,6 @@
 """
 
 import logging
-import math
 import os
 from os.path import abspath, join, normpath
 from pathlib import Path
@@ -25,6 +24,7 @@ from data_const import (
     TEMP_BACKUP_FILENAME,
     UI_GROUP_LABEL,
 )
+from deadline.client.dataclasses import SubmitterInfo
 from deadline.client.job_bundle._yaml import deadline_yaml_dump
 from deadline.client.job_bundle.submission import AssetReferences
 from deadline.client.ui.dialogs._types import JobBundlePurpose
@@ -37,9 +37,11 @@ from ui.submit_dialog import SubmitMaxJobToDeadlineDialog
 from utilities import max_utils, submission_utils
 from deadline.max_shared.utilities.max_utils import (
     get_batch_render_views,
+    get_max_version_year,
     get_render_elements_output_directories,
 )
 
+from _version import version
 from _version import version_tuple as adaptor_version_tuple
 
 _logger = logging.getLogger(__name__)
@@ -354,9 +356,17 @@ def show_job_bundle_submitter():
         output_directories=set(render_settings.output_directories),
     )
 
-    max_version = 2000 + (math.ceil(rt.maxVersion()[0] / 1000.0) - 2)
+    max_version = get_max_version_year()
     adaptor_version = ".".join(str(v) for v in adaptor_version_tuple[:2])
     conda_packages = f"3dsmax={max_version}.* 3dsmax-openjd={adaptor_version}.*"
+
+    submitter_info = SubmitterInfo(
+        submitter_name="3dsMax",
+        submitter_package_name="deadline-cloud-for-3ds-max",
+        submitter_package_version=version,
+        host_application_name="3ds Max",
+        host_application_version=str(max_version),
+    )
 
     # Instantiate and show the Submitter UI
     window = SubmitMaxJobToDeadlineDialog(
@@ -371,6 +381,7 @@ def show_job_bundle_submitter():
         parent=main_window,
         f=Qt.Tool,
         show_host_requirements_tab=True,
+        submitter_info=submitter_info,
     )
     window.show()
     return window

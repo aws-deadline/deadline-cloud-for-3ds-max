@@ -11,9 +11,11 @@ from typing import Any, Optional
 
 import pymxs  # noqa
 import qtmax
+from deadline.client.dataclasses import SubmitterInfo
 from deadline.client.job_bundle._yaml import deadline_yaml_dump
 from deadline.client.job_bundle.submission import AssetReferences
 from deadline.client.ui.dialogs._types import JobBundlePurpose
+from deadline.max_shared.utilities.max_utils import get_max_version_year
 from pymxs import runtime as rt
 from qtpy.QtCore import Qt  # type: ignore
 from ui.submit_dialog import SubmitMaxJobToDeadlineDialog
@@ -38,6 +40,8 @@ from utilities.vray_executable_utils import (
     get_3dsmax_executable_path,
 )
 from vrscene_settings import VRSceneRenderSubmitterUISettings
+
+from _version import version
 
 _logger = logging.getLogger(__name__)
 
@@ -532,6 +536,15 @@ def show_vray_standalone_submitter():
     # For V-Ray Standalone, we need vray package instead of 3dsmax
     conda_packages = "vray imagemagick ffmpeg"
 
+    max_version = get_max_version_year()
+    submitter_info = SubmitterInfo(
+        submitter_name="VRayStandalone",
+        submitter_package_name="deadline-cloud-for-3ds-max",
+        submitter_package_version=version,
+        host_application_name="3ds Max",
+        host_application_version=str(max_version),
+    )
+
     # Instantiate and show the Submitter UI
     window = SubmitMaxJobToDeadlineDialog(
         job_setup_widget_type=VRayStandaloneSettingsWidget,
@@ -545,6 +558,7 @@ def show_vray_standalone_submitter():
         parent=main_window,
         f=Qt.Tool,
         show_host_requirements_tab=False,  # Not needed for vrscene rendering
+        submitter_info=submitter_info,
     )
     window.show()
     return window

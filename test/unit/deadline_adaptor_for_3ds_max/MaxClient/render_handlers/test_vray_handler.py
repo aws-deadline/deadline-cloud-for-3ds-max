@@ -5,6 +5,10 @@ from unittest.mock import patch
 import pytest
 
 
+@patch(
+    "deadline.max_adaptor.MaxClient.render_handlers.vray_handler.get_max_version_year",
+    new=lambda: 2025,
+)
 class TestVrayHandler:
     """Tests for VrayHandler environment variable validation"""
 
@@ -51,7 +55,13 @@ class TestVrayHandler:
     ) -> None:
         """Test VRay handler initializes successfully with all required env vars"""
         with patch.dict("os.environ", env_vars, clear=True):
-            with patch("deadline.max_adaptor.MaxClient.render_handlers.vray_handler.rt") as mock_rt:
+            with (
+                patch("deadline.max_adaptor.MaxClient.render_handlers.vray_handler.rt") as mock_rt,
+                patch(
+                    "deadline.max_adaptor.MaxClient.render_handlers.vray_handler.get_max_version_year",
+                    return_value=year,
+                ),
+            ):
                 mock_rt.maxVersion.return_value = max_version
 
                 from deadline.max_adaptor.MaxClient.render_handlers.vray_handler import (

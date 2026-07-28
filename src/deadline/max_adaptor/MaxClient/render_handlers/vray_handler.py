@@ -4,7 +4,6 @@
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 """
 
-import math
 import os
 import sys
 from typing import Any
@@ -13,6 +12,7 @@ from pymxs import runtime as rt
 
 from deadline.max_shared.utilities.max_utils import (
     configure_vray_raw_output,
+    get_max_version_year,
     is_vray_raw_output_format,
 )
 
@@ -39,11 +39,8 @@ class VrayHandler(DefaultMaxHandler):
         Validates that required VRay environment variables are set.
         Raises RuntimeError with actionable message if variables are missing.
         """
-        # Get 3ds Max year using the same formula as max_render_submitter.py
-        max_version: Any = rt.maxVersion()
-        # Convert to int to handle both real values and mock objects
-        version_major: int = int(max_version[0])
-        year: int = 2000 + math.ceil(version_major / 1000.0) - 2
+        # Get 3ds Max release year (e.g. 2025)
+        year: int = get_max_version_year()
 
         # Define required environment variables
         required_vars: list[str] = [

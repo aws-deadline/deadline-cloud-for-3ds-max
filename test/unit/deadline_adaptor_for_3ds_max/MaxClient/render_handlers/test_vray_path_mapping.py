@@ -5,6 +5,10 @@ from unittest.mock import MagicMock, PropertyMock, patch
 import pytest
 
 
+@patch(
+    "deadline.max_adaptor.MaxClient.render_handlers.vray_handler.get_max_version_year",
+    new=lambda: 2025,
+)
 class TestVrayProxyPathMapping:
     """Tests for VrayHandler path mapping functionality."""
 

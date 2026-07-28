@@ -19,6 +19,10 @@ class TestArnoldHandler:
             pytest.param("V_Ray_6_Hotfix_3:V_Ray_6_Hotfix_3", True, id="from_vray"),
             pytest.param("Redshift_Renderer:Redshift_Renderer", True, id="from_redshift"),
             pytest.param("Arnold:Arnold", False, id="already_arnold_no_op"),
+            # If MAXtoA ever ships a versioned class name, startswith("Arnold")
+            # should keep us on the Arnold path instead of forcing a new
+            # renderer instance.
+            pytest.param("Arnold_7_x_x:Arnold_7_x_x", False, id="already_arnold_versioned_no_op"),
         ],
     )
     def test_check_renderer_sets_arnold_when_not_active(

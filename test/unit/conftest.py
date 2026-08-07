@@ -66,6 +66,15 @@ def pytest_configure(config):
         sys.modules["utilities"] = mock_utilities_module
         sys.modules["utilities.submission_utils"] = mock_submission_utils
 
+        # job_template_utils has no heavy dependencies (only pathlib/yaml), so
+        # register the real module. This lets modules that import it via
+        # "from utilities.job_template_utils import ..." resolve the real
+        # functions under the mocked "utilities" package.
+        from deadline.max_submitter.utilities import job_template_utils
+
+        mock_utilities_module.job_template_utils = job_template_utils
+        sys.modules["utilities.job_template_utils"] = job_template_utils
+
     # Now we can import data_classes (depends on data_const)
     if "data_classes" not in sys.modules:
         from deadline.max_submitter import data_classes

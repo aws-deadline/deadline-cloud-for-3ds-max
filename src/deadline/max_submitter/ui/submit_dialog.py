@@ -5,9 +5,12 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 """
 
 import logging
+import os
 
 from deadline.client.ui.dialogs.submit_job_to_deadline_dialog import SubmitJobToDeadlineDialog
+from maxcmd_settings import MaxCmdSubmitterUISettings
 from pymxs import runtime as rt
+from ui.maxcmd_tab import MaxCmdSettingsWidget
 from ui.vray_standalone_tab import VRayStandaloneSettingsWidget
 from utilities import max_utils, submission_utils
 from utilities.vrscene_utils import is_vray_renderer
@@ -43,6 +46,9 @@ class SubmitMaxJobToDeadlineDialog(SubmitJobToDeadlineDialog):
         # Add V-Ray Export tab if V-Ray is active
         self._add_vray_export_tab_if_available()
 
+        # Add the 3dsmaxcmd command-line render tab (renderer-agnostic)
+        self._add_maxcmd_tab()
+
     def _on_create_job_bundle_wrapper(
         self,
         widget,
@@ -59,6 +65,32 @@ class SubmitMaxJobToDeadlineDialog(SubmitJobToDeadlineDialog):
 
         Checks if V-Ray Export is enabled and routes accordingly.
         """
+        # Check if the 3dsmaxcmd render tab exists and is enabled (takes precedence)
+        if hasattr(self, "maxcmd_widget") and self.maxcmd_widget.is_maxcmd_enabled():
+            _logger.info("3dsmaxcmd render is enabled - creating 3dsmaxcmd render job")
+
+            maxcmd_settings = self.maxcmd_widget.update_settings()
+            maxcmd_settings.scene_file = rt.maxFilePath + rt.maxFileName
+            # Name and description are owned by the base dialog's Shared job
+            # settings tab. Carry them over so the maxcmd job honors them.
+            maxcmd_settings.name = settings.name
+            maxcmd_settings.description = settings.description
+
+            # Imported here to avoid a circular import:
+            # submit_dialog -> maxcmd_submitter -> submit_dialog
+            from maxcmd_submitter import on_create_maxcmd_job_bundle_callback
+
+            on_create_maxcmd_job_bundle_callback(
+                widget=widget,
+                job_bundle_dir=job_bundle_dir,
+                settings=maxcmd_settings,
+                queue_parameters=queue_parameters,
+                asset_references=asset_references,
+                host_requirements=host_requirements,
+                purpose=purpose,
+            )
+            return
+
         # Check if V-Ray Export tab exists and is enabled
         if hasattr(self, "vray_export_widget") and self.vray_export_widget.is_vray_export_enabled():
             _logger.info("V-Ray Export is enabled - creating V-Ray export job")
@@ -128,6 +160,48 @@ class SubmitMaxJobToDeadlineDialog(SubmitJobToDeadlineDialog):
 
         except Exception as e:
             _logger.warning(f"Could not add V-Ray Export tab: {e}")
+
+    def _add_maxcmd_tab(self):
+        """
+        Add the 3dsmaxcmd command-line render tab.
+
+        Available for any renderer — it is the workflow used for network-licensed
+        plugins such as Pencil+ (NTR) that must render under the render server.
+        """
+        try:
+            maxcmd_settings = MaxCmdSubmitterUISettings()
+            maxcmd_settings.frame_list = max_utils.get_frames()
+            maxcmd_settings.scene_file = rt.maxFilePath + rt.maxFileName
+
+            # Default the output location from the scene's Render Setup output
+            # (rendOutputFilename) so the artist doesn't have to re-enter what
+            # Max already knows. Split it into directory + filename; fall back
+            # to the scene folder when the scene has no render output set.
+            maxcmd_settings.output_path = max_utils.get_scene_dir()
+            try:
+                scene_output = str(rt.rendOutputFilename or "")
+            except Exception:
+                scene_output = ""
+            if scene_output:
+                scene_output_dir = os.path.dirname(scene_output)
+                if scene_output_dir:
+                    maxcmd_settings.output_path = scene_output_dir
+                scene_output_file = os.path.basename(scene_output)
+                if scene_output_file:
+                    maxcmd_settings.output_filename = scene_output_file
+
+            # Sticky settings (the artist's last saved choice for this scene)
+            # take precedence over the scene-derived defaults above.
+            maxcmd_settings.load_sticky_settings()
+
+            self.maxcmd_widget = MaxCmdSettingsWidget(initial_settings=maxcmd_settings, parent=self)
+
+            if hasattr(self, "tabs"):
+                self.tabs.addTab(self.maxcmd_widget, "3dsmaxcmd Render")
+                _logger.info("3dsmaxcmd Render tab added successfully")
+
+        except Exception as e:
+            _logger.warning(f"Could not add 3dsmaxcmd Render tab: {e}")
 
     def close(self):
         """

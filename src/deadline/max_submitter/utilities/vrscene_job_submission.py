@@ -8,31 +8,11 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-import yaml
-
-_TEMPLATE_DIR = Path(__file__).parent.parent / "job_templates"
-
-
-def _load_job_template(template_name: str) -> dict:
-    """Load a YAML job template from the job_templates directory."""
-    with open(_TEMPLATE_DIR / template_name) as fh:
-        return yaml.safe_load(fh)
-
-
-def _inject_embedded_script(template: dict, placeholder: str, script_content: str) -> None:
-    """Replace a placeholder string in embedded file data fields with actual script content."""
-    for step in template.get("steps", []):
-        # Check step-level script
-        script_section = step.get("script", {})
-        for ef in script_section.get("embeddedFiles", []):
-            if ef.get("data") == placeholder:
-                ef["data"] = script_content
-        # Check stepEnvironments
-        for env in step.get("stepEnvironments", []):
-            env_script = env.get("script", {})
-            for ef in env_script.get("embeddedFiles", []):
-                if ef.get("data") == placeholder:
-                    ef["data"] = script_content
+# These generic helpers now live in a renderer-agnostic module. They are
+# re-exported here under their original private names so existing V-Ray call
+# sites keep working unchanged.
+from utilities.job_template_utils import inject_embedded_script as _inject_embedded_script
+from utilities.job_template_utils import load_job_template as _load_job_template
 
 
 def calculate_region_coordinates(

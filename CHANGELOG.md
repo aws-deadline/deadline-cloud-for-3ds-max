@@ -1,3 +1,10 @@
+## 0.4.0 (2026-08-07)
+
+### Features
+* Added a '3dsmaxcmd Render' submitter tab that renders scenes using 3dsmaxcmd.exe (the render server) instead of the standard 3dsmaxbatch adaptor. This enables network-licensed plugins such as Pencil+ (NTR) to render without a watermark, with full support for Deadline Cloud path mapping, shared job settings, and host requirements. (`7ae3b1f`)
+* Added Arnold AOV support. Per-frame AOV filenames are now unique and AOV output paths are correctly remapped to the worker's output directory, preventing frames from overwriting each other. (`faf3db7`)
+* The submitter dialog now displays version information for the plugin. (#279)
+* Added support for 3ds Max 2027. The compatible version range is now 2024–2027. (#267)
 ## 0.3.4 (2026-07-08)
 
 ### Features

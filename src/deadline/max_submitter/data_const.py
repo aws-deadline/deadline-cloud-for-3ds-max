@@ -127,6 +127,9 @@ VRSCENE_EXPORT_ANIMATION_MODES = [
 
 VRSCENE_SUBMITTER_SETTINGS_FILE_EXT = ".deadline_vrscene_settings.json"
 
+# 3dsmaxcmd command-line render workflow sticky settings
+MAXCMD_SUBMITTER_SETTINGS_FILE_EXT = ".deadline_maxcmd_settings.json"
+
 # V-Ray Standalone render engine options (maps to -rtEngine flag)
 VRAY_ENGINE_CPU = 0
 VRAY_ENGINE_CUDA = 5

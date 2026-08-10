@@ -10,4 +10,4 @@ moto[s3,sts] == 5.*
 types-pyyaml == 6.*
 hatchling == 1.27.*
 hatch-vcs == 0.5.*
-editables == 0.5
+editables == 0.6

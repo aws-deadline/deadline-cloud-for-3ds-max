@@ -3,7 +3,7 @@ pytest == 8.*
 pytest-cov == 7.*
 pytest-xdist == 3.*
 twine == 6.*
-mypy == 1.*
+mypy == 2.*
 black == 25.*
 ruff == 0.14.*
 moto[s3,sts] == 5.*

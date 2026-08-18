@@ -37,10 +37,20 @@ def pytest_configure(config):
     if "qtmax" not in sys.modules:
         sys.modules["qtmax"] = MagicMock()
 
-    # Mock qtpy for max_submitter modules
-    if "qtpy" not in sys.modules:
-        sys.modules["qtpy"] = MagicMock()
-        sys.modules["qtpy.QtCore"] = MagicMock()
+    # Mock qtpy for max_submitter modules. QtWidgets/QtGui are stubbed as their own sys.modules
+    # entries (not just left to auto-vivify off the qtpy mock) so a test can patch QMessageBox on
+    # the exact module object that deadline-cloud's qt_hook_confirmation reads via a lazy
+    # `from qtpy.QtWidgets import QMessageBox` — see test_pre_gui_hooks, which patches
+    # sys.modules["qtpy.QtWidgets"] directly. Mirrors the Maya submitter's test module stubbing.
+    #
+    # Each submodule is registered independently with setdefault rather than under a single
+    # `if "qtpy" not in sys.modules` guard: if a real qtpy is imported first (by a dev/CI install or
+    # another plugin) but its QtWidgets submodule is not, that guard would skip the stub and
+    # test_pre_gui_hooks' collection-time `sys.modules["qtpy.QtWidgets"]` lookup would KeyError.
+    # setdefault fills any missing entry without clobbering an already-imported real module.
+    sys.modules.setdefault("qtpy", MagicMock())
+    for _qtpy_submodule in ("QtCore", "QtWidgets", "QtGui"):
+        sys.modules.setdefault(f"qtpy.{_qtpy_submodule}", MagicMock())
 
     # Mock UI modules (these have complex Qt dependencies)
     if "ui" not in sys.modules:

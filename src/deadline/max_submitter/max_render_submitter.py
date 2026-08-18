@@ -24,10 +24,18 @@ from data_const import (
     TEMP_BACKUP_FILENAME,
     UI_GROUP_LABEL,
 )
+from deadline.client.config import get_setting, str2bool
 from deadline.client.dataclasses import SubmitterInfo
+from deadline.client.exceptions import DeadlineOperationCanceled, DeadlineOperationError
 from deadline.client.job_bundle._yaml import deadline_yaml_dump
 from deadline.client.job_bundle.submission import AssetReferences
 from deadline.client.ui.dialogs._types import JobBundlePurpose
+from deadline.client.ui.pre_gui_hooks import (
+    PreGuiHookContext,
+    apply_pre_gui_output,
+    qt_hook_confirmation,
+    run_pre_gui_hooks,
+)
 from pymxs import runtime as rt
 from qtpy.QtCore import Qt  # type: ignore
 from qtpy.QtWidgets import QMessageBox  # type: ignore
@@ -280,6 +288,18 @@ def on_create_job_bundle_callback(
     settings.save_sticky_settings()
 
 
+def _pre_gui_hook_confirm_callback(parent):
+    """Choose the confirmation callback for pre-GUI hooks based on the auto_accept setting.
+
+    Returns ``None`` (run hooks without prompting) when ``settings.auto_accept`` is enabled,
+    otherwise the standard Qt confirmation dialog from ``qt_hook_confirmation``. Kept as a small
+    helper so the auto_accept branch can be unit-tested headlessly.
+    """
+    if str2bool(get_setting("settings.auto_accept")):
+        return None
+    return qt_hook_confirmation(parent)
+
+
 def show_job_bundle_submitter():
     """
     Main function that shows the UI.
@@ -290,8 +310,13 @@ def show_job_bundle_submitter():
 
     render_settings = RenderSubmitterUISettings()
 
-    # Set settings dependent on scene
-    render_settings.name = max_utils.get_scene_name()
+    # Set settings dependent on scene. Capture the scene name in a local before
+    # load_sticky_settings() (below) can overwrite render_settings.name with a previously persisted
+    # value: pre-GUI hooks receive this pre-sticky scene name as job_name (see the hook block), so a
+    # read-modify-write hook (e.g. a "STUDIO_" + jobName prefix) stays idempotent across runs instead
+    # of compounding through the sticky settings file.
+    scene_name = max_utils.get_scene_name()
+    render_settings.name = scene_name
     render_settings.frame_list = max_utils.get_frames()
     render_settings.project_path = max_utils.get_scene_path()
 
@@ -309,9 +334,92 @@ def show_job_bundle_submitter():
 
     render_settings.load_sticky_settings()
 
+    # Compute the shared parameter values the dialog is seeded with. These are also handed to the
+    # pre-GUI hooks below (as the PreGuiHookContext parameters), so build them before the hook runs.
+    max_version = get_max_version_year()
+    adaptor_version = ".".join(str(v) for v in adaptor_version_tuple[:2])
+    conda_packages = f"3dsmax={max_version}.* 3dsmax-openjd={adaptor_version}.*"
+
+    shared_parameter_values = {
+        "CondaPackages": conda_packages,
+    }
+
+    # Run pre-GUI hooks so studios can pre-populate dialog fields before it opens. 3ds Max has no
+    # on-disk job bundle at this point, so hooks are sourced from DEADLINE_HOOKS_DIR only
+    # (bundle_dir=None), gated by settings.allow_environment_hooks. The confirmation prompt is
+    # skipped when auto_accept is set; otherwise the standard dialog is shown.
+    #
+    # This runs BEFORE the state-set discovery loop and asset scanning below. That loop sets the
+    # scene's active state set (masterState.CurrentState) as it walks each state set, mutating the
+    # scene; running the hooks first means declining the confirmation prompt or a hook failure
+    # aborts (return None) without having touched the scene, and the prompt also appears promptly
+    # instead of after all the scanning work.
+    hook_deadline_params_applied = False
+    try:
+        # Build the confirmation callback (reads settings.auto_accept), run the hooks, and apply
+        # their output, all inside this try so hook failures are handled by the except clauses below
+        # instead of escaping as a raw traceback (3ds Max opens the submitter without a surrounding
+        # gui_error_handler).
+        confirm_callback = _pre_gui_hook_confirm_callback(main_window)
+        pre_gui_output = run_pre_gui_hooks(
+            PreGuiHookContext(
+                bundle_dir=None,
+                # Pre-sticky scene name (not render_settings.name, which load_sticky_settings may
+                # have replaced with a prior hook's output) so read-modify-write hooks stay
+                # idempotent and don't compound through the sticky settings file.
+                job_name=scene_name,
+                submitter_name=render_settings.submitter_name,
+                priority=render_settings.priority,
+                parameters=dict(shared_parameter_values),
+            ),
+            confirm_callback=confirm_callback,
+        )
+        # deadline-cloud's generic helper maps the merged output onto our settings + shared values.
+        # RenderSubmitterUISettings has no .parameters list, so every hook parameter (CondaPackages,
+        # deadline: job properties, etc.) flows into shared_parameter_values, which seeds the dialog.
+        # Guard with `or {}` defensively: run_pre_gui_hooks returns {} when no hooks run, but this
+        # keeps the call safe if a future release returns None instead.
+        apply_pre_gui_output(pre_gui_output or {}, render_settings, shared_parameter_values)
+        # Track only whether hook deadline: parameters were applied. The dialog's shared-settings
+        # widget replays only deadline: keys synchronously during construction (via
+        # set_parameter_value in SharedJobSettingsWidget.__init__), so those are the sole hook output
+        # that can make SubmitMaxJobToDeadlineDialog(...) raise below, and thus the only thing the
+        # construction guard should arm on. name/description land on the type-validated
+        # RenderSubmitterUISettings dataclass, and non-deadline: queue parameters are applied
+        # asynchronously (see the construction-guard comment) — neither can fail construction here.
+        hook_deadline_params_applied = any(
+            name.startswith("deadline:")
+            for name in ((pre_gui_output or {}).get("parameters") or {})
+        )
+    except DeadlineOperationCanceled:
+        # The user declined the hook confirmation prompt — a normal cancellation, not a failure — so
+        # abort opening the submitter silently. Mirrors the check_and_show_update_dialog() early
+        # return. (DeadlineOperationCanceled subclasses DeadlineOperationError, so this handler must
+        # come first.)
+        return None
+    except DeadlineOperationError:
+        # A pre-GUI hook failed: non-zero exit, timeout, invalid JSON, or disallowed output —
+        # deadline-cloud raises DeadlineOperationError for all of these. Its documented contract is
+        # that a failing pre-GUI hook *blocks* the dialog, so surface a clear error and abort rather
+        # than opening with un-applied values (which would silently bypass any pipeline policy the
+        # hook enforces). Only DeadlineOperationError is caught, so genuine local bugs still surface
+        # as tracebacks instead of being mistaken for hook failures.
+        _logger.exception("A pre-GUI submission hook failed; the submitter will not open.")
+        QMessageBox.critical(
+            main_window,
+            "AWS Deadline Cloud",
+            "A pre-GUI submission hook failed, so the submitter was not opened. "
+            "See the 3ds Max scripting listener/log for details.",
+        )
+        return None
+
     output_directories: set[str] = set()
 
-    # Add output dir from state set settings if one is set
+    # Add output dir from state set settings if one is set. NOTE: this loop sets
+    # masterState.CurrentState for each state set to read its output path, changing the scene's
+    # active state set; the submitter dialog re-applies a state set when it opens, so the visible
+    # end state is dialog-driven. The pre-GUI hook block above deliberately runs before this so its
+    # abort paths don't leave the scene mutated with no dialog open.
     state_sets = max_utils.get_state_set_names()
     for state_set in state_sets:
         rt.execute(
@@ -356,10 +464,6 @@ def show_job_bundle_submitter():
         output_directories=set(render_settings.output_directories),
     )
 
-    max_version = get_max_version_year()
-    adaptor_version = ".".join(str(v) for v in adaptor_version_tuple[:2])
-    conda_packages = f"3dsmax={max_version}.* 3dsmax-openjd={adaptor_version}.*"
-
     submitter_info = SubmitterInfo(
         submitter_name="3dsMax",
         submitter_package_name="deadline-cloud-for-3ds-max",
@@ -368,21 +472,47 @@ def show_job_bundle_submitter():
         host_application_version=str(max_version),
     )
 
-    # Instantiate and show the Submitter UI
-    window = SubmitMaxJobToDeadlineDialog(
-        job_setup_widget_type=SceneSettingsWidget,
-        initial_job_settings=render_settings,
-        initial_shared_parameter_values={
-            "CondaPackages": conda_packages,
-        },
-        auto_detected_attachments=auto_detected_attachments,
-        attachments=attachments,
-        on_create_job_bundle_callback=on_create_job_bundle_callback,
-        parent=main_window,
-        f=Qt.Tool,
-        show_host_requirements_tab=True,
-        submitter_info=submitter_info,
-    )
+    # Instantiate and show the Submitter UI. A pre-GUI hook can inject a deadline: parameter the
+    # shared-settings widget doesn't accept (an unknown key, or a value of the wrong type). Only
+    # deadline: keys are replayed synchronously here, during construction (SharedJobSettingsWidget
+    # replays them via set_parameter_value in __init__), so that is the failure this guard catches:
+    # per the block-on-failure contract, treat it as a hook failure and abort with a clear error
+    # rather than a raw traceback, but only when the hook actually supplied a deadline: parameter. A
+    # construction failure with no hook deadline: parameter applied is a genuine submitter bug and
+    # is left to propagate as a traceback.
+    #
+    # Non-deadline: (queue) parameters such as CondaPackages are NOT replayed here — the widget
+    # applies them asynchronously once the queue's parameter definitions have loaded, after this
+    # try/except has returned. So this guard cannot catch them: a bad queue-parameter *value*
+    # surfaces later in the Qt event loop, and a queue-parameter *name* the target queue doesn't
+    # define is silently dropped. Validating those against the loaded queue parameters belongs in
+    # deadline-cloud's shared widget, not here.
+    try:
+        window = SubmitMaxJobToDeadlineDialog(
+            job_setup_widget_type=SceneSettingsWidget,
+            initial_job_settings=render_settings,
+            initial_shared_parameter_values=shared_parameter_values,
+            auto_detected_attachments=auto_detected_attachments,
+            attachments=attachments,
+            on_create_job_bundle_callback=on_create_job_bundle_callback,
+            parent=main_window,
+            f=Qt.Tool,
+            show_host_requirements_tab=True,
+            submitter_info=submitter_info,
+        )
+    except Exception:
+        if not hook_deadline_params_applied:
+            raise
+        _logger.exception(
+            "A pre-GUI hook supplied a value the submitter could not use; the submitter will not open."
+        )
+        QMessageBox.critical(
+            main_window,
+            "AWS Deadline Cloud",
+            "A pre-GUI submission hook supplied a value the submitter could not use, so the "
+            "submitter was not opened. See the 3ds Max scripting listener/log for details.",
+        )
+        return None
     window.show()
     return window
 

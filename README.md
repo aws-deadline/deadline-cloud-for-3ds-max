@@ -69,6 +69,25 @@ The 3ds Max submitter plugin is packaged as part of the Deadline Cloud submitter
 
 To manually build the installer, please follow the instructions [here](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/blob/mainline/DEVELOPMENT.md#manual-installation).
 
+### Submission Hooks
+
+The 3ds Max submitter supports Deadline Cloud *submission hooks* — pre-GUI, pre-submission, and
+post-submission — sourced from a directory named by the `DEADLINE_HOOKS_DIR` environment variable.
+A pre-GUI hook can pre-populate the submitter dialog (job name/description, parameters such as
+priority or Conda packages) before it opens. Enable environment hooks with:
+
+```sh
+deadline config set settings.allow_environment_hooks true
+```
+
+Hooks run when you open the submitter from the 3ds Max shelf button. The submitter shows a
+confirmation dialog listing the hooks it found before running them, skipped when the
+general-purpose `settings.auto_accept` setting is enabled.
+
+For the hook types, the `hooks.yaml` format, the stdin/stdout contract, and examples, see
+[Submission Hooks](https://github.com/aws-deadline/deadline-cloud/blob/mainline/docs/submission-hooks.md)
+in the AWS Deadline Cloud client library.
+
 ## Adaptor
 
 The 3ds Max Adaptor implements the [OpenJD][openjd-adaptor-runtime] interface that allows render workloads to launch 3ds Max and feed it commands. This gives the following benefits:

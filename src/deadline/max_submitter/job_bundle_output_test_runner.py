@@ -142,6 +142,12 @@ def _run_job_bundle_output_test(test_dir: str, dcc_scene_file: str, report_fh, m
 
         # Open the AWS Deadline Cloud submitter
         submitter = _show_deadline_cloud_submitter()
+        if submitter is None:
+            # show_job_bundle_submitter returns None if a pre-GUI hook confirmation is declined;
+            # there is nothing to export in that case, so fail loudly rather than dereference None.
+            raise RuntimeError(
+                "Submitter did not open (pre-GUI hook confirmation declined?); cannot export bundle."
+            )
         QApplication.processEvents()
 
         # Save the Job Bundle

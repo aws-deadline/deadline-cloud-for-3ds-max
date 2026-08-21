@@ -1,3 +1,7 @@
+## 0.4.1 (2026-08-21)
+
+### Features
+* The 3ds Max render submitter now runs pre-GUI hooks before opening the submission dialog. Studios can use environment hooks (sourced from DEADLINE_HOOKS_DIR) to pre-populate job name, description, and parameters automatically. This behavior is gated by the `allow_environment_hooks` setting. (#262)
 ## 0.4.0 (2026-08-07)
 
 ### Features

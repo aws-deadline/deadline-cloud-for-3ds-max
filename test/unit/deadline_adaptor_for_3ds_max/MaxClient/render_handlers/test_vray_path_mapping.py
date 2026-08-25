@@ -280,6 +280,310 @@ class TestVrayProxyPathMapping:
         assert "0 proxies remapped" in captured.out
 
 
+@patch(
+    "deadline.max_adaptor.MaxClient.render_handlers.vray_handler.get_max_version_year",
+    new=lambda: 2025,
+)
+class TestVrayBitmapPathMapping:
+    """Tests for VrayHandler bitmap texture path mapping."""
+
+    @patch.dict(
+        "os.environ",
+        {
+            "VRAY_FOR_3DSMAX2025_MAIN": "/path/to/main",
+            "VRAY_FOR_3DSMAX2025_PLUGINS": "/path/to/plugins",
+            "VRAY_MDL_PATH_3DSMAX2025": "/path/to/mdl",
+        },
+    )
+    @patch("deadline.max_adaptor.MaxClient.render_handlers.vray_handler.rt")
+    def test_bitmap_textures_are_remapped(
+        self, mock_rt: MagicMock, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Test that Bitmaptexture filenames are path-mapped and logged."""
+        mock_rt.maxVersion.return_value = [27000, 27, 0, 0, 0]
+        mock_rt.objects = []
+        mock_rt.VRayProxy = MagicMock()
+        mock_rt.classOf.return_value = None
+
+        mock_tex1 = MagicMock()
+        mock_tex1.filename = "C:/Users/artist/textures/wood.jpg"
+        mock_tex2 = MagicMock()
+        mock_tex2.filename = "C:/Users/artist/textures/metal.png"
+        mock_rt.getClassInstances.return_value = [mock_tex1, mock_tex2]
+
+        from deadline.max_adaptor.MaxClient.render_handlers.vray_handler import VrayHandler
+
+        handler = VrayHandler(gpu=False)
+        handler.map_path = lambda p: p.replace("C:/Users/artist", "C:/Sessions/assetroot")
+
+        handler._apply_bitmap_path_mapping()
+
+        assert mock_tex1.filename == "C:/Sessions/assetroot/textures/wood.jpg"
+        assert mock_tex2.filename == "C:/Sessions/assetroot/textures/metal.png"
+
+        captured = capsys.readouterr()
+        assert "Remapped Bitmaptexture" in captured.out
+        assert "2 textures remapped" in captured.out
+
+    @patch.dict(
+        "os.environ",
+        {
+            "VRAY_FOR_3DSMAX2025_MAIN": "/path/to/main",
+            "VRAY_FOR_3DSMAX2025_PLUGINS": "/path/to/plugins",
+            "VRAY_MDL_PATH_3DSMAX2025": "/path/to/mdl",
+        },
+    )
+    @patch("deadline.max_adaptor.MaxClient.render_handlers.vray_handler.rt")
+    def test_bitmap_unchanged_path_not_reassigned(
+        self, mock_rt: MagicMock, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Test that bitmaps whose path doesn't change aren't written back."""
+        mock_rt.maxVersion.return_value = [27000, 27, 0, 0, 0]
+        mock_rt.objects = []
+        mock_rt.VRayProxy = MagicMock()
+        mock_rt.classOf.return_value = None
+
+        mock_tex = MagicMock()
+        mock_tex.filename = "C:/already/mapped/texture.jpg"
+        mock_rt.getClassInstances.return_value = [mock_tex]
+
+        from deadline.max_adaptor.MaxClient.render_handlers.vray_handler import VrayHandler
+
+        handler = VrayHandler(gpu=False)
+        handler.map_path = lambda p: p  # identity — no change
+
+        handler._apply_bitmap_path_mapping()
+
+        # Path unchanged, so filename should still be the original value
+        assert mock_tex.filename == "C:/already/mapped/texture.jpg"
+        captured = capsys.readouterr()
+        assert "0 textures remapped" in captured.out
+
+    @patch.dict(
+        "os.environ",
+        {
+            "VRAY_FOR_3DSMAX2025_MAIN": "/path/to/main",
+            "VRAY_FOR_3DSMAX2025_PLUGINS": "/path/to/plugins",
+            "VRAY_MDL_PATH_3DSMAX2025": "/path/to/mdl",
+        },
+    )
+    @patch("deadline.max_adaptor.MaxClient.render_handlers.vray_handler.rt")
+    def test_bitmap_empty_filename_skipped(self, mock_rt: MagicMock) -> None:
+        """Test that bitmaps with empty filenames are skipped gracefully."""
+        mock_rt.maxVersion.return_value = [27000, 27, 0, 0, 0]
+        mock_rt.objects = []
+        mock_rt.VRayProxy = MagicMock()
+        mock_rt.classOf.return_value = None
+
+        mock_tex = MagicMock()
+        mock_tex.filename = ""
+        mock_rt.getClassInstances.return_value = [mock_tex]
+
+        from deadline.max_adaptor.MaxClient.render_handlers.vray_handler import VrayHandler
+
+        handler = VrayHandler(gpu=False)
+        handler.map_path = MagicMock(return_value="/should/not/be/called")
+
+        handler._apply_bitmap_path_mapping()
+
+        handler.map_path.assert_not_called()
+
+    @patch.dict(
+        "os.environ",
+        {
+            "VRAY_FOR_3DSMAX2025_MAIN": "/path/to/main",
+            "VRAY_FOR_3DSMAX2025_PLUGINS": "/path/to/plugins",
+            "VRAY_MDL_PATH_3DSMAX2025": "/path/to/mdl",
+        },
+    )
+    @patch("deadline.max_adaptor.MaxClient.render_handlers.vray_handler.rt")
+    def test_bitmap_no_instances_graceful(
+        self, mock_rt: MagicMock, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Test graceful handling when no Bitmaptexture instances exist."""
+        mock_rt.maxVersion.return_value = [27000, 27, 0, 0, 0]
+        mock_rt.objects = []
+        mock_rt.VRayProxy = MagicMock()
+        mock_rt.classOf.return_value = None
+        mock_rt.getClassInstances.return_value = []
+
+        from deadline.max_adaptor.MaxClient.render_handlers.vray_handler import VrayHandler
+
+        handler = VrayHandler(gpu=False)
+        handler.map_path = MagicMock()
+
+        handler._apply_bitmap_path_mapping()
+
+        handler.map_path.assert_not_called()
+        captured = capsys.readouterr()
+        assert "No Bitmaptexture instances found" in captured.out
+
+    @patch.dict(
+        "os.environ",
+        {
+            "VRAY_FOR_3DSMAX2025_MAIN": "/path/to/main",
+            "VRAY_FOR_3DSMAX2025_PLUGINS": "/path/to/plugins",
+            "VRAY_MDL_PATH_3DSMAX2025": "/path/to/mdl",
+        },
+    )
+    @patch("deadline.max_adaptor.MaxClient.render_handlers.vray_handler.rt")
+    def test_bitmap_remap_failure_logs_warning(
+        self, mock_rt: MagicMock, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Test that a failure while writing back the mapped path is logged and non-fatal."""
+        mock_rt.maxVersion.return_value = [27000, 27, 0, 0, 0]
+
+        class FakeBitmap:
+            """Bitmap whose filename reads fine but raises on assignment."""
+
+            @property
+            def filename(self):
+                return "C:/Users/artist/textures/wood.jpg"
+
+            @filename.setter
+            def filename(self, value):
+                raise Exception("Access denied")
+
+        mock_rt.getClassInstances.return_value = [FakeBitmap()]
+
+        from deadline.max_adaptor.MaxClient.render_handlers.vray_handler import VrayHandler
+
+        handler = VrayHandler(gpu=False)
+        handler.map_path = MagicMock(return_value="C:/Sessions/assetroot/textures/wood.jpg")
+
+        # Should not raise
+        handler._apply_bitmap_path_mapping()
+
+        captured = capsys.readouterr()
+        assert "Warning: Failed to remap bitmap texture" in captured.out
+
+    @patch.dict(
+        "os.environ",
+        {
+            "VRAY_FOR_3DSMAX2025_MAIN": "/path/to/main",
+            "VRAY_FOR_3DSMAX2025_PLUGINS": "/path/to/plugins",
+            "VRAY_MDL_PATH_3DSMAX2025": "/path/to/mdl",
+        },
+    )
+    @patch("deadline.max_adaptor.MaxClient.render_handlers.vray_handler.rt")
+    def test_bitmap_enumeration_failure_logs_warning(
+        self, mock_rt: MagicMock, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Test that a failure enumerating Bitmaptexture instances is logged and non-fatal."""
+        mock_rt.maxVersion.return_value = [27000, 27, 0, 0, 0]
+        mock_rt.getClassInstances.side_effect = Exception("runtime error")
+
+        from deadline.max_adaptor.MaxClient.render_handlers.vray_handler import VrayHandler
+
+        handler = VrayHandler(gpu=False)
+        handler.map_path = MagicMock()
+
+        # Should not raise
+        handler._apply_bitmap_path_mapping()
+
+        handler.map_path.assert_not_called()
+        captured = capsys.readouterr()
+        assert "could not enumerate Bitmaptexture instances" in captured.out
+
+    @patch.dict(
+        "os.environ",
+        {
+            "VRAY_FOR_3DSMAX2025_MAIN": "/path/to/main",
+            "VRAY_FOR_3DSMAX2025_PLUGINS": "/path/to/plugins",
+            "VRAY_MDL_PATH_3DSMAX2025": "/path/to/mdl",
+        },
+    )
+    @patch("deadline.max_adaptor.MaxClient.render_handlers.vray_handler.rt")
+    def test_bitmap_read_failure_logs_and_skips_node(
+        self, mock_rt: MagicMock, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Test that a node which raises when reading its filename is logged and skipped."""
+        mock_rt.maxVersion.return_value = [27000, 27, 0, 0, 0]
+        mock_rt.undefined = object()  # distinct sentinel, not equal to any real filename
+
+        class ReadRaisesBitmap:
+            """Bitmap that raises when its filename is read."""
+
+            @property
+            def filename(self):
+                raise Exception("cannot read filename")
+
+        good_tex = MagicMock()
+        good_tex.filename = "C:/Users/artist/textures/wood.jpg"
+        # A bad node followed by a good one: the good one must still be remapped.
+        mock_rt.getClassInstances.return_value = [ReadRaisesBitmap(), good_tex]
+
+        from deadline.max_adaptor.MaxClient.render_handlers.vray_handler import VrayHandler
+
+        handler = VrayHandler(gpu=False)
+        handler.map_path = lambda p: p.replace("C:/Users/artist", "C:/Sessions/assetroot")
+
+        # Should not raise despite the first node failing to read
+        handler._apply_bitmap_path_mapping()
+
+        assert good_tex.filename == "C:/Sessions/assetroot/textures/wood.jpg"
+        captured = capsys.readouterr()
+        assert "could not read filename for a Bitmaptexture instance" in captured.out
+
+    @patch.dict(
+        "os.environ",
+        {
+            "VRAY_FOR_3DSMAX2025_MAIN": "/path/to/main",
+            "VRAY_FOR_3DSMAX2025_PLUGINS": "/path/to/plugins",
+            "VRAY_MDL_PATH_3DSMAX2025": "/path/to/mdl",
+        },
+    )
+    @patch("deadline.max_adaptor.MaxClient.render_handlers.vray_handler.rt")
+    def test_bitmap_undefined_filename_skipped(self, mock_rt: MagicMock) -> None:
+        """Test that a Bitmaptexture with an unassigned (rt.undefined) filename is skipped
+        without calling map_path (avoids the bogus 'undefined' path)."""
+        mock_rt.maxVersion.return_value = [27000, 27, 0, 0, 0]
+        sentinel_undefined = object()
+        mock_rt.undefined = sentinel_undefined
+
+        mock_tex = MagicMock()
+        mock_tex.filename = sentinel_undefined  # unassigned filename
+        mock_rt.getClassInstances.return_value = [mock_tex]
+
+        from deadline.max_adaptor.MaxClient.render_handlers.vray_handler import VrayHandler
+
+        handler = VrayHandler(gpu=False)
+        handler.map_path = MagicMock(return_value="/should/not/be/called")
+
+        handler._apply_bitmap_path_mapping()
+
+        handler.map_path.assert_not_called()
+
+    @patch.dict(
+        "os.environ",
+        {
+            "VRAY_FOR_3DSMAX2025_MAIN": "/path/to/main",
+            "VRAY_FOR_3DSMAX2025_PLUGINS": "/path/to/plugins",
+            "VRAY_MDL_PATH_3DSMAX2025": "/path/to/mdl",
+        },
+    )
+    @patch("deadline.max_adaptor.MaxClient.render_handlers.vray_handler.rt")
+    def test_bitmap_mixed_only_changed_remapped(self, mock_rt: MagicMock) -> None:
+        """Test that only textures whose path changes are written back."""
+        mock_rt.maxVersion.return_value = [27000, 27, 0, 0, 0]
+
+        mock_changed = MagicMock()
+        mock_changed.filename = "C:/Users/artist/textures/wood.jpg"
+        mock_unchanged = MagicMock()
+        mock_unchanged.filename = "C:/shared/local/metal.png"
+        mock_rt.getClassInstances.return_value = [mock_changed, mock_unchanged]
+
+        from deadline.max_adaptor.MaxClient.render_handlers.vray_handler import VrayHandler
+
+        handler = VrayHandler(gpu=False)
+        handler.map_path = lambda p: p.replace("C:/Users/artist", "C:/Sessions/assetroot")
+
+        handler._apply_bitmap_path_mapping()
+
+        assert mock_changed.filename == "C:/Sessions/assetroot/textures/wood.jpg"
+        assert mock_unchanged.filename == "C:/shared/local/metal.png"
+
+
 class TestDefaultMaxHandlerPathMapping:
     """Tests for DefaultMaxHandler path mapping base functionality."""
 

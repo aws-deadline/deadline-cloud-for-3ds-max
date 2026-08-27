@@ -111,11 +111,7 @@ class VrayHandler(DefaultMaxHandler):
 
         Currently handles:
         - VRayProxy objects (.vrmesh files)
-
-        TODO: Add support for VRayHDRI (HDR environment maps)
-        TODO: Add support for VRayMesh (V-Ray mesh export files)
-        TODO: Add support for VRayFur (fur/hair geometry files)
-        TODO: Add support for VRayScene (V-Ray scene files .vrscene)
+        - Bitmap textures (all Bitmaptexture instances in the scene)
         """
         self.log_to_console("VrayHandler._apply_path_mapping called")
         if self.map_path is None:
@@ -123,9 +119,10 @@ class VrayHandler(DefaultMaxHandler):
             return
 
         self.log_to_console(
-            "VrayHandler._apply_path_mapping: map_path is set, applying VRay proxy path mapping"
+            "VrayHandler._apply_path_mapping: map_path is set, applying VRay path mapping"
         )
         self._apply_vray_proxy_path_mapping()
+        self._apply_bitmap_path_mapping()
 
     def _apply_vray_proxy_path_mapping(self) -> None:
         """
@@ -168,6 +165,65 @@ class VrayHandler(DefaultMaxHandler):
                     self.log_to_console(f"Warning: Failed to remap VRayProxy '{proxy.name}': {e}")
 
         self.log_to_console(f"VRMesh path mapping complete: {mapped_count} proxies remapped")
+
+    def _apply_bitmap_path_mapping(self) -> None:
+        """
+        Applies path mapping to all bitmap texture file paths in the scene.
+
+        This covers standard 3ds Max Bitmaptexture nodes, which are used by
+        Chaos Cosmos assets, V-Ray materials, and any other material that
+        references an image file. Without this, textures uploaded via job
+        attachments remain pointing at the artist's local filesystem path
+        and silently fail to load on the worker (V-Ray renders without them
+        instead of erroring).
+        """
+        try:
+            bitmaps: list[Any] = list(rt.getClassInstances(rt.Bitmaptexture))
+        except Exception as e:
+            self.log_to_console(f"Warning: could not enumerate Bitmaptexture instances: {e}")
+            return
+
+        if not bitmaps:
+            self.log_to_console("No Bitmaptexture instances found in scene")
+            return
+
+        assert self.map_path is not None  # Guaranteed by caller
+        mapped_count: int = 0
+        for tex in bitmaps:
+            # Note: Bitmaptexture exposes its path as `.filename` (lowercase 'n'),
+            # whereas VRayProxy uses `.fileName` (capital 'N'). These spellings are
+            # defined by 3ds Max / MAXScript per class and are not interchangeable.
+            try:
+                raw_filename = tex.filename
+                # An unassigned .filename comes back as rt.undefined, which is truthy;
+                # str() on it yields the literal "undefined". Skip those explicitly so
+                # we don't make a bogus map_path call or log a misleading path.
+                if raw_filename is None or raw_filename is rt.undefined:
+                    continue
+                original_path: str = str(raw_filename)
+            except Exception as e:
+                self.log_to_console(
+                    f"Warning: could not read filename for a Bitmaptexture instance: {e}"
+                )
+                continue
+
+            if not original_path:
+                continue
+
+            self.log_to_console(f"Requesting Path Mapping for path '{original_path}'.")
+            mapped_path: str = self.map_path(original_path)
+            self.log_to_console(f"Mapped path '{original_path}' to '{mapped_path}'.")
+            if mapped_path != original_path:
+                try:
+                    tex.filename = mapped_path
+                    mapped_count += 1
+                    self.log_to_console(f"Remapped Bitmaptexture: {original_path} -> {mapped_path}")
+                except Exception as e:
+                    self.log_to_console(
+                        f"Warning: Failed to remap bitmap texture '{original_path}': {e}"
+                    )
+
+        self.log_to_console(f"Bitmap path mapping complete: {mapped_count} textures remapped")
 
     def _configure_renderer_output(
         self, output_name: str, output_dir: str, output_format: str

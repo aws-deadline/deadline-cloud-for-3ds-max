@@ -4,13 +4,21 @@
 
 import pytest
 
+from openjd.model import IntRangeExpr
+
 from deadline.max_submitter.utilities.vrscene_job_submission import (
     build_frames_parameter,
     calculate_region_coordinates,
     expand_frame_list,
     get_frame_range_from_string,
-    is_contiguous,
 )
+
+
+def _frames_of(range_str: str) -> list:
+    """Expand an OpenJD range string back into an explicit frame list, so tests
+    assert the resulting frame *set* rather than OpenJD's exact compaction
+    formatting (which is an OpenJD implementation detail)."""
+    return list(IntRangeExpr.from_str(range_str))
 
 
 class TestCalculateRegionCoordinates:
@@ -183,27 +191,14 @@ class TestExpandFrameList:
             expand_frame_list("   ")
 
 
-class TestIsContiguous:
-    """Tests for the contiguity check."""
-
-    def test_single_frame_is_contiguous(self):
-        assert is_contiguous([5]) is True
-
-    def test_contiguous_range(self):
-        assert is_contiguous([1, 2, 3, 4]) is True
-
-    def test_gap_is_not_contiguous(self):
-        assert is_contiguous([1, 2, 4]) is False
-
-    def test_two_segments_not_contiguous(self):
-        assert is_contiguous(list(range(1, 11)) + list(range(20, 31))) is False
-
-    def test_empty_is_contiguous(self):
-        assert is_contiguous([]) is True
-
-
 class TestBuildFramesParameter:
-    """Tests for building the OpenJD Frames value (gap-preserving)."""
+    """Tests for building the OpenJD Frames value (gap-preserving).
+
+    build_frames_parameter delegates compaction to OpenJD, so tests assert the
+    resulting frame *set* (via _frames_of) plus the output being a valid OpenJD
+    range expression, rather than pinning OpenJD's exact formatting. A few
+    stable formats are checked exactly as regression guards.
+    """
 
     def test_single_frame(self):
         assert build_frames_parameter("5") == "5"
@@ -214,24 +209,46 @@ class TestBuildFramesParameter:
     def test_contiguous_from_commas_collapses(self):
         assert build_frames_parameter("1,2,3,4") == "1-4"
 
-    def test_non_contiguous_compacts_segments(self):
-        assert build_frames_parameter("1,2,3,8,11,12") == "1-3,8,11-12"
+    def test_non_contiguous_frame_set(self):
+        assert _frames_of(build_frames_parameter("1,2,3,8,11,12")) == [1, 2, 3, 8, 11, 12]
 
-    def test_non_contiguous_ranges_preserved(self):
-        assert build_frames_parameter("1-10,20-30") == "1-10,20-30"
+    def test_non_contiguous_ranges_frame_set(self):
+        assert _frames_of(build_frames_parameter("1-10,20-30")) == (
+            list(range(1, 11)) + list(range(20, 31))
+        )
 
-    def test_isolated_frames_between_ranges(self):
-        assert build_frames_parameter("1-3,8,11-12") == "1-3,8,11-12"
+    def test_target_case_frame_set(self):
+        # The scenario this feature exists for: gaps must be preserved.
+        assert _frames_of(build_frames_parameter("1-10,15,18-20,21")) == (
+            list(range(1, 11)) + [15, 18, 19, 20, 21]
+        )
 
     def test_unordered_and_duplicates_normalized(self):
-        assert build_frames_parameter("12,11,1,2,3,8,8") == "1-3,8,11-12"
+        # OpenJD rejects unordered/duplicate input directly, so this exercises
+        # the expand-and-normalize fallback.
+        assert _frames_of(build_frames_parameter("12,11,1,2,3,8,8")) == [1, 2, 3, 8, 11, 12]
 
-    def test_single_gap_of_two_isolated_frames(self):
-        assert build_frames_parameter("2,5") == "2,5"
+    def test_overlapping_ranges_normalized(self):
+        assert _frames_of(build_frames_parameter("1-5,3-7")) == list(range(1, 8))
+
+    def test_reversed_range_normalized(self):
+        assert _frames_of(build_frames_parameter("5-1")) == [1, 2, 3, 4, 5]
+
+    def test_step_syntax_supported(self):
+        # Step syntax is handled natively by OpenJD's parser.
+        assert _frames_of(build_frames_parameter("1-10:2")) == [1, 3, 5, 7, 9]
+
+    def test_output_is_valid_openjd_range(self):
+        # Whatever we emit must round-trip through OpenJD's parser.
+        assert _frames_of(build_frames_parameter("1-10,15,18-20,21"))
 
     def test_empty_raises(self):
         with pytest.raises(ValueError):
             build_frames_parameter("")
+
+    def test_whitespace_only_raises(self):
+        with pytest.raises(ValueError):
+            build_frames_parameter("   ")
 
 
 class TestCreateVrsceneRenderJobParameters:

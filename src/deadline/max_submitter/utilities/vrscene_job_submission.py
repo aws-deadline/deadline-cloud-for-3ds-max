@@ -8,6 +8,8 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+from openjd.model import IntRangeExpr
+
 # These generic helpers now live in a renderer-agnostic module. They are
 # re-exported here under their original private names so existing V-Ray call
 # sites keep working unchanged.
@@ -213,42 +215,45 @@ def expand_frame_list(frame_string: str) -> List[int]:
     return sorted(frames)
 
 
-def is_contiguous(frames: List[int]) -> bool:
-    """Return True if the sorted frame list has no gaps (e.g. [1,2,3] is,
-    [1,2,4] is not). A single frame is trivially contiguous."""
-    if not frames:
-        return True
-    return frames[-1] - frames[0] + 1 == len(frames)
-
-
 def build_frames_parameter(frame_string: str) -> str:
     """Build the OpenJD ``Frames`` parameter value from a frame string,
     preserving non-contiguous gaps.
 
-    Expands the input to an explicit, sorted, de-duplicated frame list and
-    re-compacts consecutive runs into range notation. Contiguous input keeps
-    its existing form (a single frame stays ``"5"``, ``"1-100"`` stays
-    ``"1-100"``), while gaps are preserved so only the requested frames get
-    rendered, e.g. ``"1,2,3,8,11,12"`` -> ``"1-3,8,11-12"``.
+    The heavy lifting is delegated to OpenJD's own range engine
+    (:class:`openjd.model.IntRangeExpr`) so the emitted value is guaranteed to
+    be a valid OpenJD range expression that the framework can fan out into one
+    task per frame. OpenJD also validates, de-duplicates, sorts and (where
+    possible) compacts the frames, and natively understands step syntax such
+    as ``"1-10:2"``.
 
-    :param frame_string: frame specification (numbers, commas, dashes)
-    :return: compact OpenJD ``Frames`` value
-    :raises ValueError: if the string is empty or cannot be parsed
+    Two-tier strategy:
+
+    1. Fast path -- hand the raw string to :meth:`IntRangeExpr.from_str`. This
+       covers well-formed input directly, including step ranges.
+    2. Artist-friendly fallback -- OpenJD rejects input that is otherwise
+       reasonable for an artist to type (unordered, overlapping, duplicate or
+       reversed ranges, e.g. ``"1-5,3-7"`` or ``"5-1"``). For those we expand
+       to an explicit frame list with :func:`expand_frame_list` and let
+       :meth:`IntRangeExpr.from_list` sort, de-duplicate and normalize it.
+
+    Examples: ``"1-100"`` -> ``"1-100"``, ``"1-10,15,18-20,21"`` ->
+    ``"1-10,15,18-21"``, ``"5-1"`` -> ``"1-5"``.
+
+    :param frame_string: frame specification (numbers, commas, dashes, steps)
+    :return: a valid OpenJD ``Frames`` value covering exactly the unique frames
+    :raises ValueError: if the string is empty or cannot be parsed at all
     """
-    frames = expand_frame_list(frame_string)
-    if is_contiguous(frames):
-        return str(frames[0]) if len(frames) == 1 else f"{frames[0]}-{frames[-1]}"
+    if not frame_string or not frame_string.strip():
+        raise ValueError("Frame string cannot be empty")
 
-    segments: List[str] = []
-    run_start = run_prev = frames[0]
-    for frame in frames[1:]:
-        if frame == run_prev + 1:
-            run_prev = frame
-            continue
-        segments.append(str(run_start) if run_start == run_prev else f"{run_start}-{run_prev}")
-        run_start = run_prev = frame
-    segments.append(str(run_start) if run_start == run_prev else f"{run_start}-{run_prev}")
-    return ",".join(segments)
+    try:
+        # OpenJD parses, validates and compacts well-formed range strings.
+        return str(IntRangeExpr.from_str(frame_string.strip()))
+    except Exception:
+        # Fall back for artist input OpenJD won't accept as-is; expand to an
+        # explicit list and let OpenJD normalize it. expand_frame_list raises
+        # ValueError if the input can't be parsed at all.
+        return str(IntRangeExpr.from_list(expand_frame_list(frame_string)))
 
 
 def get_frame_range_from_string(frame_string: str) -> Tuple[int, int]:

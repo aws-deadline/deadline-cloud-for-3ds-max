@@ -11,6 +11,13 @@ black == 25.*
 ruff == 0.16.*
 moto[s3,sts] == 5.*
 types-pyyaml == 6.*
+# Test-only. The submitter never imports this: the frame list is handed to the
+# service verbatim and OpenJD parses it there. test_vrscene_job_submission.py
+# imports IntRangeExpr to check our frame-list validator agrees with the parser
+# that actually judges the value, so the two cannot drift apart silently.
+# Held at 0.9 because openjd-sessions pins openjd-model<0.10; a newer pin makes
+# pip report a conflicting environment.
+openjd-model == 0.9.*
 # Imported directly by test_console_signin_dependencies.py, so declared rather than
 # relying on pytest/mypy keeping their transitive pins.
 tomli == 2.*; python_version < "3.11"

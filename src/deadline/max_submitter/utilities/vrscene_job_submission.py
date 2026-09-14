@@ -8,6 +8,8 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+from openjd.model import IntRangeExpr
+
 # These generic helpers now live in a renderer-agnostic module. They are
 # re-exported here under their original private names so existing V-Ray call
 # sites keep working unchanged.
@@ -86,13 +88,16 @@ def create_tile_rendering_job_template(
     settings,
     vrscene_path: str,
     output_filename: str,
-    start_frame: int,
-    end_frame: int,
+    frames: str,
 ) -> Dict[str, Any]:
     """
     Create job template with tile rendering steps. Loaded from YAML.
 
     Steps: RenderRegions (N×M tasks/frame) → MergeRegions (1 task/frame).
+
+    ``frames`` is the OpenJD ``Frames`` value (see
+    :func:`build_frames_parameter`) and may be non-contiguous, e.g.
+    ``"1-3,8,11-12"``.
     """
     template = _load_job_template("vray_tile_render_job_template.yaml")
     template["name"] = f"{settings.name} - VRay Tile Render"
@@ -102,11 +107,6 @@ def create_tile_rendering_job_template(
     _inject_embedded_script(template, "INJECT_TILE_MERGE_SCRIPT", _get_tile_merge_script())
 
     # Set dynamic parameter defaults from settings
-    if start_frame == end_frame:
-        frames = str(start_frame)
-    else:
-        frames = f"{start_frame}-{end_frame}"
-
     defaults = {
         "OutputFileName": output_filename,
         "Frames": frames,
@@ -138,17 +138,15 @@ def create_vrscene_render_job_parameters(
     vrscene_path: str,
     output_path: str,
     output_filename: str,
-    start_frame: int,
-    end_frame: int,
+    frames: str,
     vray_executable: str,
 ) -> List[Dict[str, Any]]:
-    """Create parameter values for vrscene render job."""
-    # Determine frame range string
-    if start_frame == end_frame:
-        frames = str(start_frame)
-    else:
-        frames = f"{start_frame}-{end_frame}"
+    """Create parameter values for vrscene render job.
 
+    ``frames`` is the OpenJD ``Frames`` value (see
+    :func:`build_frames_parameter`) and may be non-contiguous, e.g.
+    ``"1-3,8,11-12"``.
+    """
     parameters = [
         {"name": "VRayExecutable", "value": vray_executable},
         {"name": "VRSceneOutputPath", "value": vrscene_path},
@@ -184,20 +182,157 @@ def create_export_job_parameters(
     return parameters
 
 
+# Upper bound on how many frames a frame list may expand to. This is a guard
+# against a typo in a free-text field, not a product limit: a million frames is
+# roughly eleven days of animation at 24fps, so no real job approaches it, while
+# the expansion stays small enough to be harmless.
+MAX_EXPANDED_FRAMES = 1_000_000
+
+
+def expand_frame_list(frame_string: str) -> List[int]:
+    """Expand a frame string into a sorted, de-duplicated list of frames.
+
+    Supports single frames, contiguous ranges and non-contiguous mixes, e.g.
+    "5" -> [5], "1-3" -> [1, 2, 3], "1-3,8,11-12" -> [1, 2, 3, 8, 11, 12].
+
+    The total is bounded by :data:`MAX_EXPANDED_FRAMES` and checked before any
+    range is materialised. This runs on the raw frame-list field, which is free
+    text, so an unnoticed extra zero in "1-100000000" would otherwise allocate a
+    hundred million integers inside the 3ds Max process: several GB and a long
+    freeze with no feedback. A string-length limit does not help, because
+    "1-100000000" is only eleven characters.
+
+    :param frame_string: frame specification (numbers, commas, dashes)
+    :return: sorted list of unique integer frames
+    :raises ValueError: if the string is empty, cannot be parsed, or covers more
+        than :data:`MAX_EXPANDED_FRAMES` frames
+    """
+    if not frame_string or not frame_string.strip():
+        raise ValueError("Frame string cannot be empty")
+
+    frames: set[int] = set()
+    covered = 0
+    for group in frame_string.strip().split(","):
+        group = group.strip()
+        if not group:
+            continue
+        if "-" in group:
+            start_str, end_str = group.split("-", 1)
+            start, end = int(start_str.strip()), int(end_str.strip())
+            if end < start:
+                start, end = end, start
+            covered += end - start + 1
+            if covered > MAX_EXPANDED_FRAMES:
+                raise ValueError(
+                    f"The frame range '{frame_string}' covers more than "
+                    f"{MAX_EXPANDED_FRAMES} frames. Check for a typo in the frame list."
+                )
+            frames.update(range(start, end + 1))
+        else:
+            covered += 1
+            if covered > MAX_EXPANDED_FRAMES:
+                raise ValueError(
+                    f"The frame range '{frame_string}' covers more than "
+                    f"{MAX_EXPANDED_FRAMES} frames. Check for a typo in the frame list."
+                )
+            frames.add(int(group))
+
+    if not frames:
+        raise ValueError(f"No frames parsed from '{frame_string}'")
+
+    return sorted(frames)
+
+
+def build_frames_parameter(frame_string: str) -> str:
+    """Build the OpenJD ``Frames`` parameter value from a frame string,
+    preserving non-contiguous gaps.
+
+    The heavy lifting is delegated to OpenJD's own range engine
+    (:class:`openjd.model.IntRangeExpr`) so the emitted value is guaranteed to
+    be a valid OpenJD range expression that the framework can fan out into one
+    task per frame. OpenJD also validates, de-duplicates, sorts and (where
+    possible) compacts the frames, and natively understands step syntax such
+    as ``"1-10:2"``.
+
+    Two-tier strategy:
+
+    1. Fast path -- hand the raw string to :meth:`IntRangeExpr.from_str`. This
+       covers well-formed input directly, including step ranges.
+    2. Artist-friendly fallback -- OpenJD rejects input that is otherwise
+       reasonable for an artist to type (unordered, overlapping, duplicate or
+       reversed ranges, e.g. ``"1-5,3-7"`` or ``"5-1"``). For those we expand
+       to an explicit frame list with :func:`expand_frame_list` and let
+       :meth:`IntRangeExpr.from_list` sort, de-duplicate and normalize it.
+
+    Examples: ``"1-100"`` -> ``"1-100"``, ``"1-10,15,18-20,21"`` ->
+    ``"1-10,15,18-21"``, ``"5-1"`` -> ``"1-5"``.
+
+    Note for maintainers: this is the only submitter-side use of ``openjd``, and
+    it is why ``openjd-model`` is a direct dependency that
+    ``scripts/deps_bundle.py`` deliberately ships to the submitter. ``deadline``
+    does not pull ``openjd-model`` in transitively, so excluding it from the
+    bundle (as the adaptor-only ``openjd-adaptor-runtime`` is excluded) would
+    make this import fail inside 3ds Max on a clean install.
+
+    :param frame_string: frame specification (numbers, commas, dashes, steps)
+    :return: a valid OpenJD ``Frames`` value covering exactly the unique frames
+    :raises ValueError: if the string is empty or cannot be parsed at all
+    """
+    if not frame_string or not frame_string.strip():
+        raise ValueError("Frame string cannot be empty")
+
+    try:
+        # OpenJD parses, validates and compacts well-formed range strings.
+        return str(IntRangeExpr.from_str(frame_string.strip()))
+    except ValueError:
+        # Fall back for artist input OpenJD won't accept as-is; expand to an
+        # explicit list and let OpenJD normalize it. expand_frame_list raises
+        # ValueError if the input can't be parsed or covers too many frames.
+        #
+        # ValueError specifically: every parse failure OpenJD raises here derives
+        # from it (ExpressionError and TokenError both do), while a genuine
+        # failure such as MemoryError does not, so retrying on those is avoided.
+        return str(IntRangeExpr.from_list(expand_frame_list(frame_string)))
+
+
 def get_frame_range_from_string(frame_string: str) -> Tuple[int, int]:
-    """Parse frame range string (e.g. "1-100") and return (start, end)."""
-    # Handle simple cases
-    if "-" in frame_string:
-        parts = frame_string.split("-")
-        start = int(parts[0].split(",")[-1].strip())
-        end = int(parts[-1].split(",")[0].strip())
-        return start, end
-    elif "," in frame_string:
-        frames = [int(f.strip()) for f in frame_string.split(",")]
-        return min(frames), max(frames)
-    else:
-        frame = int(frame_string.strip())
-        return frame, frame
+    """Parse a frame string and return its bounding (start, end).
+
+    Handles non-contiguous input by returning the min/max, e.g.
+    "1-10,20-30" -> (1, 30). Reversed ranges are normalised, so "5-1" -> (1, 5).
+
+    Only the endpoints of each comma-separated group are inspected, never the
+    frames between them. This is deliberate: the function is called on the raw
+    frame-list field before anything has validated it, so expanding the range
+    (as :func:`expand_frame_list` does) would let a typo such as "1-100000000"
+    allocate a hundred million integers inside the 3ds Max process. Cost here
+    is proportional to the number of groups, not the size of the span.
+
+    Use :func:`expand_frame_list` only when the exact set of frames is needed.
+
+    :param frame_string: frame specification (numbers, commas, dashes)
+    :return: (start, end) bounding the requested frames
+    :raises ValueError: if the string is empty or cannot be parsed
+    """
+    if not frame_string or not frame_string.strip():
+        raise ValueError("Frame string cannot be empty")
+
+    endpoints: List[int] = []
+    for group in frame_string.strip().split(","):
+        group = group.strip()
+        if not group:
+            continue
+        if "-" in group:
+            start_str, end_str = group.split("-", 1)
+            endpoints.append(int(start_str.strip()))
+            endpoints.append(int(end_str.strip()))
+        else:
+            endpoints.append(int(group))
+
+    if not endpoints:
+        raise ValueError(f"No frames parsed from '{frame_string}'")
+
+    return min(endpoints), max(endpoints)
 
 
 def create_export_job_template() -> Dict[str, Any]:

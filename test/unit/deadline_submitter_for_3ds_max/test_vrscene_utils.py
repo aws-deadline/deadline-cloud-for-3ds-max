@@ -141,3 +141,74 @@ class TestValidateVrsceneExportSettingsRTParams:
         settings = self._make_settings(render_engine=0, rt_timeout=-1.0, rt_noise=2.0)
         errors = self._validate(settings)
         assert errors == []
+
+
+class TestValidateVrsceneExportSettingsFrameList:
+    """Frame-list validation in validate_vrscene_export_settings.
+
+    The frame list becomes the Frames job parameter, which the service caps at
+    JOB_PARAMETER_MAX_STRING_LENGTH characters. A sparse selection that cannot be
+    compacted into ranges grows with the frame count, so an over-long value has
+    to be caught in the dialog rather than rejected at submit time.
+    """
+
+    def _make_settings(self, frame_list="1-10"):
+        from unittest.mock import MagicMock
+
+        settings = MagicMock()
+        settings.export_mode = 2  # Farm export — skip the output path check
+        settings.frame_list = frame_list
+        settings.vrscene_render_region_columns = 1
+        settings.vrscene_render_region_rows = 1
+        settings.vrscene_render_engine = 0
+        settings.vrscene_rt_timeout = 0.0
+        settings.vrscene_rt_noise = 0.001
+        settings.vrscene_rt_sample_level = 0
+        return settings
+
+    def _validate(self, settings):
+        from unittest.mock import patch
+
+        from deadline.max_submitter.utilities.vrscene_utils import (
+            validate_vrscene_export_settings,
+        )
+
+        with patch(
+            "deadline.max_submitter.utilities.vrscene_utils.is_vray_renderer",
+            return_value=True,
+        ):
+            return validate_vrscene_export_settings(settings)
+
+    def test_normal_frame_list_passes(self):
+        errors = self._validate(self._make_settings("1-10,12-17,21"))
+        assert errors == []
+
+    def test_empty_frame_list_fails(self):
+        errors = self._validate(self._make_settings(""))
+        assert any("empty" in e.lower() for e in errors)
+
+    def test_frame_list_at_limit_passes(self):
+        from deadline.max_submitter.data_const import JOB_PARAMETER_MAX_STRING_LENGTH
+
+        frame_list = "1," * (JOB_PARAMETER_MAX_STRING_LENGTH // 2)
+        frame_list = frame_list[:JOB_PARAMETER_MAX_STRING_LENGTH]
+        assert len(frame_list) == JOB_PARAMETER_MAX_STRING_LENGTH
+        errors = self._validate(self._make_settings(frame_list))
+        assert not any("too long" in e.lower() for e in errors)
+
+    def test_frame_list_over_limit_fails(self):
+        from deadline.max_submitter.data_const import JOB_PARAMETER_MAX_STRING_LENGTH
+
+        frame_list = "1," * JOB_PARAMETER_MAX_STRING_LENGTH
+        assert len(frame_list) > JOB_PARAMETER_MAX_STRING_LENGTH
+        errors = self._validate(self._make_settings(frame_list))
+        assert any("too long" in e.lower() for e in errors)
+
+    def test_over_limit_error_reports_both_numbers(self):
+        from deadline.max_submitter.data_const import JOB_PARAMETER_MAX_STRING_LENGTH
+
+        frame_list = "7," * JOB_PARAMETER_MAX_STRING_LENGTH
+        errors = self._validate(self._make_settings(frame_list))
+        message = next(e for e in errors if "too long" in e.lower())
+        assert str(len(frame_list)) in message
+        assert str(JOB_PARAMETER_MAX_STRING_LENGTH) in message

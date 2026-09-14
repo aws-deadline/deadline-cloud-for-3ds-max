@@ -4,10 +4,21 @@
 
 import pytest
 
+from openjd.model import IntRangeExpr
+
 from deadline.max_submitter.utilities.vrscene_job_submission import (
+    build_frames_parameter,
     calculate_region_coordinates,
+    expand_frame_list,
     get_frame_range_from_string,
 )
+
+
+def _frames_of(range_str: str) -> list:
+    """Expand an OpenJD range string back into an explicit frame list, so tests
+    assert the resulting frame *set* rather than OpenJD's exact compaction
+    formatting (which is an OpenJD implementation detail)."""
+    return list(IntRangeExpr.from_str(range_str))
 
 
 class TestCalculateRegionCoordinates:
@@ -128,6 +139,117 @@ class TestGetFrameRangeFromString:
     def test_large_range(self):
         assert get_frame_range_from_string("0-9999") == (0, 9999)
 
+    def test_non_contiguous_returns_bounding_range(self):
+        assert get_frame_range_from_string("1-10,20-30") == (1, 30)
+
+    def test_mixed_singles_and_ranges_bounding(self):
+        assert get_frame_range_from_string("1-5,50-55,100") == (1, 100)
+
+
+class TestExpandFrameList:
+    """Tests for expanding a frame string into an explicit frame list."""
+
+    def test_single_frame(self):
+        assert expand_frame_list("5") == [5]
+
+    def test_simple_range(self):
+        assert expand_frame_list("1-3") == [1, 2, 3]
+
+    def test_range_same_frame(self):
+        assert expand_frame_list("5-5") == [5]
+
+    def test_comma_separated_singles(self):
+        assert expand_frame_list("1,5,10") == [1, 5, 10]
+
+    def test_non_contiguous(self):
+        assert expand_frame_list("1-10,20-30") == list(range(1, 11)) + list(range(20, 31))
+
+    def test_mixed_singles_and_ranges(self):
+        assert expand_frame_list("1-3,8,11-12") == [1, 2, 3, 8, 11, 12]
+
+    def test_unordered_input_is_sorted(self):
+        assert expand_frame_list("10,1,5") == [1, 5, 10]
+
+    def test_duplicates_removed(self):
+        assert expand_frame_list("1-3,2,3,4") == [1, 2, 3, 4]
+
+    def test_overlapping_ranges_deduped(self):
+        assert expand_frame_list("1-5,3-7") == [1, 2, 3, 4, 5, 6, 7]
+
+    def test_reversed_range_normalized(self):
+        assert expand_frame_list("10-8") == [8, 9, 10]
+
+    def test_whitespace_tolerated(self):
+        assert expand_frame_list(" 1 - 3 , 8 ") == [1, 2, 3, 8]
+
+    def test_empty_string_raises(self):
+        with pytest.raises(ValueError, match="empty"):
+            expand_frame_list("")
+
+    def test_whitespace_only_raises(self):
+        with pytest.raises(ValueError, match="empty"):
+            expand_frame_list("   ")
+
+
+class TestBuildFramesParameter:
+    """Tests for building the OpenJD Frames value (gap-preserving).
+
+    build_frames_parameter delegates compaction to OpenJD, so tests assert the
+    resulting frame *set* (via _frames_of) plus the output being a valid OpenJD
+    range expression, rather than pinning OpenJD's exact formatting. A few
+    stable formats are checked exactly as regression guards.
+    """
+
+    def test_single_frame(self):
+        assert build_frames_parameter("5") == "5"
+
+    def test_contiguous_range_preserved(self):
+        assert build_frames_parameter("1-100") == "1-100"
+
+    def test_contiguous_from_commas_collapses(self):
+        assert build_frames_parameter("1,2,3,4") == "1-4"
+
+    def test_non_contiguous_frame_set(self):
+        assert _frames_of(build_frames_parameter("1,2,3,8,11,12")) == [1, 2, 3, 8, 11, 12]
+
+    def test_non_contiguous_ranges_frame_set(self):
+        assert _frames_of(build_frames_parameter("1-10,20-30")) == (
+            list(range(1, 11)) + list(range(20, 31))
+        )
+
+    def test_target_case_frame_set(self):
+        # The scenario this feature exists for: gaps must be preserved.
+        assert _frames_of(build_frames_parameter("1-10,15,18-20,21")) == (
+            list(range(1, 11)) + [15, 18, 19, 20, 21]
+        )
+
+    def test_unordered_and_duplicates_normalized(self):
+        # OpenJD rejects unordered/duplicate input directly, so this exercises
+        # the expand-and-normalize fallback.
+        assert _frames_of(build_frames_parameter("12,11,1,2,3,8,8")) == [1, 2, 3, 8, 11, 12]
+
+    def test_overlapping_ranges_normalized(self):
+        assert _frames_of(build_frames_parameter("1-5,3-7")) == list(range(1, 8))
+
+    def test_reversed_range_normalized(self):
+        assert _frames_of(build_frames_parameter("5-1")) == [1, 2, 3, 4, 5]
+
+    def test_step_syntax_supported(self):
+        # Step syntax is handled natively by OpenJD's parser.
+        assert _frames_of(build_frames_parameter("1-10:2")) == [1, 3, 5, 7, 9]
+
+    def test_output_is_valid_openjd_range(self):
+        # Whatever we emit must round-trip through OpenJD's parser.
+        assert _frames_of(build_frames_parameter("1-10,15,18-20,21"))
+
+    def test_empty_raises(self):
+        with pytest.raises(ValueError):
+            build_frames_parameter("")
+
+    def test_whitespace_only_raises(self):
+        with pytest.raises(ValueError):
+            build_frames_parameter("   ")
+
 
 class TestCreateVrsceneRenderJobParameters:
     """Tests for create_vrscene_render_job_parameters."""
@@ -148,7 +270,7 @@ class TestCreateVrsceneRenderJobParameters:
 
         settings = self._make_settings(render_engine=0)
         params = create_vrscene_render_job_parameters(
-            settings, "/scene.vrscene", "/output", "scene.png", 1, 1, "vray.exe"
+            settings, "/scene.vrscene", "/output", "scene.png", "1", "vray.exe"
         )
         names = [p["name"] for p in params]
         assert "RenderEngine" in names
@@ -162,7 +284,7 @@ class TestCreateVrsceneRenderJobParameters:
 
         settings = self._make_settings(render_engine=5)
         params = create_vrscene_render_job_parameters(
-            settings, "/scene.vrscene", "/output", "scene.png", 1, 1, "vray.exe"
+            settings, "/scene.vrscene", "/output", "scene.png", "1", "vray.exe"
         )
         render_engine_param = next(p for p in params if p["name"] == "RenderEngine")
         assert render_engine_param["value"] == "5"
@@ -174,7 +296,7 @@ class TestCreateVrsceneRenderJobParameters:
 
         settings = self._make_settings(render_engine=7)
         params = create_vrscene_render_job_parameters(
-            settings, "/scene.vrscene", "/output", "scene.png", 1, 1, "vray.exe"
+            settings, "/scene.vrscene", "/output", "scene.png", "1", "vray.exe"
         )
         render_engine_param = next(p for p in params if p["name"] == "RenderEngine")
         assert render_engine_param["value"] == "7"
@@ -186,7 +308,7 @@ class TestCreateVrsceneRenderJobParameters:
 
         settings = self._make_settings()
         params = create_vrscene_render_job_parameters(
-            settings, "/scene.vrscene", "/output", "scene.tiff", 1, 1, "vray.exe"
+            settings, "/scene.vrscene", "/output", "scene.tiff", "1", "vray.exe"
         )
         output_param = next(p for p in params if p["name"] == "OutputFileName")
         assert output_param["value"] == "scene.tiff"
@@ -198,7 +320,7 @@ class TestCreateVrsceneRenderJobParameters:
 
         settings = self._make_settings()
         params = create_vrscene_render_job_parameters(
-            settings, "/scene.vrscene", "/output", "scene.exr", 1, 1, "vray.exe"
+            settings, "/scene.vrscene", "/output", "scene.exr", "1", "vray.exe"
         )
         output_param = next(p for p in params if p["name"] == "OutputFileName")
         assert output_param["value"] == "scene.exr"
@@ -230,7 +352,7 @@ class TestRTEngineParameters:
 
         settings = self._make_settings(rt_timeout=5.0)
         params = create_vrscene_render_job_parameters(
-            settings, "/scene.vrscene", "/output", "scene.png", 1, 1, "vray.exe"
+            settings, "/scene.vrscene", "/output", "scene.png", "1", "vray.exe"
         )
         assert self._get_param(params, "RTTimeout")["value"] == "5.0"
 
@@ -241,7 +363,7 @@ class TestRTEngineParameters:
 
         settings = self._make_settings(rt_noise=0.005)
         params = create_vrscene_render_job_parameters(
-            settings, "/scene.vrscene", "/output", "scene.png", 1, 1, "vray.exe"
+            settings, "/scene.vrscene", "/output", "scene.png", "1", "vray.exe"
         )
         assert self._get_param(params, "RTNoise")["value"] == "0.005"
 
@@ -252,7 +374,7 @@ class TestRTEngineParameters:
 
         settings = self._make_settings(rt_sample_level=1000)
         params = create_vrscene_render_job_parameters(
-            settings, "/scene.vrscene", "/output", "scene.png", 1, 1, "vray.exe"
+            settings, "/scene.vrscene", "/output", "scene.png", "1", "vray.exe"
         )
         assert self._get_param(params, "RTSampleLevel")["value"] == "1000"
 
@@ -263,7 +385,7 @@ class TestRTEngineParameters:
 
         settings = self._make_settings()
         params = create_vrscene_render_job_parameters(
-            settings, "/scene.vrscene", "/output", "scene.png", 1, 1, "vray.exe"
+            settings, "/scene.vrscene", "/output", "scene.png", "1", "vray.exe"
         )
         assert self._get_param(params, "RTTimeout")["value"] == "0.0"
         assert self._get_param(params, "RTNoise")["value"] == "0.001"

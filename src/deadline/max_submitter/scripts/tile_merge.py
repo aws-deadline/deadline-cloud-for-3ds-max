@@ -39,6 +39,41 @@ def normalize_path(p):
     return p.replace("\\", "/")
 
 
+def find_tile(output_dir, tile_index, base, frame, ext):
+    """Locate a rendered tile.
+
+    ``tile_render.py`` builds the tile name and passes it to V-Ray as
+    ``-imgFile``, alongside ``-noFrameNumbers=1`` so V-Ray writes that name
+    verbatim rather than appending a frame number of its own. The name is built
+    here with the same expression, so the two scripts cannot disagree:
+
+        tile_filename = f"_tile{tile_index}_{base}.{padded_frame}{ext}"
+
+    Without that flag V-Ray appends its own frame number whenever the scene's
+    output settings ask for a numbered sequence -- 3ds Max writes
+    img_file_needFrameNumber=1 into the vrscene whenever the artist has a render
+    output filename configured. The frame is already in the name we ask for, so
+    the file landed as ``_tile{N}_{base}.{frame}.{frame}{ext}`` and this lookup
+    could not find it, failing every merge. Fixing it at the source means only
+    one name is ever written, so nothing has to be guessed here.
+
+    isfile rather than exists, so a directory carrying a tile's name is reported
+    missing here instead of failing later inside Pillow or OpenEXR, well away
+    from the cause. The V-Ray sample job bundle tests its tiles with ``[ -f ]``
+    for the same reason.
+
+    Negative frames work because the padding expression is shared: ``zfill`` pads
+    after the sign, so frame -5 is ``-005`` on both sides. 3ds Max allows negative
+    animation ranges and ``get_frames()`` passes ``rt.animationrange.start``
+    straight through, so this is reachable without an override.
+
+    Returns the resolved path, or None when the tile is not present.
+    """
+    padded_frame = str(int(frame)).zfill(4)
+    candidate = os.path.join(output_dir, f"_tile{tile_index}_{base}.{padded_frame}{ext}")
+    return candidate if os.path.isfile(candidate) else None
+
+
 def merge_tiles_pillow(tile_paths, grid_cols, grid_rows, image_width, image_height, output_path):
     from PIL import Image, ImageChops
 
@@ -157,19 +192,30 @@ def main():
     else:
         ensure_package("Pillow", "PIL")
 
-    # Verify tile files exist
+    # Resolve tile files. tile_render.py passes -noFrameNumbers=1, so V-Ray wrote
+    # the name it was asked for and find_tile rebuilds that same name.
     tile_paths = []
     missing = 0
     for row in range(total_rows):
         for col in range(total_cols):
             tile_index = row * total_cols + col
-            tile_file = os.path.join(output_dir, f"_tile{tile_index}_{base}.{padded_frame}{ext}")
-            tile_paths.append(tile_file)
-            if not os.path.exists(tile_file):
-                print(f"ERROR: Missing tile: {tile_file}")
+            tile_file = find_tile(output_dir, tile_index, base, frame, ext)
+            if tile_file is None:
+                print(
+                    f"ERROR: Missing tile {tile_index} for frame {padded_frame}: "
+                    f"expected _tile{tile_index}_{base}.{padded_frame}{ext} "
+                    f"in {output_dir}"
+                )
                 missing += 1
+            else:
+                tile_paths.append(tile_file)
 
     if missing > 0:
+        # The per-tile errors above name the exact file that was expected, which
+        # is the whole diagnosis now that -noFrameNumbers=1 pins what V-Ray
+        # writes. Listing the directory as well was insurance against V-Ray
+        # naming a tile in some way we had not predicted, and that is fixed at
+        # the source rather than accommodated here.
         print(f"ERROR: {missing} tile(s) missing")
         return 1
 

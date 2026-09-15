@@ -12,7 +12,18 @@ from typing import Any
 
 SUPPORTED_PYTHON_VERSIONS = ["3.9", "3.10", "3.11", "3.12"]
 SUPPORTED_PLATFORMS = ["win_amd64"]
-NATIVE_DEPENDENCIES = ["xxhash", "psutil"]
+# Packages that ship compiled extension modules. Their wheels are ABI-specific,
+# so one copy per supported Python version is downloaded and merged into the
+# bundle (see _download_native_dependencies). pydantic-core is here because
+# openjd-model depends on pydantic, whose core is a Rust extension.
+NATIVE_DEPENDENCIES = ["xxhash", "psutil", "pydantic-core"]
+
+# openjd-adaptor-runtime is adaptor-side only: it runs on the worker inside the
+# rendering environment, never in 3ds Max, so it is excluded from the submitter
+# bundle. openjd-model, by contrast, IS needed by submitter code (frame-range
+# parsing in utilities/vrscene_job_submission.py) and must be bundled, because
+# `deadline` does not depend on it transitively.
+EXCLUDED_DEPENDENCIES = ["openjd-adaptor-runtime"]
 
 
 def _get_project_dict() -> dict[str, Any]:
@@ -39,12 +50,22 @@ def _get_dependencies(pyproject_dict: dict[str, Any]) -> list[str]:
         raise Exception("pyproject.toml is missing dependencies section")
 
     dependencies = pyproject_dict["project"]["dependencies"]
-    deps_noopenjd = filter(lambda dep: not dep.startswith("openjd"), dependencies)
-    return list(map(lambda dep: dep.replace(" ", ""), deps_noopenjd))
+    included = [
+        dep
+        for dep in dependencies
+        if not any(dep.startswith(excluded) for excluded in EXCLUDED_DEPENDENCIES)
+    ]
+    return list(map(lambda dep: dep.replace(" ", ""), included))
 
 
 def _get_package_version_regex(package: str) -> re.Pattern:
-    return re.compile(rf"^{re.escape(package)} *(.*)$")
+    # `pip list` prints the distribution name with its own normalization, which
+    # may differ from the name we ask for in the separator character: we look up
+    # "pydantic-core" but pip prints "pydantic_core". Treat '-' and '_' as
+    # interchangeable (and match case-insensitively) so the lookup succeeds
+    # either way, per PEP 503 name normalization.
+    pattern = "[-_]".join(re.escape(part) for part in re.split(r"[-_]", package))
+    return re.compile(rf"^{pattern} *(.*)$", re.IGNORECASE)
 
 
 def _get_package_version(package: str, install_path: Path) -> str:

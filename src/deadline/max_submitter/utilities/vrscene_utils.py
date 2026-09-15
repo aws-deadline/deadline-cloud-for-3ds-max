@@ -10,6 +10,8 @@ from typing import List, Tuple
 
 from pymxs import runtime as rt
 
+from data_const import JOB_PARAMETER_MAX_STRING_LENGTH
+
 _logger = logging.getLogger(__name__)
 
 
@@ -122,6 +124,15 @@ def validate_vrscene_export_settings(settings) -> List[str]:
     # Validate frame range
     if not settings.frame_list or not settings.frame_list.strip():
         errors.append("Frame range cannot be empty")
+    elif len(settings.frame_list) > JOB_PARAMETER_MAX_STRING_LENGTH:
+        # The frame list becomes the Frames job parameter. A sparse selection
+        # that cannot be compacted into ranges grows with the frame count, so
+        # catch an over-long value here instead of letting the service reject
+        # the submission with a less obvious error.
+        errors.append(
+            f"The frame range is too long ({len(settings.frame_list)} characters). "
+            f"The maximum allowed is {JOB_PARAMETER_MAX_STRING_LENGTH}."
+        )
 
     # Validate region settings
     if settings.vrscene_render_region_columns < 1 or settings.vrscene_render_region_columns > 10:

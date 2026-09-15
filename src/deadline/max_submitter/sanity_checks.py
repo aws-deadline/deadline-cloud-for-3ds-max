@@ -22,11 +22,9 @@ from deadline.max_submitter.data_const import (
     ALL_STEREO_CAMERAS_STR,
     ALL_STATE_SETS_STR,
     ALLOWED_RENDERERS,
+    JOB_PARAMETER_MAX_STRING_LENGTH,
 )
 
-
-# This is the maximum string length allowed for OJD job parameters.
-JOB_PARAMETER_MAX_STRING_LENGTH: int = 1024
 
 # This is the maximum string lenght allowed for OJD step names.
 STEP_NAME_MAX_STRING_LENGTH: int = 64

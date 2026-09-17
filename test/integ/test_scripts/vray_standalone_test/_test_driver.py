@@ -22,7 +22,6 @@ from deadline.max_submitter.vray_standalone_submitter import (
     on_create_vrscene_job_bundle_callback,
 )
 
-
 CONFIG_FILE = "test_config.json"
 VALIDATION_OUTCOME_FILE = "validation_outcome.txt"
 

@@ -17,7 +17,6 @@ from deadline.max_shared.utilities.max_utils import BatchRenderView
 from deadline.max_submitter.data_const import ALL_CAMERAS_STR, RENDER_SUBMITTER_SETTINGS_FILE_EXT
 from pymxs import runtime as rt
 
-
 # Constants for render element parameter processing
 RENDER_ELEMENT_PARAMS: List[str] = [
     "RenderElementsModified",

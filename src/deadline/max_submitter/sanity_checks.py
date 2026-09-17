@@ -24,7 +24,6 @@ from deadline.max_submitter.data_const import (
     ALLOWED_RENDERERS,
 )
 
-
 # This is the maximum string length allowed for OJD job parameters.
 JOB_PARAMETER_MAX_STRING_LENGTH: int = 1024
 

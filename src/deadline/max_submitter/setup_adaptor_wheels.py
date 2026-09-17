@@ -2,6 +2,7 @@
 
 #!/usr/bin/env python3
 """Cross-platform script to set up adaptor wheels in a virtual environment."""
+
 import json
 import os
 import platform

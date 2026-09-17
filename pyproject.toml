@@ -76,7 +76,9 @@ packages = ["src/deadline"]
 # --- MYPY ---
 
 [tool.mypy]
-python_version = "3.9"
+# python_version is intentionally not pinned: mypy 2 (Python >= 3.10) rejects
+# a 3.9 target, while the 3.9 CI leg runs mypy 1. Letting mypy default to the
+# running interpreter's version keeps every matrix leg green.
 check_untyped_defs = true
 show_error_codes = true
 pretty = true

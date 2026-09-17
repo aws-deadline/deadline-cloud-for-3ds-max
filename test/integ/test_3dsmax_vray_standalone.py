@@ -21,7 +21,6 @@ from .test_const import (
     TEST_SCENE_FOLDER,
 )
 
-
 # fog.max from the render-elements suite already has V-Ray as the active
 # renderer. Sticky-settings filenames don't collide between the two suites.
 VRAY_SCENE_DIR = "vray_re_test"

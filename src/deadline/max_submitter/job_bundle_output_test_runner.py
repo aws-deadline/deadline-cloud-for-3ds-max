@@ -3,6 +3,7 @@
 """
 Defines the Render submitter command which is registered in 3ds Max.
 """
+
 import difflib
 import filecmp
 import os

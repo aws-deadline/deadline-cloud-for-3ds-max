@@ -11,6 +11,10 @@ black == 25.*
 ruff == 0.16.*
 moto[s3,sts] == 5.*
 types-pyyaml == 6.*
+# Imported directly by test_console_signin_dependencies.py; declared so the
+# 3.9/3.10 legs do not depend on pytest/mypy keeping their transitive pins.
+tomli == 2.*; python_version < "3.11"
+packaging == 26.*
 hatchling == 1.27.*
 hatch-vcs == 0.5.*
 editables == 0.6

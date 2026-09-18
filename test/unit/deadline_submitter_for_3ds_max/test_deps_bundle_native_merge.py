@@ -9,9 +9,13 @@ merge is where an interpreter can quietly lose its artifact: when two versions i
 same filename, the surviving copy is the only one any interpreter gets to load, and one
 built for a newer Python fails to import on an older one.
 
-These tests drive the merge over synthetic trees named the way the real wheels name their
-extension modules, because a real build downloads a wheel per compiled package per
-supported version. That is also their limit: they assert which artifact is selected, not
+These tests drive the merge over synthetic trees that reproduce the two naming schemes
+the real wheels use: a shared name that collides across trees (abi3) and interpreter-tagged
+names that do not. The literal filenames are POSIX-style for readability and differ from
+the win_amd64 artifacts the bundle actually ships (there, awscrt's abi3 wheels install an
+untagged ``_awscrt.pyd`` and the 3.9/3.10 wheels install ``_awscrt.cp39-win_amd64.pyd`` and
+the like); the merge is name-agnostic, so the scheme, not the suffix, is what is exercised.
+That is also their limit: they assert which artifact is selected, not
 that it loads. Proving it loads needs the target interpreter, which the unit suite has no
 access to -- ``test_console_signin_dependencies`` only reaches the interpreter running the
 tests.
@@ -35,6 +39,10 @@ import deps_bundle  # noqa: E402
 ABI3_ARTIFACT = "_awscrt.abi3.so"
 
 # awscrt publishes version-specific (non-abi3) wheels below this and abi3 wheels from here up.
+# This shapes the fixtures only; deps_bundle.py never reads it. If awscrt's wheel matrix
+# drifts, the per-version pip downloads still fetch whatever exists and the name-driven
+# merge stays correct -- these tests guard the merge rule (first tree wins a collision,
+# distinct names are all kept), not awscrt's matrix.
 LOWEST_ABI3_PYTHON = (3, 11)
 
 
@@ -62,9 +70,9 @@ def supported_versions() -> list:
 
 @pytest.fixture
 def merged_bundle(tmp_path, supported_versions) -> Path:
-    """Run the merge over trees named the way the real wheels name their artifacts.
+    """Run the merge over trees that reproduce the real wheels' naming schemes.
 
-    Reproduces both naming schemes. awscrt installs the shared abi3 name from every abi3
+    awscrt installs the shared abi3 name from every abi3
     wheel (Python 3.11+) and a version-specific name from the non-abi3 wheels it publishes
     for Python 3.9 and 3.10; xxhash and pyyaml install a version-specific name for every
     version; psutil ships one abi3 wheel that serves all of them, so every tree holds

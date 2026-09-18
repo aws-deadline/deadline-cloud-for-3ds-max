@@ -89,11 +89,14 @@ def _build_base_environment(working_directory: Path, dependencies: list[str]) ->
     (working_directory / "base_env").mkdir()
     base_env_path = working_directory / "base_env"
     # The bundle is the submitter, which needs AWS Console sign-in. The console extra is
-    # requested here rather than declared in project.dependencies, because those are also
-    # resolved into the adaptor package by scripts/create_adaptor_packaging_artifact.sh
-    # under --only-binary=:all: --platform <tag>, and no awscrt wheel meeting the floor
-    # exists for the macosx_10_9_x86_64 tag that script targets, so pip would silently
-    # walk back to a release with no usable crypto support.
+    # requested here rather than declared in project.dependencies so that awscrt stays out
+    # of the published wheel's metadata: only the submitter signs in interactively, and any
+    # consumer resolving this package's dependencies under a constrained platform tag
+    # (e.g. --only-binary=:all: --platform macosx_10_9_x86_64, for which no awscrt wheel
+    # satisfying botocore's crt pin exists) would otherwise fail or silently backtrack.
+    # Note this repo's scripts/create_adaptor_packaging_artifact.sh installs the adaptor
+    # with --no-deps, so it never resolves project.dependencies itself; the guard is about
+    # the published metadata, not that script.
     #
     # Requesting the extra rather than installing awscrt directly means the bundle tracks
     # whatever the extra actually requires -- notably a botocore floor, since the console

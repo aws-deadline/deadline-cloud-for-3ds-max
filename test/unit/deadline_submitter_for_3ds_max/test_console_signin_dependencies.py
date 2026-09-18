@@ -14,11 +14,14 @@ edit to ``pyproject.toml`` would not be seen until the environment is reinstalle
 and "somebody edited that line" is precisely the regression being guarded.
 
 Scope matters as much as the versions. The ``console`` extra belongs in
-``scripts/deps_bundle.py`` and not on the base dependencies: the base list is
-resolved into the adaptor package by ``scripts/create_adaptor_packaging_artifact.sh``
-under ``--only-binary=:all: --platform <tag>``, and no awscrt wheel meeting the
-floor exists for the ``macosx_10_9_x86_64`` tag that script targets, so pip would
-silently walk back to a release with no usable crypto support.
+``scripts/deps_bundle.py`` and not on the base dependencies: only the submitter,
+which ships via the deps bundle, ever signs in to the console. Declaring the extra
+in ``project.dependencies`` would put awscrt into the published wheel's metadata,
+and no awscrt wheel satisfying botocore's crt pin exists for the
+``macosx_10_9_x86_64`` tag, so any consumer resolving this package under
+``--only-binary=:all:`` for that tag would fail or be silently backtracked.
+(``scripts/create_adaptor_packaging_artifact.sh`` itself installs the adaptor with
+``--no-deps`` and never resolves ``project.dependencies``.)
 """
 
 import sys
@@ -76,23 +79,23 @@ def test_deadline_floor_excludes_releases_without_console_signin(base_dependenci
 
 
 def test_base_dependencies_do_not_request_the_console_extra(base_dependencies):
-    """Keeps awscrt out of the adaptor package.
+    """Keeps awscrt out of the published wheel's dependency metadata.
 
-    The base list is resolved into the adaptor artifact per platform tag under
-    --only-binary=:all:. For macosx_10_9_x86_64 no awscrt wheel meets the floor, so pip
-    resolves backwards to one whose crypto support botocore will not accept -- the build
-    succeeds and console sign-in is quietly broken. The adaptor never signs in
-    interactively, so it has no use for the extra.
+    The adaptor never signs in interactively, so it has no use for the extra. Declaring
+    it here would force awscrt onto every consumer that resolves this package's
+    dependencies, and for macosx_10_9_x86_64 no awscrt wheel satisfies botocore's crt
+    pin, so a --only-binary=:all: resolve for that tag fails or silently backtracks.
+    The bundle requests the extra at build time instead (deps_bundle._add_console_extra).
     """
     for req in _named(base_dependencies, "deadline"):
         assert (
             "console" not in req.extras
-        ), f"console extra leaks into the adaptor's dependency closure via: {req}"
+        ), f"console extra leaks into the published dependency metadata via: {req}"
 
     # Copying the requirement in directly is the likelier mistake, and has the same effect.
     assert not _named(
         base_dependencies, "awscrt"
-    ), "awscrt must not be a base dependency; it would be resolved into the adaptor package"
+    ), "awscrt must not be a base dependency; it would leak into the published wheel metadata"
 
 
 def test_deps_bundle_requests_the_console_extra(base_dependencies):

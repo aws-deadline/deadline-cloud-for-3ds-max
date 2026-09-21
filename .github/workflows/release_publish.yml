@@ -57,8 +57,34 @@ jobs:
       with:
           tag: ${{ needs.TagRelease.outputs.tag }}
 
+  # Gates the installer build because that is where scripts/deps_bundle.py runs. The merge
+  # keeps one copy of any filename two Python versions share, which only loads everywhere
+  # while every shared name comes from an abi3 wheel; these tests resolve the real wheels to
+  # confirm that still holds. Kept out of the PR gate, where an upstream wheel-matrix change
+  # is not the author's fault, but a release must not ship a bundle the premise no longer
+  # covers.
+  VerifyNativeWheelNaming:
+    needs: [TagRelease]
+    name: Verify Native Wheel Naming
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.TagRelease.outputs.tag }}
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ needs.TagRelease.outputs.build-python-version }}
+      - name: Install dependencies
+        run: |
+          pip install --upgrade hatch "click<8.3" "virtualenv<21"
+      - name: Verify native wheel naming
+        run: hatch run test-network
+
   BuildAndStageInstallers:
-    needs: [TagRelease, PreRelease]
+    needs: [TagRelease, PreRelease, VerifyNativeWheelNaming]
     uses: aws-deadline/.github/.github/workflows/reusable_build_and_stage_installers.yml@mainline
     secrets: inherit
     permissions:

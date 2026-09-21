@@ -7,8 +7,9 @@ pre-install-commands = [
 sync = "pip install -r requirements-testing.txt"
 test = "pytest --cov-config pyproject.toml {args:test/unit test/test_copyright_headers.py}"
 # Opts in to the tests `test` deselects: they resolve wheels from a package index to check
-# that awscrt still names its extension modules the way the deps bundle merge assumes.
-test-network = "pytest --no-cov -m network {args:test/unit} -vvv"
+# that NATIVE_DEPENDENCIES still name their extension modules the way the merge assumes.
+# Serial so the shared download fixture runs once rather than once per xdist worker.
+test-network = "pytest --no-cov -m network --numprocesses=1 {args:test/unit} -vvv"
 test-installer = "pytest --no-cov {args:test/installer} -vvv"
 typing = "mypy {args:src test}"
 style = [

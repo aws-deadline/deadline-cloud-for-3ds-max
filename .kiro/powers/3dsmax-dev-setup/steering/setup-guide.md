@@ -102,10 +102,13 @@ Ensure pip is installed in 3ds Max Python:
 ```
 
 ### Step 8: Install the Wheel to 3ds Max Python
-Install the built wheel:
+Install the built wheel, then `deadline` with the `[console]` extra. The extra is required
+here: this installs into 3ds Max's own Python rather than through `scripts/deps_bundle.py`'s
+dependency bundle, so without it AWS Console sign-in silently would not work.
 ```powershell
 $wheelFile = Get-ChildItem "dist\deadline_cloud_for_3ds_max-*.whl" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 & "C:\Program Files\Autodesk\3ds Max {VERSION}\Python\python.exe" -m pip install --force-reinstall $wheelFile.FullName
+& "C:\Program Files\Autodesk\3ds Max {VERSION}\Python\python.exe" -m pip install "deadline[console]"
 ```
 
 Verify installation:

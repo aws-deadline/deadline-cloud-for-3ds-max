@@ -64,9 +64,9 @@ WARNING: This workflow installs additional Python packages into your 3ds Max's p
 1. The point of entry for the submitter is the `run_ui.py` file under the `max_submitter` folder. Thus, this file needs to be discoverable by 3dsMax, and `max_submitter` needs to be a discoverable package by python. In Powershell run:
     1. `$env:ADSK_3DSMAX_SCRIPTS_ADDON_DIR += ";<LOCAL_REPO_PATH>\src\deadline\max_submitter"`.
     1. `$env:PYTHONPATH += ";<LOCAL_REPO_PATH>\src\;<LOCAL_REPO_PATH>\src\deadline\max_submitter"`.
-1. Install `deadline` package to `~\DeadlineCloudSubmitter\Submitters\3dsMax\scripts`, using a python version that is compatible with the version of 3dsMax that you are using. In Powershell run:
+1. Install `deadline` package to `~\DeadlineCloudSubmitter\Submitters\3dsMax\scripts`, using a python version that is compatible with the version of 3dsMax that you are using. The `[console]` extra is required here: this installs into the submitter's scripts directory rather than through `scripts/deps_bundle.py`'s dependency bundle, so without it AWS Console sign-in silently would not work. In Powershell run:
     1. `& "C:\Program Files\Autodesk\<version>\Python\python.exe" -m ensurepip`
-    1. `& "C:\Program Files\Autodesk\<version>\Python\python.exe" -m pip install deadline -t $env:HOMEPATH\DeadlineCloudSubmitter\Submitters\3dsMax\scripts` 
+    1. `& "C:\Program Files\Autodesk\<version>\Python\python.exe" -m pip install "deadline[console]" -t $env:HOMEPATH\DeadlineCloudSubmitter\Submitters\3dsMax\scripts`
 1. Run `3dsmax` from the same command-line window where the environment variables were set. To do so, `3dsmax` needs to be part of the PATH. In Powershell run `$env:PATH += ";C:\Program Files\Autodesk\<version>"`.
 1. To supply AWS account credentials for the submitter to use when submitting a job you can either:
     1. [Install and set up the Deadline Cloud Monitor][deadline-cloud-monitor-setup], and then log in to the monitor. Logging in

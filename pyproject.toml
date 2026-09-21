@@ -136,6 +136,7 @@ filterwarnings = ["ignore::DeprecationWarning"]
 markers = [
     "submitter: mark test as test for the submitter",
     "adaptor: mark test as test for the adaptor",
+    "network: mark test as requiring a reachable package index (deselect with -m 'not network')",
 ]
 
 # --- COVERAGE ---

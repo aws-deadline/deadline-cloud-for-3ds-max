@@ -10,11 +10,13 @@ for a newer Python fails to import on an older one.
 The synthetic trees below reproduce the naming schemes, not the literal filenames: they use
 POSIX-style names for readability, while the win_amd64 bundle actually ships an untagged
 ``_awscrt.pyd`` for abi3 and ``_awscrt.cp39-win_amd64.pyd`` for the version-specific wheels.
-The merge is name-agnostic, so the scheme is what matters; the tests that download real
-wheels pin the scheme itself. These tests assert which artifact is selected, not that it
-loads -- that needs the target interpreter.
+The merge is name-agnostic, so the scheme is what matters; the ``network``-marked tests pin
+the scheme itself against the real wheels, and are the only ones here that leave the
+machine (``-m 'not network'`` deselects them). These tests assert which artifact is
+selected, not that it loads -- that needs the target interpreter.
 """
 
+import importlib.metadata
 import re
 import subprocess
 import sys
@@ -22,6 +24,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
+from packaging.requirements import Requirement
 
 SCRIPTS_DIR = Path(__file__).parents[3] / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
@@ -38,6 +41,10 @@ ABI3_ARTIFACT = "_awscrt.abi3.so"
 # Shapes the fixtures only; deps_bundle.py never reads it. test_lowest_abi3_python_matches_awscrt
 # keeps it honest against the real wheel matrix.
 LOWEST_ABI3_PYTHON = (3, 11)
+
+# Resolved to tell an unreachable index apart from a missing awscrt wheel. Any pure-Python
+# wheel works: py3-none-any is compatible with every tag, so it fails only on connectivity.
+CONNECTIVITY_PROBE = "packaging"
 
 
 def _version_key(version: str) -> tuple:
@@ -177,47 +184,85 @@ def _extension_members(wheel: Path) -> list:
         ]
 
 
+def _bundled_awscrt_version() -> str:
+    """The awscrt the bundle ships: whatever botocore's `crt` extra pins.
+
+    ``_download_native_dependencies`` pins awscrt to the version resolved into the base
+    environment, which gets it transitively from ``deadline[console]`` -> ``botocore[crt]``.
+    Reading that pin out of the installed botocore's metadata tracks the same chain, so
+    these tests follow a botocore bump instead of validating whatever awscrt is newest.
+    """
+    for requirement in importlib.metadata.requires("botocore") or []:
+        parsed = Requirement(requirement)
+        if parsed.name == "awscrt":
+            pinned = [spec.version for spec in parsed.specifier if spec.operator in ("==", "===")]
+            if pinned:
+                return pinned[0]
+    pytest.skip("installed botocore declares no pinned awscrt in its crt extra")
+
+
+def _pip_download(package: str, version: str, platform: str, target: Path):
+    return subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "download",
+            package,
+            "--no-deps",
+            "--only-binary=:all:",
+            "--python-version",
+            version,
+            "--platform",
+            platform,
+            "--dest",
+            str(target),
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+
 @pytest.fixture(scope="module")
 def awscrt_artifacts_by_version(tmp_path_factory) -> dict:
     """Extension-module names in the real win_amd64 awscrt wheel for each supported version.
 
     Downloads rather than asserting a filename list, so a change to awscrt's wheel matrix
-    surfaces here instead of in a silently unloadable bundle. Skips when there is no index
-    to reach; the other tests in this module do not need the network.
+    surfaces here instead of in a silently unloadable bundle.
+
+    A download failure is only allowed to skip when the index is unreachable, which is
+    established by resolving a pure-Python wheel for the same tags -- it is compatible with
+    every tag, so it fails only on connectivity. If that succeeds while awscrt does not,
+    awscrt has stopped publishing a wheel for a version SUPPORTED_PYTHON_VERSIONS still
+    lists, which would break the bundle, so it fails rather than skipping.
     """
     platform = deps_bundle.SUPPORTED_PLATFORMS[0]
+    awscrt_version = _bundled_awscrt_version()
     download_root = tmp_path_factory.mktemp("awscrt_wheels")
     artifacts = {}
     for version in sorted(deps_bundle.SUPPORTED_PYTHON_VERSIONS, key=_version_key):
         target = download_root / _tag(version)
         try:
-            subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "pip",
-                    "download",
-                    "awscrt",
-                    "--no-deps",
-                    "--only-binary=:all:",
-                    "--python-version",
-                    version,
-                    "--platform",
-                    platform,
-                    "--dest",
-                    str(target),
-                ],
-                check=True,
-                capture_output=True,
-            )
-        except (subprocess.CalledProcessError, OSError) as error:
-            pytest.skip(f"cannot download awscrt {platform} wheels: {error}")
+            _pip_download(f"awscrt=={awscrt_version}", version, platform, target)
+        except OSError as error:
+            pytest.skip(f"cannot run pip: {error}")
+        except subprocess.CalledProcessError as awscrt_error:
+            try:
+                _pip_download(CONNECTIVITY_PROBE, version, platform, target / "probe")
+            except (subprocess.CalledProcessError, OSError):
+                pytest.skip(f"cannot reach the package index: {awscrt_error}")
+            raise AssertionError(
+                f"awscrt {awscrt_version} publishes no {platform} wheel for Python "
+                f"{version}, which SUPPORTED_PYTHON_VERSIONS still lists; the bundle "
+                f"would carry no loadable awscrt there"
+            ) from awscrt_error
         wheels = list(target.glob("*.whl"))
         assert len(wheels) == 1, f"expected one awscrt wheel for Python {version}, got {wheels}"
         artifacts[version] = _extension_members(wheels[0])
     return artifacts
 
 
+@pytest.mark.network
 def test_real_awscrt_wheels_collide_only_on_untagged_names(awscrt_artifacts_by_version):
     """Pins the naming premise the merge rests on to the wheels actually resolved.
 
@@ -246,6 +291,7 @@ def test_real_awscrt_wheels_collide_only_on_untagged_names(awscrt_artifacts_by_v
             )
 
 
+@pytest.mark.network
 def test_lowest_abi3_python_matches_awscrt(awscrt_artifacts_by_version):
     """Keeps the fixtures' abi3 floor honest against awscrt's real wheel matrix."""
     untagged_versions = {

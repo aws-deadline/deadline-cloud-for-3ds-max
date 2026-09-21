@@ -21,7 +21,7 @@ import subprocess
 import sys
 import zipfile
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, Optional
 
 import pytest
 from packaging.requirements import Requirement
@@ -200,8 +200,8 @@ def _inspect_wheel(wheel: Path) -> _Wheel:
     return _Wheel(abi_tag=abi_tag, members=members)
 
 
-def _bundled_awscrt_version() -> str:
-    """The awscrt the bundle ships: whatever botocore's `crt` extra pins.
+def _bundled_awscrt_version() -> Optional[str]:
+    """The awscrt the bundle ships: whatever botocore's `crt` extra pins, or None.
 
     ``_download_native_dependencies`` pins awscrt to the version resolved into the base
     environment, which gets it transitively from ``deadline[console]`` -> ``botocore[crt]``.
@@ -214,7 +214,7 @@ def _bundled_awscrt_version() -> str:
             pinned = [spec.version for spec in parsed.specifier if spec.operator in ("==", "===")]
             if pinned:
                 return pinned[0]
-    pytest.skip("installed botocore declares no pinned awscrt in its crt extra")
+    return None
 
 
 def _pip_download(package: str, version: str, platform: str, target: Path):
@@ -254,6 +254,8 @@ def awscrt_wheels_by_version(tmp_path_factory) -> dict:
     """
     platform = deps_bundle.SUPPORTED_PLATFORMS[0]
     awscrt_version = _bundled_awscrt_version()
+    if awscrt_version is None:
+        pytest.skip("installed botocore declares no pinned awscrt in its crt extra")
     download_root = tmp_path_factory.mktemp("awscrt_wheels")
     artifacts = {}
     for version in sorted(deps_bundle.SUPPORTED_PYTHON_VERSIONS, key=_version_key):

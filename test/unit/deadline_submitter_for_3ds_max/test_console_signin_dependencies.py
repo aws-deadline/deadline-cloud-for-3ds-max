@@ -2,26 +2,17 @@
 
 """Guards the dependency declarations that AWS Console sign-in depends on.
 
-Console sign-in is not exercised by the integration tests: it needs an interactive
-browser OAuth handshake and Deadline Cloud Monitor, while CI authenticates by
-assuming a role, so credentials are host-provided and the console path is never
-taken. What can break silently is the dependency declaration, which is what these
-tests pin.
+The integration tests cannot cover this: console sign-in needs an interactive browser
+handshake and Deadline Cloud Monitor, while CI authenticates by assuming a role.
 
-The declaration tests read ``pyproject.toml`` rather than installed distribution
-metadata. ``importlib.metadata`` reflects what was captured at install time, so an
-edit to ``pyproject.toml`` would not be seen until the environment is reinstalled --
-and "somebody edited that line" is precisely the regression being guarded.
+These read ``pyproject.toml`` rather than installed metadata, because
+``importlib.metadata`` reflects install time and "somebody edited that line" is the
+regression being guarded.
 
-Scope matters as much as the versions. The ``console`` extra belongs in
-``scripts/deps_bundle.py`` and not on the base dependencies: only the submitter,
-which ships via the deps bundle, ever signs in to the console. Declaring the extra
-in ``project.dependencies`` would put awscrt into the published wheel's metadata,
-and no awscrt wheel satisfying botocore's crt pin exists for the
-``macosx_10_9_x86_64`` tag, so any consumer resolving this package under
-``--only-binary=:all:`` for that tag would fail or be silently backtracked.
-(``scripts/create_adaptor_packaging_artifact.sh`` itself installs the adaptor with
-``--no-deps`` and never resolves ``project.dependencies``.)
+Scope matters as much as the versions: the ``console`` extra belongs in
+``scripts/deps_bundle.py``, not in ``project.dependencies``, which would put awscrt into
+the published wheel's metadata -- and no awscrt wheel satisfying botocore's crt pin
+exists for ``macosx_10_9_x86_64``.
 """
 
 import sys
@@ -45,9 +36,8 @@ import deps_bundle  # noqa: E402
 
 PYPROJECT = Path(__file__).parents[3] / "pyproject.toml"
 
-# Console sign-in landed in deadline 0.60.4 and nowhere earlier: 0.60.1 through
-# 0.60.3 have no AWS_CONSOLE_LOGIN credentials source and do not declare a
-# `console` extra at all. 0.60.3 is the highest version that must be excluded.
+# 0.60.1 through 0.60.3 have no AWS_CONSOLE_LOGIN credentials source and declare no
+# `console` extra; sign-in landed in 0.60.4.
 HIGHEST_DEADLINE_WITHOUT_CONSOLE_SIGNIN = "0.60.3"
 
 
@@ -65,9 +55,8 @@ def _named(requirements: list, name: str) -> list:
 def test_deadline_floor_excludes_releases_without_console_signin(base_dependencies):
     """Guards the floor itself, not whatever a resolver happened to select.
 
-    An installed-version check cannot do this: with a loosened ">= 0.60.1"
-    requirement, pip still resolves the newest 0.60.x, so the regression passes
-    unnoticed.
+    An installed-version check cannot: with a loosened ">= 0.60.1" requirement pip still
+    resolves the newest 0.60.x, so the regression passes unnoticed.
     """
     deadline_reqs = _named(base_dependencies, "deadline")
     assert deadline_reqs, "pyproject.toml declares no requirement on deadline"
@@ -81,11 +70,9 @@ def test_deadline_floor_excludes_releases_without_console_signin(base_dependenci
 def test_base_dependencies_do_not_request_the_console_extra(base_dependencies):
     """Keeps awscrt out of the published wheel's dependency metadata.
 
-    The adaptor never signs in interactively, so it has no use for the extra. Declaring
-    it here would force awscrt onto every consumer that resolves this package's
-    dependencies, and for macosx_10_9_x86_64 no awscrt wheel satisfies botocore's crt
-    pin, so a --only-binary=:all: resolve for that tag fails or silently backtracks.
-    The bundle requests the extra at build time instead (deps_bundle._add_console_extra).
+    Declaring it here would force awscrt onto every consumer resolving this package, and no
+    awscrt wheel satisfies botocore's crt pin for macosx_10_9_x86_64. The bundle requests
+    the extra at build time instead (deps_bundle._add_console_extra).
     """
     for req in _named(base_dependencies, "deadline"):
         assert (
@@ -101,8 +88,8 @@ def test_base_dependencies_do_not_request_the_console_extra(base_dependencies):
 def test_deps_bundle_requests_the_console_extra(base_dependencies):
     """The submitter resolves through the deps bundle, so console is added there.
 
-    Applies the bundler's own rewrite to the requirement pyproject.toml actually
-    declares, so a rename or a pre-existing extras list cannot silently bypass it.
+    Applies the bundler's own rewrite to the declared requirement, so a rename or a
+    pre-existing extras list cannot silently bypass it.
     """
     deadline_reqs = _named(base_dependencies, "deadline")
     assert deadline_reqs, "pyproject.toml declares no requirement on deadline"

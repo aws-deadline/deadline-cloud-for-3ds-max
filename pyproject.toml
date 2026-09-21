@@ -33,9 +33,8 @@ classifiers = [
 # 2026 - 3.11: https://help.autodesk.com/view/MAXDEV/2026/ENU/?guid=MAXDEV_Python_what_s_new_in_3ds_max_python_api_html
 
 dependencies = [
-    # 0.60.4 is the floor because AWS Console sign-in landed there and nowhere earlier:
-    # 0.60.1 through 0.60.3 have no AWS_CONSOLE_LOGIN credentials source and do not
-    # declare a `console` extra at all.
+    # 0.60.4 floor: earlier 0.60.x have no AWS_CONSOLE_LOGIN credentials source and
+    # declare no `console` extra.
     "deadline >= 0.60.4,< 0.61",
     "openjd-adaptor-runtime == 0.9.*",
 ]

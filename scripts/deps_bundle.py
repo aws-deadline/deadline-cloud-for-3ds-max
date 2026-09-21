@@ -13,16 +13,10 @@ from typing import Any
 SUPPORTED_PYTHON_VERSIONS = ["3.9", "3.10", "3.11", "3.12"]
 SUPPORTED_PLATFORMS = ["win_amd64"]
 # Packages with compiled extension modules, fetched once per supported Python version so the
-# bundle carries a loadable artifact for each interpreter.
-#
-# awscrt is here because its wheels are not uniformly abi3: Python 3.9 and 3.10 get a
-# version-specific _awscrt extension module while 3.11+ get _awscrt.abi3 artifacts.
-# Resolving it only in the base environment would ship whichever the build host produced,
-# so any 3ds Max whose interpreter that single artifact does not cover would fail to
-# import awscrt and AWS Console sign-in would break there.
-# pyyaml is here because it ships a version-specific `_yaml` extension module: resolved only
-# in the base environment it lands built for a single interpreter, and pyyaml hides that by
-# falling back to its pure-Python parser on the other three.
+# bundle carries a loadable artifact for each interpreter. Resolving these in the base
+# environment alone would ship only what the build host's interpreter produced. awscrt is
+# not uniformly abi3 (3.9 and 3.10 get version-specific artifacts, 3.11+ abi3), and pyyaml's
+# `_yaml` is version-specific and fails soft -- it falls back to its pure-Python parser.
 NATIVE_DEPENDENCIES = ["xxhash", "psutil", "awscrt", "pyyaml"]
 
 
@@ -55,9 +49,9 @@ def _get_dependencies(pyproject_dict: dict[str, Any]) -> list[str]:
 
 
 def _get_package_version_regex(package: str) -> re.Pattern:
-    # Case-insensitive because `pip list` prints the distribution's own casing, which need not
-    # match how the requirement is spelled -- `pyyaml` is reported as `PyYAML`. The required
-    # whitespace keeps a prefix sibling like `pyyaml-env-tag` from matching.
+    # Case-insensitive because `pip list` prints the distribution's casing, not the
+    # requirement's: `pyyaml` is reported as `PyYAML`. The required whitespace keeps a prefix
+    # sibling like `pyyaml-env-tag` from matching.
     return re.compile(rf"^{re.escape(package)}\s+(\S+)\s*$", re.IGNORECASE)
 
 
@@ -89,19 +83,14 @@ def _build_base_environment(working_directory: Path, dependencies: list[str]) ->
     (working_directory / "base_env").mkdir()
     base_env_path = working_directory / "base_env"
     # The bundle is the submitter, which needs AWS Console sign-in. The console extra is
-    # requested here rather than declared in project.dependencies so that awscrt stays out
-    # of the published wheel's metadata: only the submitter signs in interactively, and any
-    # consumer resolving this package's dependencies under a constrained platform tag
-    # (e.g. --only-binary=:all: --platform macosx_10_9_x86_64, for which no awscrt wheel
-    # satisfying botocore's crt pin exists) would otherwise fail or silently backtrack.
-    # Note this repo's scripts/create_adaptor_packaging_artifact.sh installs the adaptor
-    # with --no-deps, so it never resolves project.dependencies itself; the guard is about
-    # the published metadata, not that script.
+    # requested here rather than declared in project.dependencies to keep awscrt out of the
+    # published wheel's metadata: no awscrt wheel satisfying botocore's crt pin exists for
+    # macosx_10_9_x86_64, so a consumer resolving this package under --only-binary=:all: for
+    # that tag would fail or silently backtrack.
     #
-    # Requesting the extra rather than installing awscrt directly means the bundle tracks
-    # whatever the extra actually requires -- notably a botocore floor, since the console
-    # login provider lives in botocore, not in deadline -- and takes awscrt from the exact
-    # version botocore's crt extra pins, rather than resolving it independently and drifting.
+    # Requesting the extra rather than installing awscrt directly keeps the bundle on the
+    # exact awscrt botocore's crt extra pins, plus the botocore floor the console login
+    # provider itself needs -- that provider lives in botocore, not in deadline.
     dependencies_for_pip = [_add_console_extra(dep) for dep in dependencies]
     base_env_pip_args = [
         "pip",
@@ -139,12 +128,10 @@ def _download_native_dependencies(working_directory: Path, base_env: Path) -> li
             "--python-version",
             version,
             "--only-binary=:all:",
-            # These trees exist only for their compiled artifacts, and they overwrite the
-            # base environment during the merge. Without --no-deps each tree would carry the
-            # packages' full transitive closures, resolved independently of the base
-            # environment's, and clobber whatever it had resolved for anything they share.
-            # Today none of NATIVE_DEPENDENCIES has runtime dependencies, but that is a
-            # property of the current graph, not of this code.
+            # These trees exist only for their compiled artifacts and overwrite the base
+            # environment during the merge. Without --no-deps each would carry a transitive
+            # closure resolved independently of the base environment's, clobbering whatever
+            # it resolved for anything they share.
             "--no-deps",
             *versioned_native_dependencies,
         ]
@@ -153,26 +140,17 @@ def _download_native_dependencies(working_directory: Path, base_env: Path) -> li
 
 
 def _copy_native_to_base_env(base_env: Path, native_dependency_paths: list[Path]) -> None:
-    """Flatten the per-version native trees into the bundle, lowest version first.
+    """Flatten the per-version native trees into the bundle, first tree to supply a name wins.
 
-    ``native_dependency_paths`` is ordered by ascending Python version and the first tree
-    to supply a path wins, overwriting the base environment. The base environment resolved
-    these packages for whatever interpreter the build host happens to run, which is not
-    necessarily a version the bundle targets, so it must not decide which artifact ships.
+    ``native_dependency_paths`` is ascending by Python version, and the winner must not be
+    the base environment: it resolved these for whatever interpreter the build host runs,
+    which need not be a version the bundle targets.
 
-    Which artifacts survive follows from how the wheels name their extension modules, so no
-    rule is needed per package. A version-specific name is unique per version and so cannot
-    collide: ``xxhash`` ships one wheel per version and every interpreter keeps its own
-    ``_xxhash`` extension module, and ``pyyaml`` is the same case, one wheel per version
-    installing its own ``yaml/_yaml`` extension module. An abi3 name is the same for every
-    version and so collides, and there the two cases differ. ``psutil`` publishes a single
-    abi3 wheel that serves all of them, so every tree holds identical bytes and the
-    collision is a no-op. ``awscrt`` publishes version-specific wheels for Python 3.9 and
-    3.10 (which keep their own artifacts, like xxhash) and a separate abi3 wheel per Python
-    from 3.11 up, each installing the same abi3 name, so those copies differ and only one
-    can ship; abi3 is forward compatible, which makes the one built for the lowest
-    supported abi3 Python the only copy that loads on all of them, and taking the first
-    tree is what keeps it.
+    Which copy survives follows from wheel naming, so no per-package rule is needed.
+    Version-specific names carry an interpreter tag and cannot collide, so every version
+    keeps its own. Colliding names are abi3, and abi3 is forward compatible only -- so the
+    copy built for the lowest supported abi3 Python is the one that loads everywhere, which
+    is what ascending order keeps.
     """
     copied: set[Path] = set()
     for native_dependency_path in native_dependency_paths:

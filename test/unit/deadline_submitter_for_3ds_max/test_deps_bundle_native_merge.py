@@ -2,23 +2,16 @@
 
 """Guards which compiled artifact the dependency bundle ships for each interpreter.
 
-The bundle is one flat directory placed on ``PYTHONPATH``, so it holds a single file per
-name no matter how many Python versions 3ds Max might embed. ``scripts/deps_bundle.py``
-installs the compiled packages once per supported version and merges the results, and the
-merge is where an interpreter can quietly lose its artifact: when two versions install the
-same filename, the surviving copy is the only one any interpreter gets to load, and one
-built for a newer Python fails to import on an older one.
+The bundle is one flat directory on ``PYTHONPATH``, so it holds a single file per name no
+matter how many Python versions 3ds Max might embed. When two versions install the same
+filename, the surviving copy is the only one any interpreter gets to load, and one built
+for a newer Python fails to import on an older one.
 
-These tests drive the merge over synthetic trees that reproduce the two naming schemes
-the real wheels use: a shared name that collides across trees (abi3) and interpreter-tagged
-names that do not. The literal filenames are POSIX-style for readability and differ from
-the win_amd64 artifacts the bundle actually ships (there, awscrt's abi3 wheels install an
-untagged ``_awscrt.pyd`` and the 3.9/3.10 wheels install ``_awscrt.cp39-win_amd64.pyd`` and
-the like); the merge is name-agnostic, so the scheme, not the suffix, is what is exercised.
-That is also their limit: they assert which artifact is selected, not
-that it loads. Proving it loads needs the target interpreter, which the unit suite has no
-access to -- ``test_console_signin_dependencies`` only reaches the interpreter running the
-tests.
+The synthetic trees below reproduce the naming schemes, not the literal filenames: they use
+POSIX-style names for readability, while the win_amd64 bundle actually ships an untagged
+``_awscrt.pyd`` for abi3 and ``_awscrt.cp39-win_amd64.pyd`` for the version-specific wheels.
+The merge is name-agnostic, so the scheme is what matters. These tests assert which artifact
+is selected, not that it loads -- that needs the target interpreter.
 """
 
 import subprocess
@@ -39,10 +32,8 @@ import deps_bundle  # noqa: E402
 ABI3_ARTIFACT = "_awscrt.abi3.so"
 
 # awscrt publishes version-specific (non-abi3) wheels below this and abi3 wheels from here up.
-# This shapes the fixtures only; deps_bundle.py never reads it. If awscrt's wheel matrix
-# drifts, the per-version pip downloads still fetch whatever exists and the name-driven
-# merge stays correct -- these tests guard the merge rule (first tree wins a collision,
-# distinct names are all kept), not awscrt's matrix.
+# Shapes the fixtures only; deps_bundle.py never reads it, so a change to awscrt's wheel
+# matrix cannot invalidate the merge rule these tests pin.
 LOWEST_ABI3_PYTHON = (3, 11)
 
 
@@ -72,16 +63,9 @@ def supported_versions() -> list:
 def merged_bundle(tmp_path, supported_versions) -> Path:
     """Run the merge over trees that reproduce the real wheels' naming schemes.
 
-    awscrt installs the shared abi3 name from every abi3
-    wheel (Python 3.11+) and a version-specific name from the non-abi3 wheels it publishes
-    for Python 3.9 and 3.10; xxhash and pyyaml install a version-specific name for every
-    version; psutil ships one abi3 wheel that serves all of them, so every tree holds
-    identical bytes.
-
     Each file's content records the version whose install produced it, so the merged tree
-    reports where its own contents came from. The base environment is seeded with the
-    newest version, standing in for a build host whose interpreter is newer than the one
-    the bundle has to serve.
+    reports where its contents came from. The base environment is seeded with the newest
+    version, standing in for a build host newer than the interpreters the bundle serves.
     """
     base_env = tmp_path / "base_env"
     _write(base_env / ABI3_ARTIFACT, supported_versions[-1])
@@ -105,11 +89,10 @@ def merged_bundle(tmp_path, supported_versions) -> Path:
 def test_colliding_abi3_artifact_comes_from_the_lowest_supported_abi(
     merged_bundle, supported_versions
 ):
-    """abi3 is forward compatible, so the lowest is the only copy that serves every version.
+    """abi3 is forward compatible only, so the lowest copy is the one that loads everywhere.
 
-    A copy built for a newer Python links against symbols an older one does not export, so
-    it fails to import there -- botocore then leaves its crypto binding unset and AWS
-    Console sign-in reports that sign-in is needed, indefinitely.
+    A copy built for a newer Python fails to import on an older one; botocore then leaves its
+    crypto binding unset and console sign-in reports sign-in needed indefinitely.
     """
     lowest_abi3_version = next(
         v for v in supported_versions if _version_key(v) >= LOWEST_ABI3_PYTHON
@@ -126,11 +109,7 @@ def test_colliding_abi3_artifact_comes_from_the_lowest_supported_abi(
 def test_version_specific_artifacts_are_kept_for_every_supported_version(
     merged_bundle, supported_versions
 ):
-    """The other half of the rule: these names do not collide, so none may be dropped.
-
-    Collapsing a colliding name to one copy is only safe because the names that encode an
-    interpreter tag are distinct, and every supported version needs its own.
-    """
+    """Interpreter-tagged names do not collide, so every supported version keeps its own."""
     for version in supported_versions:
         for package, module in (("xxhash", "_xxhash"), ("yaml", "_yaml")):
             artifact = merged_bundle / package / f"{module}.cpython-{_tag(version)}-darwin.so"
@@ -149,10 +128,10 @@ def test_version_specific_artifacts_are_kept_for_every_supported_version(
 
 
 def test_native_trees_are_merged_lowest_python_version_first(tmp_path, monkeypatch):
-    """The merge keeps the first tree to supply a name, so the download order picks the winner.
+    """Download order picks the collision winner, so it must sort numerically.
 
-    Ordered numerically rather than as strings: sorted as text, "3.9" lands after "3.10".
-    The versions here are chosen to expose that, not to describe what is supported.
+    Sorted as text, "3.9" lands after "3.10". The versions here are chosen to expose that,
+    not to describe what is supported.
     """
     monkeypatch.setattr(deps_bundle, "SUPPORTED_PYTHON_VERSIONS", ["3.13", "3.9", "3.11", "3.10"])
     monkeypatch.setattr(deps_bundle, "_get_package_version", lambda package, install_path: "1.2.3")
@@ -172,10 +151,9 @@ def test_native_trees_are_merged_lowest_python_version_first(tmp_path, monkeypat
 
 
 def test_get_package_version_matches_pip_list_casing(monkeypatch):
-    """`pip list` prints the distribution's own casing, not the requirement's.
+    """NATIVE_DEPENDENCIES spells `pyyaml`, but `pip list` reports it as `PyYAML`.
 
-    NATIVE_DEPENDENCIES spells `pyyaml`, but pip reports it as `PyYAML`; a case-sensitive
-    match would fail the per-version downloads for a package that is actually installed.
+    A case-sensitive match would fail the per-version downloads for an installed package.
     """
     output = b"Package  Version\n-------- -------\nPyYAML   6.0.3\nxxhash   3.6.0\n"
     monkeypatch.setattr(

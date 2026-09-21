@@ -48,6 +48,9 @@ jobs:
         run: |
           pip install --upgrade hatch "click<8.3" "virtualenv<21"
       - name: Verify native wheel naming
+        # Without this a skip would exit 0 and the gate would pass without checking anything.
+        env:
+          DEADLINE_REQUIRE_NETWORK_TESTS: "1"
         run: hatch run test-network
 
   BuildInstaller:

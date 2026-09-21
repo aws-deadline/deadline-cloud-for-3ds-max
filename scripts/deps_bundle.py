@@ -98,10 +98,30 @@ def _build_base_environment(working_directory: Path, dependencies: list[str]) ->
         "--target",
         str(base_env_path),
         "--only-binary=:all:",
+        # Without this pip takes the platform tags from whatever host the build runs on, so
+        # the bundle's contents would depend on the runner rather than on what it targets.
+        # --platform requires the --only-binary and --target above.
+        "--platform",
+        _target_platform(),
         *dependencies_for_pip,
     ]
     subprocess.run(base_env_pip_args, check=True)
     return base_env_path
+
+
+def _target_platform() -> str:
+    """The single platform tag the bundle is resolved for.
+
+    The bundle is one flat directory, so it can only hold one build of a given filename; a
+    second supported platform would need the merge to keep them apart before this could
+    return more than one.
+    """
+    if len(SUPPORTED_PLATFORMS) != 1:
+        raise Exception(
+            f"the bundle resolves wheels for exactly one platform, but SUPPORTED_PLATFORMS "
+            f"is {SUPPORTED_PLATFORMS}"
+        )
+    return SUPPORTED_PLATFORMS[0]
 
 
 def _python_version_key(version: str) -> tuple[int, ...]:
@@ -127,6 +147,8 @@ def _download_native_dependencies(working_directory: Path, base_env: Path) -> li
             str(native_dependency_path),
             "--python-version",
             version,
+            "--platform",
+            _target_platform(),
             "--only-binary=:all:",
             # These trees exist only for their compiled artifacts and overwrite the base
             # environment during the merge. Without --no-deps each would carry a transitive

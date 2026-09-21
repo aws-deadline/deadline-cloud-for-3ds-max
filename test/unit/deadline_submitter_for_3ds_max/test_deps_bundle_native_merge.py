@@ -17,15 +17,20 @@ only ones here that leave the machine (deselected by default, run with
 loads -- that needs the target interpreter.
 """
 
-import importlib.metadata
+import json
+import os
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
-from typing import NamedTuple, Optional
+from typing import NamedTuple, NoReturn
 
 import pytest
-from packaging.requirements import Requirement
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:  # pragma: no cover - exercised on Python 3.9 and 3.10 only
+    import tomli as tomllib
 
 SCRIPTS_DIR = Path(__file__).parents[3] / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
@@ -46,6 +51,12 @@ LOWEST_ABI3_PYTHON = (3, 11)
 # Resolved to tell an unreachable index apart from a missing awscrt wheel. Any pure-Python
 # wheel works: py3-none-any is compatible with every tag, so it fails only on connectivity.
 CONNECTIVITY_PROBE = "packaging"
+
+# Set by the workflow jobs that gate the installer build on these tests, where a skip would
+# pass the gate without verifying anything.
+REQUIRE_NETWORK_TESTS_VAR = "DEADLINE_REQUIRE_NETWORK_TESTS"
+
+PYPROJECT = Path(__file__).parents[3] / "pyproject.toml"
 
 
 def _version_key(version: str) -> tuple:
@@ -201,30 +212,66 @@ def _inspect_wheel(wheel: Path) -> _Wheel:
     return _Wheel(abi_tag=abi_tag, members=members)
 
 
-def _bundled_version(package: str) -> Optional[str]:
-    """The version of `package` the bundle installs, or None if it cannot be determined.
+def _unavailable(reason: str) -> NoReturn:
+    """Skip, or fail when the caller has declared the checks mandatory.
 
-    ``_download_native_dependencies`` pins each native package to the version resolved into
-    the base environment. For every entry but awscrt that is the version installed here,
-    since both resolve the same declared dependencies. awscrt is only present once the
-    console extra is requested, so its pin comes from botocore's `crt` extra -- the chain
-    the base environment resolves through -- which also makes these tests follow a botocore
-    bump rather than validating whatever awscrt happens to be newest.
+    The release and installer builds gate on these tests, and pytest exits 0 when every
+    selected test skips, so an index blip there would pass the gate without verifying
+    anything. Those jobs set REQUIRE_NETWORK_TESTS_VAR to make that outcome a failure,
+    while a developer running them locally still gets a skip.
     """
-    if package == "awscrt":
-        for requirement in importlib.metadata.requires("botocore") or []:
-            parsed = Requirement(requirement)
-            if parsed.name == "awscrt":
-                pinned = [
-                    spec.version for spec in parsed.specifier if spec.operator in ("==", "===")
-                ]
-                if pinned:
-                    return pinned[0]
-        return None
+    if os.environ.get(REQUIRE_NETWORK_TESTS_VAR):
+        pytest.fail(f"{reason} (required because {REQUIRE_NETWORK_TESTS_VAR} is set)")
+    pytest.skip(reason)
+
+
+def _declared_dependencies() -> list:
+    """The requirements `_build_base_environment` installs, rewritten the way it rewrites them."""
+    project = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
+    return [deps_bundle._add_console_extra(dep) for dep in deps_bundle._get_dependencies(project)]
+
+
+def _base_env_resolution(platform: str, working_directory: Path) -> dict:
+    """``{package: version}`` for a real resolution of what the base environment installs.
+
+    Resolving rather than reading installed metadata matters because this environment is not
+    the base environment: it also holds requirements-testing.txt, which can constrain a
+    native package to a version the bundle would not pick.
+
+    ``--python-version`` is deliberately absent. pip does not evaluate ``python_version``
+    markers against it, so pinning one makes deadline's conditional click requirement
+    unsatisfiable; the base environment likewise resolves once under the build host's
+    interpreter, so omitting it is also the faithful comparison.
+    """
+    report = working_directory / "resolution.json"
+    working_directory.mkdir(parents=True, exist_ok=True)
     try:
-        return importlib.metadata.version(package)
-    except importlib.metadata.PackageNotFoundError:
-        return None
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--dry-run",
+                "--report",
+                str(report),
+                "--target",
+                str(working_directory / "target"),
+                "--only-binary=:all:",
+                "--platform",
+                platform,
+                *_declared_dependencies(),
+            ],
+            check=True,
+            capture_output=True,
+        )
+    except (subprocess.CalledProcessError, OSError) as error:
+        _unavailable(f"cannot resolve what the base environment installs for {platform}: {error}")
+    resolved = json.loads(report.read_text(encoding="utf-8"))
+    return {
+        entry["metadata"]["name"].lower(): entry["metadata"]["version"]
+        for entry in resolved["install"]
+    }
 
 
 def _pip_download(package: str, version: str, platform: str, target: Path):
@@ -249,13 +296,8 @@ def _pip_download(package: str, version: str, platform: str, target: Path):
     )
 
 
-@pytest.fixture(scope="module")
-def native_wheels_by_package(tmp_path_factory) -> dict:
-    """``{package: {python version: _Wheel}}`` for the real win_amd64 wheels the merge sees.
-
-    Covers every entry in NATIVE_DEPENDENCIES, because the merge applies one rule to all of
-    them: the premise is not a fact about awscrt. Downloads rather than asserting a filename
-    list, so a wheel-matrix change surfaces here instead of in a silently unloadable bundle.
+def _download_wheels(package: str, pinned_version: str, platform: str, root: Path) -> dict:
+    """``{python version: _Wheel}`` for one package, at the version the bundle resolves.
 
     A download failure is only allowed to skip when the index is unreachable, which is
     established by resolving a pure-Python wheel for the same tags -- it is compatible with
@@ -263,41 +305,61 @@ def native_wheels_by_package(tmp_path_factory) -> dict:
     not, the package has stopped publishing a wheel for a version SUPPORTED_PYTHON_VERSIONS
     still lists, which would break the bundle, so it fails rather than skipping.
     """
+    wheels = {}
+    for version in sorted(deps_bundle.SUPPORTED_PYTHON_VERSIONS, key=_version_key):
+        target = root / package / _tag(version)
+        try:
+            _pip_download(f"{package}=={pinned_version}", version, platform, target)
+        except OSError as error:
+            _unavailable(f"cannot run pip: {error}")
+        except subprocess.CalledProcessError as download_error:
+            try:
+                _pip_download(CONNECTIVITY_PROBE, version, platform, target / "probe")
+            except (subprocess.CalledProcessError, OSError):
+                _unavailable(f"cannot reach the package index: {download_error}")
+            raise AssertionError(
+                f"{package} {pinned_version} publishes no {platform} wheel for Python "
+                f"{version}, which SUPPORTED_PYTHON_VERSIONS still lists; the bundle "
+                f"would carry no loadable {package} there"
+            ) from download_error
+        found = list(target.glob("*.whl"))
+        assert len(found) == 1, f"expected one {package} wheel for Python {version}, got {found}"
+        wheels[version] = _inspect_wheel(found[0])
+    return wheels
+
+
+@pytest.fixture(scope="module")
+def wheels_for(tmp_path_factory):
+    """Returns ``package -> {python version: _Wheel}``, resolved as the base environment would.
+
+    A callable rather than a mapping so an unresolvable package only affects its own
+    parametrization: building all four eagerly would let one of them skip the checks for the
+    other three. Results are cached, so the shared resolution runs once per module.
+    """
     platform = deps_bundle.SUPPORTED_PLATFORMS[0]
     download_root = tmp_path_factory.mktemp("native_wheels")
-    wheels_by_package: dict = {}
-    for package in deps_bundle.NATIVE_DEPENDENCIES:
-        pinned_version = _bundled_version(package)
-        if pinned_version is None:
-            pytest.skip(f"cannot determine which {package} version the bundle installs")
-        wheels_by_package[package] = {}
-        for version in sorted(deps_bundle.SUPPORTED_PYTHON_VERSIONS, key=_version_key):
-            target = download_root / package / _tag(version)
-            try:
-                _pip_download(f"{package}=={pinned_version}", version, platform, target)
-            except OSError as error:
-                pytest.skip(f"cannot run pip: {error}")
-            except subprocess.CalledProcessError as download_error:
-                try:
-                    _pip_download(CONNECTIVITY_PROBE, version, platform, target / "probe")
-                except (subprocess.CalledProcessError, OSError):
-                    pytest.skip(f"cannot reach the package index: {download_error}")
-                raise AssertionError(
-                    f"{package} {pinned_version} publishes no {platform} wheel for Python "
-                    f"{version}, which SUPPORTED_PYTHON_VERSIONS still lists; the bundle "
-                    f"would carry no loadable {package} there"
-                ) from download_error
-            found = list(target.glob("*.whl"))
-            assert (
-                len(found) == 1
-            ), f"expected one {package} wheel for Python {version}, got {found}"
-            wheels_by_package[package][version] = _inspect_wheel(found[0])
-    return wheels_by_package
+    resolution: dict = {}
+    cache: dict = {}
+
+    def load(package: str) -> dict:
+        if package not in cache:
+            if not resolution:
+                resolution.update(_base_env_resolution(platform, download_root / "resolve"))
+            pinned_version = resolution.get(package.lower())
+            if pinned_version is None:
+                _unavailable(
+                    f"{package} is in NATIVE_DEPENDENCIES but the base environment's "
+                    f"resolution for {platform} does not install it"
+                )
+            cache[package] = _download_wheels(package, pinned_version, platform, download_root)
+        return cache[package]
+
+    return load
 
 
 @pytest.mark.network
 @pytest.mark.parametrize("package", deps_bundle.NATIVE_DEPENDENCIES)
-def test_real_wheels_collide_only_on_abi3_names(native_wheels_by_package, package):
+def test_real_wheels_collide_only_on_abi3_names(wheels_for, package):
     """Pins the naming premise the merge rests on to the wheels actually resolved.
 
     Ascending-first-wins is only safe while every name installed by more than one version
@@ -310,7 +372,7 @@ def test_real_wheels_collide_only_on_abi3_names(native_wheels_by_package, packag
     them.
     """
     abi_tags_by_artifact: dict = {}
-    for version, wheel in native_wheels_by_package[package].items():
+    for version, wheel in wheels_for(package).items():
         for artifact in wheel.members:
             abi_tags_by_artifact.setdefault(artifact, {})[version] = wheel.abi_tag
 
@@ -328,9 +390,9 @@ def test_real_wheels_collide_only_on_abi3_names(native_wheels_by_package, packag
 
 
 @pytest.mark.network
-def test_lowest_abi3_python_matches_awscrt(native_wheels_by_package):
+def test_lowest_abi3_python_matches_awscrt(wheels_for):
     """Keeps the fixtures' abi3 floor honest against awscrt's real wheel matrix."""
-    awscrt_wheels_by_version = native_wheels_by_package["awscrt"]
+    awscrt_wheels_by_version = wheels_for("awscrt")
     abi3_versions = {
         version for version, wheel in awscrt_wheels_by_version.items() if wheel.abi_tag == "abi3"
     }

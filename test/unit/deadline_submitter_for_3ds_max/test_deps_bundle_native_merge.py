@@ -10,12 +10,15 @@ for a newer Python fails to import on an older one.
 The synthetic trees below reproduce the naming schemes, not the literal filenames: they use
 POSIX-style names for readability, while the win_amd64 bundle actually ships an untagged
 ``_awscrt.pyd`` for abi3 and ``_awscrt.cp39-win_amd64.pyd`` for the version-specific wheels.
-The merge is name-agnostic, so the scheme is what matters. These tests assert which artifact
-is selected, not that it loads -- that needs the target interpreter.
+The merge is name-agnostic, so the scheme is what matters; the tests that download real
+wheels pin the scheme itself. These tests assert which artifact is selected, not that it
+loads -- that needs the target interpreter.
 """
 
+import re
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -32,8 +35,8 @@ import deps_bundle  # noqa: E402
 ABI3_ARTIFACT = "_awscrt.abi3.so"
 
 # awscrt publishes version-specific (non-abi3) wheels below this and abi3 wheels from here up.
-# Shapes the fixtures only; deps_bundle.py never reads it, so a change to awscrt's wheel
-# matrix cannot invalidate the merge rule these tests pin.
+# Shapes the fixtures only; deps_bundle.py never reads it. test_lowest_abi3_python_matches_awscrt
+# keeps it honest against the real wheel matrix.
 LOWEST_ABI3_PYTHON = (3, 11)
 
 
@@ -163,3 +166,98 @@ def test_get_package_version_matches_pip_list_casing(monkeypatch):
     )
 
     assert deps_bundle._get_package_version("pyyaml", Path("/unused")) == "6.0.3"
+
+
+def _extension_members(wheel: Path) -> list:
+    with zipfile.ZipFile(wheel) as archive:
+        return [
+            name.rsplit("/", 1)[-1]
+            for name in archive.namelist()
+            if name.endswith((".pyd", ".so", ".dll"))
+        ]
+
+
+@pytest.fixture(scope="module")
+def awscrt_artifacts_by_version(tmp_path_factory) -> dict:
+    """Extension-module names in the real win_amd64 awscrt wheel for each supported version.
+
+    Downloads rather than asserting a filename list, so a change to awscrt's wheel matrix
+    surfaces here instead of in a silently unloadable bundle. Skips when there is no index
+    to reach; the other tests in this module do not need the network.
+    """
+    platform = deps_bundle.SUPPORTED_PLATFORMS[0]
+    download_root = tmp_path_factory.mktemp("awscrt_wheels")
+    artifacts = {}
+    for version in sorted(deps_bundle.SUPPORTED_PYTHON_VERSIONS, key=_version_key):
+        target = download_root / _tag(version)
+        try:
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "download",
+                    "awscrt",
+                    "--no-deps",
+                    "--only-binary=:all:",
+                    "--python-version",
+                    version,
+                    "--platform",
+                    platform,
+                    "--dest",
+                    str(target),
+                ],
+                check=True,
+                capture_output=True,
+            )
+        except (subprocess.CalledProcessError, OSError) as error:
+            pytest.skip(f"cannot download awscrt {platform} wheels: {error}")
+        wheels = list(target.glob("*.whl"))
+        assert len(wheels) == 1, f"expected one awscrt wheel for Python {version}, got {wheels}"
+        artifacts[version] = _extension_members(wheels[0])
+    return artifacts
+
+
+def test_real_awscrt_wheels_collide_only_on_untagged_names(awscrt_artifacts_by_version):
+    """Pins the naming premise the merge rests on to the wheels actually resolved.
+
+    Ascending-first-wins is only safe while every name that collides across versions is
+    abi3. A version-specific wheel installing an untagged name would hand 3.9's binary to
+    every later interpreter, so assert that colliding names carry no interpreter tag and
+    tagged names collide with nothing.
+    """
+    versions_by_artifact: dict = {}
+    for version, artifacts in awscrt_artifacts_by_version.items():
+        for artifact in artifacts:
+            versions_by_artifact.setdefault(artifact, set()).add(version)
+
+    for artifact, versions in versions_by_artifact.items():
+        tagged = re.search(r"\.cp\d+-", artifact) is not None
+        if len(versions) > 1:
+            assert not tagged, (
+                f"{artifact} is installed by Python {sorted(versions)} yet carries an "
+                f"interpreter tag; the merge would ship only the lowest version's copy"
+            )
+        else:
+            assert tagged or len(awscrt_artifacts_by_version) == 1, (
+                f"{artifact} carries no interpreter tag but comes from Python "
+                f"{sorted(versions)} alone; an untagged name must be abi3, shared by every "
+                f"version from the abi3 floor up"
+            )
+
+
+def test_lowest_abi3_python_matches_awscrt(awscrt_artifacts_by_version):
+    """Keeps the fixtures' abi3 floor honest against awscrt's real wheel matrix."""
+    untagged_versions = {
+        version
+        for version, artifacts in awscrt_artifacts_by_version.items()
+        for artifact in artifacts
+        if re.search(r"\.cp\d+-", artifact) is None
+    }
+    assert untagged_versions, "awscrt published no abi3 win_amd64 wheel for any version"
+
+    lowest_abi3 = min(untagged_versions, key=_version_key)
+    assert _version_key(lowest_abi3) == LOWEST_ABI3_PYTHON, (
+        f"awscrt now publishes abi3 wheels from Python {lowest_abi3}, not "
+        f"{'.'.join(str(part) for part in LOWEST_ABI3_PYTHON)}; update LOWEST_ABI3_PYTHON"
+    )

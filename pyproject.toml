@@ -128,6 +128,11 @@ addopts = [
   "--cov-report=xml:build/coverage/coverage.xml",
   "--cov-report=term-missing",
   "--numprocesses=auto",
+  # Network-marked tests check an upstream index rather than this tree, so they must be asked
+  # for (`hatch run test-network`) instead of failing the standard gate on upstream churn.
+  # A command-line -m overrides this, which is how the opt-in script selects them.
+  "-m",
+  "not network",
 ]
 testpaths = ["test"]
 looponfailroots = ["src", "test"]
@@ -136,7 +141,7 @@ filterwarnings = ["ignore::DeprecationWarning"]
 markers = [
     "submitter: mark test as test for the submitter",
     "adaptor: mark test as test for the adaptor",
-    "network: mark test as requiring a reachable package index (deselect with -m 'not network')",
+    "network: mark test as requiring a reachable package index (deselected by default)",
 ]
 
 # --- COVERAGE ---

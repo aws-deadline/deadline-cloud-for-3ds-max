@@ -17,11 +17,11 @@ selected, not that it loads -- that needs the target interpreter.
 """
 
 import importlib.metadata
-import re
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 from packaging.requirements import Requirement
@@ -175,13 +175,29 @@ def test_get_package_version_matches_pip_list_casing(monkeypatch):
     assert deps_bundle._get_package_version("pyyaml", Path("/unused")) == "6.0.3"
 
 
-def _extension_members(wheel: Path) -> list:
+class _Wheel(NamedTuple):
+    """A downloaded wheel's ABI tag and the extension modules it installs.
+
+    The ABI tag is what decides whether a shared filename is safe to collapse, and an
+    untagged member name does not imply it: a version-specific wheel could ship one too,
+    and collapsing that would hand the lowest version's binary to every later interpreter.
+    Only the wheel's own tag distinguishes them.
+    """
+
+    abi_tag: str
+    members: list
+
+
+def _inspect_wheel(wheel: Path) -> _Wheel:
+    # awscrt-0.36.0-cp311-abi3-win_amd64.whl -> abi3; awscrt-0.36.0-cp39-cp39-win_amd64.whl -> cp39
+    abi_tag = wheel.stem.split("-")[-2]
     with zipfile.ZipFile(wheel) as archive:
-        return [
+        members = [
             name.rsplit("/", 1)[-1]
             for name in archive.namelist()
             if name.endswith((".pyd", ".so", ".dll"))
         ]
+    return _Wheel(abi_tag=abi_tag, members=members)
 
 
 def _bundled_awscrt_version() -> str:
@@ -224,8 +240,8 @@ def _pip_download(package: str, version: str, platform: str, target: Path):
 
 
 @pytest.fixture(scope="module")
-def awscrt_artifacts_by_version(tmp_path_factory) -> dict:
-    """Extension-module names in the real win_amd64 awscrt wheel for each supported version.
+def awscrt_wheels_by_version(tmp_path_factory) -> dict:
+    """The real win_amd64 awscrt wheel for each supported version, with its ABI tag.
 
     Downloads rather than asserting a filename list, so a change to awscrt's wheel matrix
     surfaces here instead of in a silently unloadable bundle.
@@ -258,51 +274,46 @@ def awscrt_artifacts_by_version(tmp_path_factory) -> dict:
             ) from awscrt_error
         wheels = list(target.glob("*.whl"))
         assert len(wheels) == 1, f"expected one awscrt wheel for Python {version}, got {wheels}"
-        artifacts[version] = _extension_members(wheels[0])
+        artifacts[version] = _inspect_wheel(wheels[0])
     return artifacts
 
 
 @pytest.mark.network
-def test_real_awscrt_wheels_collide_only_on_untagged_names(awscrt_artifacts_by_version):
+def test_real_awscrt_wheels_collide_only_on_abi3_names(awscrt_wheels_by_version):
     """Pins the naming premise the merge rests on to the wheels actually resolved.
 
-    Ascending-first-wins is only safe while every name that collides across versions is
-    abi3. A version-specific wheel installing an untagged name would hand 3.9's binary to
-    every later interpreter, so assert that colliding names carry no interpreter tag and
-    tagged names collide with nothing.
+    Ascending-first-wins is only safe while every name installed by more than one version
+    comes from an abi3 wheel. A version-specific wheel sharing a name would hand the lowest
+    version's binary to every later interpreter, and that is invisible in the member name --
+    an untagged name proves nothing on Windows -- so discriminate on the wheel's ABI tag.
     """
-    versions_by_artifact: dict = {}
-    for version, artifacts in awscrt_artifacts_by_version.items():
-        for artifact in artifacts:
-            versions_by_artifact.setdefault(artifact, set()).add(version)
+    abi_tags_by_artifact: dict = {}
+    for version, wheel in awscrt_wheels_by_version.items():
+        for artifact in wheel.members:
+            abi_tags_by_artifact.setdefault(artifact, {})[version] = wheel.abi_tag
 
-    for artifact, versions in versions_by_artifact.items():
-        tagged = re.search(r"\.cp\d+-", artifact) is not None
-        if len(versions) > 1:
-            assert not tagged, (
-                f"{artifact} is installed by Python {sorted(versions)} yet carries an "
-                f"interpreter tag; the merge would ship only the lowest version's copy"
-            )
-        else:
-            assert tagged or len(awscrt_artifacts_by_version) == 1, (
-                f"{artifact} carries no interpreter tag but comes from Python "
-                f"{sorted(versions)} alone; an untagged name must be abi3, shared by every "
-                f"version from the abi3 floor up"
-            )
+    for artifact, abi_tag_by_version in abi_tags_by_artifact.items():
+        if len(abi_tag_by_version) == 1:
+            continue
+        non_abi3 = sorted(
+            version for version, abi_tag in abi_tag_by_version.items() if abi_tag != "abi3"
+        )
+        assert not non_abi3, (
+            f"{artifact} is installed by Python {sorted(abi_tag_by_version)} but Python "
+            f"{non_abi3} gets it from a version-specific wheel, so only that copy would "
+            f"ship and the later interpreters could not import it"
+        )
 
 
 @pytest.mark.network
-def test_lowest_abi3_python_matches_awscrt(awscrt_artifacts_by_version):
+def test_lowest_abi3_python_matches_awscrt(awscrt_wheels_by_version):
     """Keeps the fixtures' abi3 floor honest against awscrt's real wheel matrix."""
-    untagged_versions = {
-        version
-        for version, artifacts in awscrt_artifacts_by_version.items()
-        for artifact in artifacts
-        if re.search(r"\.cp\d+-", artifact) is None
+    abi3_versions = {
+        version for version, wheel in awscrt_wheels_by_version.items() if wheel.abi_tag == "abi3"
     }
-    assert untagged_versions, "awscrt published no abi3 win_amd64 wheel for any version"
+    assert abi3_versions, "awscrt published no abi3 win_amd64 wheel for any version"
 
-    lowest_abi3 = min(untagged_versions, key=_version_key)
+    lowest_abi3 = min(abi3_versions, key=_version_key)
     assert _version_key(lowest_abi3) == LOWEST_ABI3_PYTHON, (
         f"awscrt now publishes abi3 wheels from Python {lowest_abi3}, not "
         f"{'.'.join(str(part) for part in LOWEST_ABI3_PYTHON)}; update LOWEST_ABI3_PYTHON"

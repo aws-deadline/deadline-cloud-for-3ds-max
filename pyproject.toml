@@ -33,7 +33,9 @@ classifiers = [
 # 2026 - 3.11: https://help.autodesk.com/view/MAXDEV/2026/ENU/?guid=MAXDEV_Python_what_s_new_in_3ds_max_python_api_html
 
 dependencies = [
-    "deadline >= 0.60.3,< 0.61",
+    # 0.60.4 floor: earlier 0.60.x have no AWS_CONSOLE_LOGIN credentials source and
+    # declare no `console` extra.
+    "deadline >= 0.60.4,< 0.61",
     "openjd-adaptor-runtime == 0.9.*",
 ]
 
@@ -126,6 +128,11 @@ addopts = [
   "--cov-report=xml:build/coverage/coverage.xml",
   "--cov-report=term-missing",
   "--numprocesses=auto",
+  # Network-marked tests check an upstream index rather than this tree, so they must be asked
+  # for (`hatch run test-network`) instead of failing the standard gate on upstream churn.
+  # A command-line -m overrides this, which is how the opt-in script selects them.
+  "-m",
+  "not network",
 ]
 testpaths = ["test"]
 looponfailroots = ["src", "test"]
@@ -134,6 +141,7 @@ filterwarnings = ["ignore::DeprecationWarning"]
 markers = [
     "submitter: mark test as test for the submitter",
     "adaptor: mark test as test for the adaptor",
+    "network: mark test as requiring a reachable package index (deselected by default)",
 ]
 
 # --- COVERAGE ---

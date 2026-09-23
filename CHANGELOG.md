@@ -1,3 +1,8 @@
+## 0.4.2 (2026-09-23)
+
+### Bug Fixes
+* Fixed AWS Console sign-in credentials failing to authenticate in the submitter. The minimum `deadline` dependency is now raised to 0.60.4 (which includes the `console` extra), and the dependency bundle now ships a loadable `awscrt`. (#295)
+* V-Ray bitmap textures now have path mapping applied, so textures uploaded via job attachments correctly resolve on the worker instead of pointing at the artist's local path. (#287)
 ## 0.4.1 (2026-08-21)
 
 ### Features

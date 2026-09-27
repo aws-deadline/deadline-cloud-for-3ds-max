@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import importlib.resources
+import io
 import json
 import re
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock, PropertyMock, patch
 
@@ -12,7 +14,11 @@ import jsonschema  # type: ignore
 import pytest
 from openjd.adaptor_runtime.adaptors import SemanticVersion
 from deadline.max_adaptor.MaxAdaptor import MaxAdaptor
-from deadline.max_adaptor.MaxAdaptor.adaptor import _FIRST_MAX_ACTIONS, MaxNotRunningError
+from deadline.max_adaptor.MaxAdaptor.adaptor import (
+    _FIRST_MAX_ACTIONS,
+    MaxNotRunningError,
+    _reversed_lines,
+)
 
 # Test data that exercises ALL properties in init_data schema
 # If the schema changes (properties added/removed/modified), this test data
@@ -413,6 +419,185 @@ class TestMaxAdaptor_on_start:
         # THEN
         error_msg = " is a required property"
         assert error_msg in exc_info.value.message
+
+
+class TestMaxAdaptor_license_errors:
+    _VRAY_ERROR = (
+        "2026/09/27 18:43:09 ERR: [08784] [10832] [V-Ray] Could not obtain a license (-2): "
+        "-2: Internal error: Please contact Chaos support."
+    )
+
+    def _write_max_log(self, tmp_path: Path, *lines: str) -> None:
+        log = tmp_path / "Autodesk" / "3dsMax" / "2026 - 64bit" / "ENU" / "Network"
+        log.mkdir(parents=True)
+        (log / "Max.log").write_text("\n".join(lines))
+
+    def test_reversed_lines_reassembles_lines_split_by_a_chunk(self) -> None:
+        """Tests that a line the chunk boundary cuts in half is yielded whole."""
+        content = b"first line here\nsecond line here\nthird line here"
+
+        with io.BytesIO(content) as f:
+            read = [line.decode() for line in _reversed_lines(f, chunk_size=4)]
+
+        assert read == ["third line here", "second line here", "first line here"]
+
+    def test_finds_license_error_across_a_chunk_boundary(
+        self, init_data: dict, tmp_path: Path
+    ) -> None:
+        """Tests that a line split across the backwards reader's chunks is still found."""
+        padding = [f"2026/09/27 18:43:1{i % 10} INF: {'x' * 200}" for i in range(200)]
+        self._write_max_log(tmp_path, self._VRAY_ERROR, *padding)
+        adaptor = MaxAdaptor(init_data)
+
+        with patch.dict("os.environ", {"LOCALAPPDATA": str(tmp_path)}):
+            found = adaptor._find_license_error(datetime(2026, 9, 27, 18, 43, 0))
+
+        assert found is not None
+        assert found[0] == "V-Ray"
+        assert "Could not obtain a license" in found[1]
+
+    def test_stops_at_the_first_line_predating_the_render(
+        self, init_data: dict, tmp_path: Path
+    ) -> None:
+        """Tests that the scan stops rather than reaching an older failure further back."""
+        self._write_max_log(
+            tmp_path,
+            self._VRAY_ERROR,
+            "2026/09/27 18:44:00 INF: License Startup Success",
+        )
+        adaptor = MaxAdaptor(init_data)
+
+        with patch.dict("os.environ", {"LOCALAPPDATA": str(tmp_path)}):
+            found = adaptor._find_license_error(datetime(2026, 9, 27, 18, 43, 30))
+
+        assert found is None
+
+    def test_ignores_a_license_phrase_on_a_continuation_line(
+        self, init_data: dict, tmp_path: Path
+    ) -> None:
+        """Tests that a line without its own timestamp is not treated as a log entry."""
+        self._write_max_log(
+            tmp_path,
+            "2026/09/27 18:43:20 INF: [08784] [10832] render summary follows",
+            "        [V-Ray] Could not obtain a license (-2)",
+        )
+        adaptor = MaxAdaptor(init_data)
+
+        with patch.dict("os.environ", {"LOCALAPPDATA": str(tmp_path)}):
+            found = adaptor._find_license_error(datetime(2026, 9, 27, 18, 43, 0))
+
+        assert found is None
+
+    def test_finds_license_error_from_this_render(self, init_data: dict, tmp_path: Path) -> None:
+        """Tests that a license failure logged during the render is found."""
+        self._write_max_log(tmp_path, self._VRAY_ERROR)
+        adaptor = MaxAdaptor(init_data)
+
+        with patch.dict("os.environ", {"LOCALAPPDATA": str(tmp_path)}):
+            found = adaptor._find_license_error(datetime(2026, 9, 27, 18, 43, 0))
+
+        assert found is not None
+        assert found[0] == "V-Ray"
+
+    def test_finds_redshift_license_error(self, init_data: dict, tmp_path: Path) -> None:
+        """Tests that a Redshift license failure is found and attributed to Redshift."""
+        self._write_max_log(
+            tmp_path,
+            "2026/09/28 01:02:28 ERR: [ERROR]  Maxon licensing error: Please update your Maxon "
+            "App to at least version 2024.5 (current version ). (16)",
+        )
+        adaptor = MaxAdaptor(init_data)
+
+        with patch.dict("os.environ", {"LOCALAPPDATA": str(tmp_path)}):
+            found = adaptor._find_license_error(datetime(2026, 9, 28, 1, 2, 0))
+
+        assert found is not None
+        assert found[0] == "Redshift"
+
+    def test_ignores_license_error_from_an_earlier_render(
+        self, init_data: dict, tmp_path: Path
+    ) -> None:
+        """Tests that Max.log history is not attributed to this render."""
+        self._write_max_log(tmp_path, self._VRAY_ERROR)
+        adaptor = MaxAdaptor(init_data)
+
+        with patch.dict("os.environ", {"LOCALAPPDATA": str(tmp_path)}):
+            found = adaptor._find_license_error(datetime(2026, 9, 27, 18, 43, 10))
+
+        assert found is None
+
+    @patch("time.sleep")
+    @patch("deadline.max_adaptor.MaxAdaptor.adaptor.ActionsQueue.__len__", return_value=0)
+    @patch("deadline.max_adaptor.MaxAdaptor.adaptor.LoggingSubprocess")
+    @patch("deadline.max_adaptor.MaxAdaptor.adaptor.AdaptorServer")
+    def test_on_run_reports_a_license_failure_that_rendered(
+        self,
+        mock_server: Mock,
+        mock_logging_subprocess: Mock,
+        mock_actions_queue: Mock,
+        mock_sleep: Mock,
+        init_data: dict,
+        run_data: dict,
+        tmp_path: Path,
+    ) -> None:
+        """Tests that a license failure is reported even though the render reported success."""
+        adaptor = MaxAdaptor(init_data)
+        mock_server.return_value.server_path = "/tmp/9999"
+        MaxAdaptor._is_rendering = PropertyMock(side_effect=[None, True, False])
+        adaptor.on_start()
+
+        # The timestamp has to come from the floor on_start established, so the real scan runs.
+        assert adaptor._license_scan_since is not None
+        logged = (adaptor._license_scan_since + timedelta(seconds=1)).strftime("%Y/%m/%d %H:%M:%S")
+        self._write_max_log(
+            tmp_path,
+            f"{logged} ERR: [08784] [10832] [V-Ray] Could not obtain a license (-2): "
+            "-2: Internal error: Please contact Chaos support.",
+        )
+
+        with patch.dict("os.environ", {"LOCALAPPDATA": str(tmp_path)}):
+            with pytest.raises(RuntimeError) as exc_info:
+                adaptor.on_run(run_data)
+
+        assert "V-Ray failed to acquire a license." in str(exc_info.value)
+
+    def test_ignores_license_error_from_the_same_second(
+        self, init_data: dict, tmp_path: Path
+    ) -> None:
+        """Tests that a line from the render start second belongs to the earlier render."""
+        self._write_max_log(tmp_path, self._VRAY_ERROR)
+        adaptor = MaxAdaptor(init_data)
+
+        with patch.dict("os.environ", {"LOCALAPPDATA": str(tmp_path)}):
+            found = adaptor._find_license_error(datetime(2026, 9, 27, 18, 43, 9))
+
+        assert found is None
+
+    @patch("time.sleep")
+    @patch("deadline.max_adaptor.MaxAdaptor.adaptor.ActionsQueue.__len__", return_value=0)
+    @patch("deadline.max_adaptor.MaxAdaptor.adaptor.LoggingSubprocess")
+    @patch("deadline.max_adaptor.MaxAdaptor.adaptor.AdaptorServer")
+    def test_scan_floor_predates_renderer_assignment(
+        self,
+        mock_server: Mock,
+        mock_logging_subprocess: Mock,
+        mock_actions_queue: Mock,
+        mock_sleep: Mock,
+        init_data: dict,
+        run_data: dict,
+    ) -> None:
+        """Tests that the scan starts from initialization, when the renderer is assigned."""
+        adaptor = MaxAdaptor(init_data)
+        mock_server.return_value.server_path = "/tmp/9999"
+        MaxAdaptor._is_rendering = PropertyMock(side_effect=[None, True, False])
+        adaptor.on_start()
+        floor = adaptor._license_scan_since
+
+        with patch.object(MaxAdaptor, "_find_license_error", return_value=None) as mock_find:
+            adaptor.on_run(run_data)
+
+        assert floor is not None
+        mock_find.assert_called_once_with(floor)
 
 
 class TestMaxAdaptor_on_run:

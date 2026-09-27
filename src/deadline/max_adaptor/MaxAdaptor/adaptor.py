@@ -6,13 +6,15 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
 from __future__ import annotations
 
+import glob
 import logging
 import os
 import re
 import sys
 import threading
 import time
-from typing import Callable
+from datetime import datetime
+from typing import BinaryIO, Callable, Iterator
 
 from openjd.adaptor_runtime.adaptors import Adaptor, AdaptorDataValidators, SemanticVersion
 from openjd.adaptor_runtime.adaptors.configuration import AdaptorConfiguration
@@ -29,6 +31,51 @@ _logger = logging.getLogger(__name__)
 
 # 3ds Max's MaxScript log buffer truncates lines beyond this limit.
 _MAX_LOG_LINE_LENGTH = 512
+
+_MAX_LOG_TIMESTAMP_LENGTH = 19
+_MAX_LOG_TIMESTAMP_FORMAT = "%Y/%m/%d %H:%M:%S"
+
+# A log entry can span several lines. This guard confirms a line starts a new entry, so its
+# first 19 characters are a timestamp rather than arbitrary text from the middle of one.
+_MAX_LOG_TIMESTAMP_REGEX = re.compile(r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}")
+
+_LICENSE_GUIDANCE = (
+    "If you are using bring your own license (BYOL), check your license configuration "
+    "and availability.\n"
+    "If you are using usage-based licensing (UBL) from AWS Deadline Cloud and need a higher "
+    "'License sessions per license endpoint' limit, contact the AWS Deadline Cloud team."
+)
+
+# Neither renderer reports a failed checkout on stdout, only in Max.log. Anchor on the phrase:
+# V-Ray's code varies with the cause, and Redshift's advice to update the Maxon App is emitted
+# even when the real cause is an unreachable license server.
+#
+# Arnold is deliberately absent: it renders with watermarks rather than failing, which is its
+# documented behaviour and not ours to override.
+_MAX_LOG_LICENSE_ERROR_REGEXES = {
+    "V-Ray": re.compile(r"\[V-Ray\] Could not obtain a license", re.IGNORECASE),
+    "Redshift": re.compile(r"Maxon licensing error", re.IGNORECASE),
+}
+
+
+def _reversed_lines(file: BinaryIO, chunk_size: int = 8192) -> Iterator[bytes]:
+    """Yields the lines of a binary file from the end backwards."""
+    file.seek(0, os.SEEK_END)
+    position = file.tell()
+    remainder = b""
+
+    while position > 0:
+        step = min(chunk_size, position)
+        position -= step
+        file.seek(position)
+        # The first element is the tail of a line whose start is in the next chunk back.
+        lines = (file.read(step) + remainder).split(b"\n")
+        remainder = lines[0]
+        for line in reversed(lines[1:]):
+            yield line
+
+    if remainder:
+        yield remainder
 
 
 class MaxNotRunningError(Exception):
@@ -103,6 +150,7 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
 
     # If a thread raises an exception we will update this to raise in the main thread
     _exc_info: Exception | None = None
+    _license_scan_since: datetime | None = None
     _performing_cleanup = False
 
     @property
@@ -362,6 +410,49 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
                 "Render element modification is disabled, skipping render element configuration"
             )
 
+    def _max_log_paths(self) -> list[str]:
+        """Returns the 3ds Max network log files for this user."""
+        local_appdata = os.environ.get("LOCALAPPDATA", "")
+        if not local_appdata:
+            _logger.warning("LOCALAPPDATA not set, cannot locate Max.log")
+            return []
+
+        pattern = os.path.join(
+            local_appdata, "Autodesk", "3dsMax", "*", "ENU", "Network", "Max.log"
+        )
+        log_files = glob.glob(pattern)
+        if not log_files:
+            _logger.info("No Max.log files found at %s", pattern)
+        return log_files
+
+    def _find_license_error(self, since: datetime) -> tuple[str, str] | None:
+        """
+        Returns the product and log line for a license failure logged after ``since``.
+
+        Max.log keeps history and is shared by every Max process running as this user, so only
+        lines newer than ``since`` are this render's. It is read backwards because a failure is
+        logged near the end, and the scan stops at the first line predating this render instead
+        of walking the file, whose size is set by a user preference.
+        """
+        since_stamp = since.strftime(_MAX_LOG_TIMESTAMP_FORMAT)
+
+        for log_file in self._max_log_paths():
+            try:
+                with open(log_file, "rb") as f:
+                    for raw in _reversed_lines(f):
+                        line = raw.decode("utf-8", errors="replace")
+                        if not _MAX_LOG_TIMESTAMP_REGEX.match(line):
+                            continue
+                        # Lexicographic order matches chronological order for this format.
+                        if line[:_MAX_LOG_TIMESTAMP_LENGTH] <= since_stamp:
+                            break
+                        for product, regex in _MAX_LOG_LICENSE_ERROR_REGEXES.items():
+                            if regex.search(line):
+                                return product, line.strip()
+            except OSError as e:
+                _logger.warning("Failed to read Max.log at %s: %s", log_file, e)
+        return None
+
     def _dump_max_log_on_error(self) -> None:
         """
         Reads and logs the full 3ds Max network log file.
@@ -374,20 +465,8 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
         Lines longer than _MAX_LOG_LINE_LENGTH are split into chunks to avoid any
         downstream truncation in log pipelines.
         """
-        import glob
-
-        local_appdata = os.environ.get("LOCALAPPDATA", "")
-        if not local_appdata:
-            _logger.warning("LOCALAPPDATA not set, cannot locate Max.log")
-            return
-
-        pattern = os.path.join(
-            local_appdata, "Autodesk", "3dsMax", "*", "ENU", "Network", "Max.log"
-        )
-        log_files = glob.glob(pattern)
-
+        log_files = self._max_log_paths()
         if not log_files:
-            _logger.info("No Max.log files found at %s", pattern)
             return
 
         for log_file in log_files:
@@ -425,6 +504,11 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
         schema_dir = os.path.join(cur_dir, "schemas")
         validators = AdaptorDataValidators.for_adaptor(schema_dir)
         validators.init_data.validate(self.init_data)
+
+        # The renderer is assigned during initialization and V-Ray checks out its license
+        # then, so the scan floor has to predate that. Max.log timestamps are second
+        # resolution, and a line from this second belongs to an earlier render.
+        self._license_scan_since = datetime.now().replace(microsecond=0)
 
         self.update_status(progress=0, status_message="Initializing Max")
         self._start_max_server_thread()
@@ -481,6 +565,20 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
             self._dump_max_log_on_error()
             raise RuntimeError(
                 f"Max exited early and did not render successfully, please check render logs. Exit code {exit_code}"
+            )
+
+        # A renderer license failure reports a completed render, so it has to be checked
+        # even when the render appears to have succeeded.
+        since = self._license_scan_since or datetime.now().replace(microsecond=0)
+        license_error = self._find_license_error(since)
+        if license_error is not None:
+            product, line = license_error
+            # The matched line names the product but rarely the cause. The surrounding log
+            # separates an unreachable server from exhausted seats, which decides which half
+            # of the guidance applies.
+            self._dump_max_log_on_error()
+            raise RuntimeError(
+                f"{product} failed to acquire a license.\n{_LICENSE_GUIDANCE}\nError: {line}"
             )
 
     def on_stop(self) -> None:

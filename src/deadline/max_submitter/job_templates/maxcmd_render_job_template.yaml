@@ -1,0 +1,108 @@
+specificationVersion: 'jobtemplate-2023-09'
+name: 3ds Max Command-Line Render
+description: |
+  Renders a 3ds Max scene with 3dsmaxcmd.exe (the 3ds Max command-line render
+  server). Unlike the adaptor/3dsmaxbatch.exe flow, 3dsmaxcmd.exe registers as a
+  render server, which is required for network-licensed plugins such as Pencil+
+  (NTR) to render without a watermark.
+
+  Path mapping is applied to the loaded scene's asset references before each
+  render via a pre-render script, so absolute asset paths baked into the scene
+  resolve to their session locations on the worker.
+parameterDefinitions:
+- name: MaxCmdExecutable
+  type: STRING
+  default: 3dsmaxcmd
+  description: >
+    The 3dsmaxcmd.exe executable. Defaults to '3dsmaxcmd' (resolved on PATH).
+    Set to a full path if 3dsmaxcmd.exe is not on the worker's PATH.
+- name: SceneFile
+  type: PATH
+  objectType: FILE
+  dataFlow: IN
+  userInterface:
+    control: CHOOSE_INPUT_FILE
+    label: Max Scene File
+    groupLabel: 3ds Max Command-Line Render
+    fileFilters:
+    - label: Max Scene Files
+      patterns:
+      - '*.max'
+    - label: All Files
+      patterns:
+      - '*'
+  description: The 3ds Max scene file to render.
+- name: Frames
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Frames
+    groupLabel: 3ds Max Command-Line Render
+  default: '0-10'
+  description: Frame range to render. E.g. 1-100 or 1,5,10-20.
+- name: OutputDirectory
+  type: PATH
+  objectType: DIRECTORY
+  dataFlow: OUT
+  userInterface:
+    control: CHOOSE_DIRECTORY
+    label: Output Directory
+    groupLabel: 3ds Max Command-Line Render
+  description: Directory where rendered images are written.
+- name: OutputFileName
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Output File Name
+    groupLabel: 3ds Max Command-Line Render
+  default: ''
+  description: >
+    Output file name with extension, e.g. render.exr. Leave blank to use the
+    output path baked into the scene's Render Setup.
+- name: Camera
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Camera
+    groupLabel: 3ds Max Command-Line Render
+  default: ''
+  description: >
+    Named camera to render. Leave blank to use the scene's active view.
+steps:
+- name: Render
+  parameterSpace:
+    taskParameterDefinitions:
+    - name: Frame
+      type: INT
+      range: '{{Param.Frames}}'
+  script:
+    embeddedFiles:
+    - name: RenderScript
+      filename: maxcmd_render.py
+      type: TEXT
+      data: INJECT_MAXCMD_RENDER_SCRIPT
+    actions:
+      onRun:
+        command: python
+        # Parameters are passed as argv rather than interpolated into the
+        # script source: OpenJD substitutes each value as a discrete argument,
+        # so a Windows path ending in a backslash or containing a quote can't
+        # break the Python string literals / parse of the task script.
+        args:
+        - '{{Task.File.RenderScript}}'
+        - --executable
+        - '{{Param.MaxCmdExecutable}}'
+        - --scene-file
+        - '{{Param.SceneFile}}'
+        - --output-dir
+        - '{{Param.OutputDirectory}}'
+        - --output-file-name
+        - '{{Param.OutputFileName}}'
+        - --camera
+        - '{{Param.Camera}}'
+        - --frame
+        - '{{Task.Param.Frame}}'
+        - --rules-file
+        - '{{Session.PathMappingRulesFile}}'
+        cancelation:
+          mode: NOTIFY_THEN_TERMINATE

@@ -1,0 +1,624 @@
+specificationVersion: jobtemplate-2023-09
+name: BatchRenderTest2024
+description: null
+parameterDefinitions:
+- name: MaxSceneFile
+  type: PATH
+  objectType: FILE
+  dataFlow: IN
+  userInterface:
+    control: CHOOSE_INPUT_FILE
+    label: Max Scene File
+    groupLabel: 3dsMax Settings
+    fileFilters:
+    - label: Max Scene Files
+      patterns:
+      - '*.max'
+    - label: All Files
+      patterns:
+      - '*'
+  description: The Max scene file to render.
+- name: StrictErrorChecking
+  type: STRING
+  userInterface:
+    control: CHECK_BOX
+    label: Strict Error Checking
+    groupLabel: 3dsMax Settings
+  description: Fail when errors occur.
+  default: 'false'
+  allowedValues:
+  - 'true'
+  - 'false'
+- name: B1_cam_only_Camera
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Camera
+    groupLabel: cam_only
+  description: The camera to render from.
+  default: ''
+- name: B1_cam_only_Frames
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Frames
+    groupLabel: cam_only
+  description: The frames to render. E.g. 1-3,8,11-15
+  minLength: 1
+- name: B1_cam_only_ImageHeight
+  type: INT
+  userInterface:
+    control: SPIN_BOX
+    label: Image Height
+    groupLabel: cam_only
+  minValue: 1
+  description: The image height of the output.
+- name: B1_cam_only_ImageWidth
+  type: INT
+  userInterface:
+    control: SPIN_BOX
+    label: Image Width
+    groupLabel: cam_only
+  minValue: 1
+  description: The image width of the output.
+- name: B1_cam_only_OutputFileFormat
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Output File Format
+    groupLabel: cam_only
+  description: The output file extension.
+- name: B1_cam_only_OutputFileName
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Output File Name
+    groupLabel: cam_only
+  description: The output file name.
+- name: B1_cam_only_OutputFilePath
+  type: PATH
+  objectType: DIRECTORY
+  dataFlow: OUT
+  userInterface:
+    control: CHOOSE_DIRECTORY
+    label: Output File Path
+    groupLabel: cam_only
+  description: The render output path.
+- name: B1_cam_only_PixelAspect
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Pixel Aspect
+    groupLabel: cam_only
+  description: Pixel aspect ratio override.
+  default: ''
+- name: B1_cam_only_PresetFile
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Preset File
+    groupLabel: cam_only
+  description: Render preset file (.rps) to load before rendering.
+  default: ''
+- name: B1_cam_only_SceneState
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Scene State
+    groupLabel: cam_only
+  description: Scene state to restore before rendering.
+  default: ''
+- name: B2_with_state_Camera
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Camera
+    groupLabel: with_state
+  description: The camera to render from.
+  default: ''
+- name: B2_with_state_Frames
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Frames
+    groupLabel: with_state
+  description: The frames to render. E.g. 1-3,8,11-15
+  minLength: 1
+- name: B2_with_state_ImageHeight
+  type: INT
+  userInterface:
+    control: SPIN_BOX
+    label: Image Height
+    groupLabel: with_state
+  minValue: 1
+  description: The image height of the output.
+- name: B2_with_state_ImageWidth
+  type: INT
+  userInterface:
+    control: SPIN_BOX
+    label: Image Width
+    groupLabel: with_state
+  minValue: 1
+  description: The image width of the output.
+- name: B2_with_state_OutputFileFormat
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Output File Format
+    groupLabel: with_state
+  description: The output file extension.
+- name: B2_with_state_OutputFileName
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Output File Name
+    groupLabel: with_state
+  description: The output file name.
+- name: B2_with_state_OutputFilePath
+  type: PATH
+  objectType: DIRECTORY
+  dataFlow: OUT
+  userInterface:
+    control: CHOOSE_DIRECTORY
+    label: Output File Path
+    groupLabel: with_state
+  description: The render output path.
+- name: B2_with_state_PixelAspect
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Pixel Aspect
+    groupLabel: with_state
+  description: Pixel aspect ratio override.
+  default: ''
+- name: B2_with_state_PresetFile
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Preset File
+    groupLabel: with_state
+  description: Render preset file (.rps) to load before rendering.
+  default: ''
+- name: B2_with_state_SceneState
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Scene State
+    groupLabel: with_state
+  description: Scene state to restore before rendering.
+  default: ''
+- name: B3_with_preset_Camera
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Camera
+    groupLabel: with_preset
+  description: The camera to render from.
+  default: ''
+- name: B3_with_preset_Frames
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Frames
+    groupLabel: with_preset
+  description: The frames to render. E.g. 1-3,8,11-15
+  minLength: 1
+- name: B3_with_preset_ImageHeight
+  type: INT
+  userInterface:
+    control: SPIN_BOX
+    label: Image Height
+    groupLabel: with_preset
+  minValue: 1
+  description: The image height of the output.
+- name: B3_with_preset_ImageWidth
+  type: INT
+  userInterface:
+    control: SPIN_BOX
+    label: Image Width
+    groupLabel: with_preset
+  minValue: 1
+  description: The image width of the output.
+- name: B3_with_preset_OutputFileFormat
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Output File Format
+    groupLabel: with_preset
+  description: The output file extension.
+- name: B3_with_preset_OutputFileName
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Output File Name
+    groupLabel: with_preset
+  description: The output file name.
+- name: B3_with_preset_OutputFilePath
+  type: PATH
+  objectType: DIRECTORY
+  dataFlow: OUT
+  userInterface:
+    control: CHOOSE_DIRECTORY
+    label: Output File Path
+    groupLabel: with_preset
+  description: The render output path.
+- name: B3_with_preset_PixelAspect
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Pixel Aspect
+    groupLabel: with_preset
+  description: Pixel aspect ratio override.
+  default: ''
+- name: B3_with_preset_PresetFile
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Preset File
+    groupLabel: with_preset
+  description: Render preset file (.rps) to load before rendering.
+  default: ''
+- name: B3_with_preset_SceneState
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Scene State
+    groupLabel: with_preset
+  description: Scene state to restore before rendering.
+  default: ''
+- name: B4_with_override_Camera
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Camera
+    groupLabel: with_override
+  description: The camera to render from.
+  default: ''
+- name: B4_with_override_Frames
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Frames
+    groupLabel: with_override
+  description: The frames to render. E.g. 1-3,8,11-15
+  minLength: 1
+- name: B4_with_override_ImageHeight
+  type: INT
+  userInterface:
+    control: SPIN_BOX
+    label: Image Height
+    groupLabel: with_override
+  minValue: 1
+  description: The image height of the output.
+- name: B4_with_override_ImageWidth
+  type: INT
+  userInterface:
+    control: SPIN_BOX
+    label: Image Width
+    groupLabel: with_override
+  minValue: 1
+  description: The image width of the output.
+- name: B4_with_override_OutputFileFormat
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Output File Format
+    groupLabel: with_override
+  description: The output file extension.
+- name: B4_with_override_OutputFileName
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Output File Name
+    groupLabel: with_override
+  description: The output file name.
+- name: B4_with_override_OutputFilePath
+  type: PATH
+  objectType: DIRECTORY
+  dataFlow: OUT
+  userInterface:
+    control: CHOOSE_DIRECTORY
+    label: Output File Path
+    groupLabel: with_override
+  description: The render output path.
+- name: B4_with_override_PixelAspect
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Pixel Aspect
+    groupLabel: with_override
+  description: Pixel aspect ratio override.
+  default: ''
+- name: B4_with_override_PresetFile
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Preset File
+    groupLabel: with_override
+  description: Render preset file (.rps) to load before rendering.
+  default: ''
+- name: B4_with_override_SceneState
+  type: STRING
+  userInterface:
+    control: LINE_EDIT
+    label: Scene State
+    groupLabel: with_override
+  description: Scene state to restore before rendering.
+  default: ''
+steps:
+- name: cam_only
+  parameterSpace:
+    taskParameterDefinitions:
+    - name: Frame
+      type: INT
+      range: '{{Param.B1_cam_only_Frames}}'
+  stepEnvironments:
+  - name: 3ds Max
+    description: Runs 3ds Max in the background.
+    script:
+      embeddedFiles:
+      - name: initData
+        filename: init-data.yaml
+        type: TEXT
+        data: |
+          scene_file: {{Param.MaxSceneFile}}
+          renderer: Default_Scanline_Renderer
+          camera: '{{Param.B1_cam_only_Camera}}'
+          output_file_path: '{{Param.B1_cam_only_OutputFilePath}}'
+          output_file_name: '{{Param.B1_cam_only_OutputFileName}}'
+          output_file_format: '{{Param.B1_cam_only_OutputFileFormat}}'
+          image_width: '{{Param.B1_cam_only_ImageWidth}}'
+          image_height: '{{Param.B1_cam_only_ImageHeight}}'
+      - name: runStart
+        filename: start.bat
+        type: TEXT
+        data: |
+          3dsmax-openjd daemon start --connection-file {{Session.WorkingDirectory}}/connection.json --init-data file://{{Env.File.initData}} --path-mapping-rules file://{{Session.PathMappingRulesFile}}
+      - name: runStop
+        filename: stop.bat
+        type: TEXT
+        data: |
+          3dsmax-openjd daemon stop --connection-file {{Session.WorkingDirectory}}/connection.json
+      actions:
+        onEnter:
+          command: powershell
+          args:
+          - '{{Env.File.runStart}}'
+          cancelation:
+            mode: NOTIFY_THEN_TERMINATE
+          timeout: 87000
+        onExit:
+          command: powershell
+          args:
+          - '{{Env.File.runStop}}'
+          cancelation:
+            mode: NOTIFY_THEN_TERMINATE
+          timeout: 600
+  script:
+    actions:
+      onRun:
+        command: powershell
+        args:
+        - '{{Task.File.runRender}}'
+        cancelation:
+          mode: NOTIFY_THEN_TERMINATE
+    embeddedFiles:
+    - name: runData
+      filename: run-data.yaml
+      type: TEXT
+      data: |
+        frame: {{Task.Param.Frame}}
+    - name: runRender
+      filename: render.bat
+      type: TEXT
+      runnable: true
+      data: |
+        3dsmax-openjd daemon run --connection-file {{ Session.WorkingDirectory }}/connection.json --run-data file://{{Task.File.runData}}
+- name: with_state
+  parameterSpace:
+    taskParameterDefinitions:
+    - name: Frame
+      type: INT
+      range: '{{Param.B2_with_state_Frames}}'
+  stepEnvironments:
+  - name: 3ds Max
+    description: Runs 3ds Max in the background.
+    script:
+      embeddedFiles:
+      - name: initData
+        filename: init-data.yaml
+        type: TEXT
+        data: |
+          scene_file: {{Param.MaxSceneFile}}
+          renderer: Default_Scanline_Renderer
+          camera: '{{Param.B2_with_state_Camera}}'
+          scene_state: '{{Param.B2_with_state_SceneState}}'
+          output_file_path: '{{Param.B2_with_state_OutputFilePath}}'
+          output_file_name: '{{Param.B2_with_state_OutputFileName}}'
+          output_file_format: '{{Param.B2_with_state_OutputFileFormat}}'
+          image_width: '{{Param.B2_with_state_ImageWidth}}'
+          image_height: '{{Param.B2_with_state_ImageHeight}}'
+      - name: runStart
+        filename: start.bat
+        type: TEXT
+        data: |
+          3dsmax-openjd daemon start --connection-file {{Session.WorkingDirectory}}/connection.json --init-data file://{{Env.File.initData}} --path-mapping-rules file://{{Session.PathMappingRulesFile}}
+      - name: runStop
+        filename: stop.bat
+        type: TEXT
+        data: |
+          3dsmax-openjd daemon stop --connection-file {{Session.WorkingDirectory}}/connection.json
+      actions:
+        onEnter:
+          command: powershell
+          args:
+          - '{{Env.File.runStart}}'
+          cancelation:
+            mode: NOTIFY_THEN_TERMINATE
+          timeout: 87000
+        onExit:
+          command: powershell
+          args:
+          - '{{Env.File.runStop}}'
+          cancelation:
+            mode: NOTIFY_THEN_TERMINATE
+          timeout: 600
+  script:
+    actions:
+      onRun:
+        command: powershell
+        args:
+        - '{{Task.File.runRender}}'
+        cancelation:
+          mode: NOTIFY_THEN_TERMINATE
+    embeddedFiles:
+    - name: runData
+      filename: run-data.yaml
+      type: TEXT
+      data: |
+        frame: {{Task.Param.Frame}}
+    - name: runRender
+      filename: render.bat
+      type: TEXT
+      runnable: true
+      data: |
+        3dsmax-openjd daemon run --connection-file {{ Session.WorkingDirectory }}/connection.json --run-data file://{{Task.File.runData}}
+- name: with_preset
+  parameterSpace:
+    taskParameterDefinitions:
+    - name: Frame
+      type: INT
+      range: '{{Param.B3_with_preset_Frames}}'
+  stepEnvironments:
+  - name: 3ds Max
+    description: Runs 3ds Max in the background.
+    script:
+      embeddedFiles:
+      - name: initData
+        filename: init-data.yaml
+        type: TEXT
+        data: |
+          scene_file: {{Param.MaxSceneFile}}
+          renderer: Default_Scanline_Renderer
+          camera: '{{Param.B3_with_preset_Camera}}'
+          preset_file: '{{Param.B3_with_preset_PresetFile}}'
+          output_file_path: '{{Param.B3_with_preset_OutputFilePath}}'
+          output_file_name: '{{Param.B3_with_preset_OutputFileName}}'
+          output_file_format: '{{Param.B3_with_preset_OutputFileFormat}}'
+          image_width: '{{Param.B3_with_preset_ImageWidth}}'
+          image_height: '{{Param.B3_with_preset_ImageHeight}}'
+      - name: runStart
+        filename: start.bat
+        type: TEXT
+        data: |
+          3dsmax-openjd daemon start --connection-file {{Session.WorkingDirectory}}/connection.json --init-data file://{{Env.File.initData}} --path-mapping-rules file://{{Session.PathMappingRulesFile}}
+      - name: runStop
+        filename: stop.bat
+        type: TEXT
+        data: |
+          3dsmax-openjd daemon stop --connection-file {{Session.WorkingDirectory}}/connection.json
+      actions:
+        onEnter:
+          command: powershell
+          args:
+          - '{{Env.File.runStart}}'
+          cancelation:
+            mode: NOTIFY_THEN_TERMINATE
+          timeout: 87000
+        onExit:
+          command: powershell
+          args:
+          - '{{Env.File.runStop}}'
+          cancelation:
+            mode: NOTIFY_THEN_TERMINATE
+          timeout: 600
+  script:
+    actions:
+      onRun:
+        command: powershell
+        args:
+        - '{{Task.File.runRender}}'
+        cancelation:
+          mode: NOTIFY_THEN_TERMINATE
+    embeddedFiles:
+    - name: runData
+      filename: run-data.yaml
+      type: TEXT
+      data: |
+        frame: {{Task.Param.Frame}}
+    - name: runRender
+      filename: render.bat
+      type: TEXT
+      runnable: true
+      data: |
+        3dsmax-openjd daemon run --connection-file {{ Session.WorkingDirectory }}/connection.json --run-data file://{{Task.File.runData}}
+- name: with_override
+  parameterSpace:
+    taskParameterDefinitions:
+    - name: Frame
+      type: INT
+      range: '{{Param.B4_with_override_Frames}}'
+  stepEnvironments:
+  - name: 3ds Max
+    description: Runs 3ds Max in the background.
+    script:
+      embeddedFiles:
+      - name: initData
+        filename: init-data.yaml
+        type: TEXT
+        data: |
+          scene_file: {{Param.MaxSceneFile}}
+          renderer: Default_Scanline_Renderer
+          camera: '{{Param.B4_with_override_Camera}}'
+          scene_state: '{{Param.B4_with_override_SceneState}}'
+          pixel_aspect: '{{Param.B4_with_override_PixelAspect}}'
+          output_file_path: '{{Param.B4_with_override_OutputFilePath}}'
+          output_file_name: '{{Param.B4_with_override_OutputFileName}}'
+          output_file_format: '{{Param.B4_with_override_OutputFileFormat}}'
+          image_width: '{{Param.B4_with_override_ImageWidth}}'
+          image_height: '{{Param.B4_with_override_ImageHeight}}'
+      - name: runStart
+        filename: start.bat
+        type: TEXT
+        data: |
+          3dsmax-openjd daemon start --connection-file {{Session.WorkingDirectory}}/connection.json --init-data file://{{Env.File.initData}} --path-mapping-rules file://{{Session.PathMappingRulesFile}}
+      - name: runStop
+        filename: stop.bat
+        type: TEXT
+        data: |
+          3dsmax-openjd daemon stop --connection-file {{Session.WorkingDirectory}}/connection.json
+      actions:
+        onEnter:
+          command: powershell
+          args:
+          - '{{Env.File.runStart}}'
+          cancelation:
+            mode: NOTIFY_THEN_TERMINATE
+          timeout: 87000
+        onExit:
+          command: powershell
+          args:
+          - '{{Env.File.runStop}}'
+          cancelation:
+            mode: NOTIFY_THEN_TERMINATE
+          timeout: 600
+  script:
+    actions:
+      onRun:
+        command: powershell
+        args:
+        - '{{Task.File.runRender}}'
+        cancelation:
+          mode: NOTIFY_THEN_TERMINATE
+    embeddedFiles:
+    - name: runData
+      filename: run-data.yaml
+      type: TEXT
+      data: |
+        frame: {{Task.Param.Frame}}
+    - name: runRender
+      filename: render.bat
+      type: TEXT
+      runnable: true
+      data: |
+        3dsmax-openjd daemon run --connection-file {{ Session.WorkingDirectory }}/connection.json --run-data file://{{Task.File.runData}}

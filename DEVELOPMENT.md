@@ -64,9 +64,9 @@ WARNING: This workflow installs additional Python packages into your 3ds Max's p
 1. The point of entry for the submitter is the `run_ui.py` file under the `max_submitter` folder. Thus, this file needs to be discoverable by 3dsMax, and `max_submitter` needs to be a discoverable package by python. In Powershell run:
     1. `$env:ADSK_3DSMAX_SCRIPTS_ADDON_DIR += ";<LOCAL_REPO_PATH>\src\deadline\max_submitter"`.
     1. `$env:PYTHONPATH += ";<LOCAL_REPO_PATH>\src\;<LOCAL_REPO_PATH>\src\deadline\max_submitter"`.
-1. Install `deadline` package to `~\DeadlineCloudSubmitter\Submitters\3dsMax\scripts`, using a python version that is compatible with the version of 3dsMax that you are using. In Powershell run:
+1. Install `deadline` package to `~\DeadlineCloudSubmitter\Submitters\3dsMax\scripts`, using a python version that is compatible with the version of 3dsMax that you are using. The `[console]` extra is required here: this installs into the submitter's scripts directory rather than through `scripts/deps_bundle.py`'s dependency bundle, so without it AWS Console sign-in silently would not work. In Powershell run:
     1. `& "C:\Program Files\Autodesk\<version>\Python\python.exe" -m ensurepip`
-    1. `& "C:\Program Files\Autodesk\<version>\Python\python.exe" -m pip install deadline -t $env:HOMEPATH\DeadlineCloudSubmitter\Submitters\3dsMax\scripts` 
+    1. `& "C:\Program Files\Autodesk\<version>\Python\python.exe" -m pip install "deadline[console]" -t $env:HOMEPATH\DeadlineCloudSubmitter\Submitters\3dsMax\scripts`
 1. Run `3dsmax` from the same command-line window where the environment variables were set. To do so, `3dsmax` needs to be part of the PATH. In Powershell run `$env:PATH += ";C:\Program Files\Autodesk\<version>"`.
 1. To supply AWS account credentials for the submitter to use when submitting a job you can either:
     1. [Install and set up the Deadline Cloud Monitor][deadline-cloud-monitor-setup], and then log in to the monitor. Logging in
@@ -81,13 +81,51 @@ After installation a "Deadline Cloud" menu is available the menu bar. Run "Submi
 
 ### Application Interface Adaptor Development Workflow
 
-You can work on the adaptor alongside your submitter development workflow using a Deadline Cloud
-farm that uses a service-managed fleet. You'll need to perform the following steps to substitute
-your build of the adaptor for the one in the service.
+#### Running the Adaptor on a Farm
 
-1. Use the development location from the Submitter Development Workflow. Make sure you're running 3ds Max with `set DEADLINE_ENABLE_DEVELOPER_OPTIONS=true` enabled.
-2. Build wheels for `openjd_adaptor_runtime`, `deadline` and `deadline_cloud_for_3ds_max`, place them in a "wheels" folder in `deadline-cloud-for-3ds-max`. A script is provided to do this, just execute from `deadline-cloud-for-3ds-max`:
+If you have made modifications to the adaptor and wish to test your modifications on a live Deadline Cloud Farm
+with real jobs, then we recommend using a [Service Managed Fleet](https://docs.aws.amazon.com/deadline-cloud/latest/userguide/smf-manage.html)
+for your testing. We recommend performing this style of test if you have made any modifications that might interact with Deadline Cloud's
+job attachments feature, or that could interact with path mapping in any way. We have implemented a developer feature in the 3ds Max submitter
+plug-in that submits the Python wheel files for your modified adaptor along with your job submission and uses the modified adaptor to
+run the submitted job.
 
+You'll need to perform the following steps to substitute your build of the adaptor for the one in the service.
+
+1. Using the submitter development workflow (See [Submitter Development Workflow](#submitter-development-workflow)), make sure that you are
+   running 3ds Max with `DEADLINE_ENABLE_DEVELOPER_OPTIONS=true` enabled.
+   
+   **Windows (PowerShell):**
+   ```powershell
+   $env:DEADLINE_ENABLE_DEVELOPER_OPTIONS = "true"
+   & $env:3DSMAX_EXECUTABLE
+   ```
+   
+   **Windows (CMD):**
+   ```cmd
+   set DEADLINE_ENABLE_DEVELOPER_OPTIONS=true
+   "%3DSMAX_EXECUTABLE%"
+   ```
+
+2. Clone the [deadline-cloud](https://github.com/aws-deadline/deadline-cloud) and
+   [openjd-adaptor-runtime-for-python](https://github.com/OpenJobDescription/openjd-adaptor-runtime-for-python) repositories beside
+   this one, and ensure that you `git checkout release` in each to checkout the latest `release` branch.
+
+3. Build wheels for `openjd_adaptor_runtime`, `deadline` and `deadline_cloud_for_3ds_max`, place them in the `wheels/` folder in `deadline-cloud-for-3ds-max`.
+   
+   **Windows (PowerShell):**
+   ```powershell
+   # If you don't have the build package installed already
+   pip install build
+   
+   # Use the provided script to build all wheels
+   .\scripts\build_wheels.ps1
+   
+   # Or to clean and rebuild:
+   .\scripts\build_wheels.ps1 -Clean
+   ```
+   
+   **Linux/Mac:**
    ```bash
    # If you don't have the build package installed already
    $ pip install build
@@ -95,7 +133,7 @@ your build of the adaptor for the one in the service.
    $ ./scripts/build_wheels.sh
    ```
 
-   Wheels should have been generated in the "wheels" folder:
+   Wheels should have been generated in the `wheels/` folder:
 
    ```bash
    $ ls ./wheels
@@ -104,36 +142,101 @@ your build of the adaptor for the one in the service.
    openjd_adaptor_runtime-<version>-py3-none-any.whl
    ```
 
-3. Open the 3ds Max integrated submitter, and in the Job-Specific Settings tab, enable the option 'Include Adaptor Wheels'. This option is only visible when the environment variable `DEADLINE_ENABLE_DEVELOPER_OPTIONS` is set to `true`. Then submit your test job.
+4. Open the 3ds Max integrated submitter, and in the Scene Settings tab, enable the option 'Override Adaptor Wheels'. This option is only visible when the environment variable `DEADLINE_ENABLE_DEVELOPER_OPTIONS` is set to `true`.
 
-### Intergration Test Workflow
+5. Go to the Job Attachments tab and manually add the `wheels` directory as an input directory.
+
+6. Submit your test job. The worker will create a Python virtual environment, install your development wheels, and use your modified adaptor to run the job.
+
+#### Adaptor Schema Files
+
+The adaptor uses two JSON schema files to define the contract between the 3ds Max submitter (running on artist workstations)
+and the 3ds Max adaptor (running on cloud render workers):
+
+- `src/deadline/max_adaptor/MaxAdaptor/schemas/init_data.schema.json` - Defines the initialization data passed once when the adaptor starts
+- `src/deadline/max_adaptor/MaxAdaptor/schemas/run_data.schema.json` - Defines the per-task data passed for each frame/task to render
+
+**Important:** Whenever you modify either of these schema files, you **must** also update the `integration_data_interface_version`
+in `src/deadline/max_adaptor/MaxAdaptor/adaptor.py` following semantic versioning.
+
+### Integration Test Workflow
 Integration tests are located under `test/integ` directory of this repository. If you are adding
 or modifying functionality, then you will want to be writing one or more integ tests to demonstrate that your
 logic behaves as expected and that future changes do not accidentally break your change.
 
 To run the integ tests, you need to:
-1. Add 3dsMax python executable to the PATH:
+1. Add 3dsMax and 3dsMax python executable to the PATH:
    
-   For example, default path of 3dsMax python on Windows is 
+   For example, default path of 3dsMax python on Windows is:
 
 ```
-C:\Program Files\Autodesk\3ds Max 2024\Python
+C:\Program Files\Autodesk\3ds Max 2026\Python
+```
+
+In Powershell, you can set:
+
+```powershell
+$env:PATH = "C:\Program Files\Autodesk\3ds Max 2026;C:\Program Files\Autodesk\3ds Max 2026\Python;" + $env:PATH
 ```
 2. Run command to install pip to this python executable:
-```
+
+```powershell
 python -m ensurepip
 ```
-3. Set the `3DSMAX_EXECUTABLE` environment variable to use `3dsmaxbatch`
+
+3. Set the `3DSMAX_EXECUTABLE` environment variable to use `3dsmaxbatch`:
+
+```powershell
+$env:3DSMAX_EXECUTABLE = "3dsmaxbatch"
+```
+
+#### To run tests with 3ds Max's Python
+
+4. Install all integration tests dependency to 3ds Max's Python:
+
+```powershell
+& "C:\Program Files\Autodesk\3ds Max 2026\Python\python.exe" -m pip install -r requirements-integ-testing.txt
+& "C:\Program Files\Autodesk\3ds Max 2026\Python\python.exe" -m pip install "numpy<2"
+```
+
+5. Run submitter tests:
+
+```powershell
+& "C:\Program Files\Autodesk\3ds Max 2026\Python\python.exe" -m pytest test/integ -m submitter -o addopts="" -v
+```
+
+6. Run adaptor tests:
+
+```powershell
+& "C:\Program Files\Autodesk\3ds Max 2026\Python\python.exe" -m pytest test/integ -m adaptor -o addopts="" -v
+```
+
+#### To run tests with hatch
+
+This method is not recommended. Hatch uses Python 3.12 for testing, which causes conflicts with 3dsmax. To use hatch's integ test environment, downgrade the environment to 3.x to match 3ds Max. For example for 3ds Max 2026, downgrade hatch's integration environment to 3.11.
 
 4. Use hatch to run all integ tests:
-```
+
+```bash
 hatch run integ:test
 ```
+
 5. (Optional) Use hatch to run submitter tests:
-```
+
+```bash
 hatch run integ:test_submitters
 ```
+
 6. (Optional) Use hatch to run adaptor tests:
-```
+
+```bash
 hatch run integ:test_adaptors
+```
+
+### Common Problems encountered while running integration tests
+
+1. PyWin32 issues when running integration tests. Pywin32 is used to bind Python to native Win32 API. To resolve this issue, please register the PyWin32 DLLs as suggested [here](https://github.com/mhammond/pywin32?tab=readme-ov-file#installing-via-pip) This must be done in an elevated shell with CAUTION:
+
+```powershell
+python -m pywin32_postinstall -install
 ```

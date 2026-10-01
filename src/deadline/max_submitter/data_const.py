@@ -24,11 +24,14 @@ ALLOWED_RENDERERS = [
     "Default_Scanline_Renderer",
     "ART_Renderer",
     "Corona",
+    "V_Ray_5",
+    "V_Ray_GPU_5",
     "V_Ray_6",
     "V_Ray_GPU_6",
     "V_Ray_7",
     "V_Ray_GPU_7",
     "Redshift_Renderer",
+    "Arnold",
 ]
 
 # Possible output extensions
@@ -50,6 +53,48 @@ ALLOWED_EXTENSIONS = [
     ["V-Ray Image Format (*.vrimg)", ".vrimg"],
 ]
 
+# Render Elements Preset Configurations
+# Each preset defines the render element settings values
+RENDER_ELEMENTS_PRESETS: dict[str, dict[str, bool]] = {
+    "Default": {
+        "enabled_modify_render_elements": False,
+        "render_elements": True,
+        "render_elements_update_paths": True,
+        "render_elements_include_name_in_path": True,
+        "render_elements_include_type_in_path": False,
+        "render_elements_include_name_in_filename": True,
+        "render_elements_include_type_in_filename": False,
+        "vray_render_elements_vfb_control": True,
+        "vray_split_buffer_support": True,
+    },
+    "VRay with 3dsMax Render Buffer": {
+        # Uses 3ds Max framebuffer (disables V-Ray VFB)
+        # Split buffer enabled for render element output
+        "enabled_modify_render_elements": True,
+        "render_elements": True,
+        "render_elements_update_paths": True,
+        "render_elements_include_name_in_path": True,
+        "render_elements_include_type_in_path": False,
+        "render_elements_include_name_in_filename": True,
+        "render_elements_include_type_in_filename": False,
+        "vray_render_elements_vfb_control": True,  # Disables V-Ray VFB (output_on = False)
+        "vray_split_buffer_support": True,  # Enables split buffer for render elements
+    },
+    "VRay Render Buffer": {
+        # Uses V-Ray VFB (frame buffer) for output
+        # Split buffer enabled for render elements to save to individual files
+        "enabled_modify_render_elements": True,
+        "render_elements": True,
+        "render_elements_update_paths": True,
+        "render_elements_include_name_in_path": True,
+        "render_elements_include_type_in_path": False,
+        "render_elements_include_name_in_filename": True,
+        "render_elements_include_type_in_filename": False,
+        "vray_render_elements_vfb_control": False,  # Keeps V-Ray VFB enabled (output_on = True)
+        "vray_split_buffer_support": True,  # Enables split buffer for render elements
+    },
+}
+
 # Materials allowed for custom override on submit
 SCENE_TWEAKS_MATS = [
     "Standard Grayscale Material",
@@ -67,3 +112,31 @@ STEREO_CAMERA_OPTIONS = [
     ["Left, Right and Center", "All"],
     ["Disable Stereo Camera Submission", "None"],
 ]
+
+# V-Ray Standalone Workflow Constants
+VRSCENE_EXPORT_MODES = [
+    ["Export VRSCENE On This Workstation", 1],
+    ["Export VRSCENE On Deadline", 2],
+]
+
+VRSCENE_EXPORT_ANIMATION_MODES = [
+    ["Single File", 1],
+    ["File Per Frame", 2],
+    ["File Per Frame (Incremental)", 3],
+]
+
+VRSCENE_SUBMITTER_SETTINGS_FILE_EXT = ".deadline_vrscene_settings.json"
+
+# 3dsmaxcmd command-line render workflow sticky settings
+MAXCMD_SUBMITTER_SETTINGS_FILE_EXT = ".deadline_maxcmd_settings.json"
+
+# V-Ray Standalone render engine options (maps to -rtEngine flag)
+VRAY_ENGINE_CPU = 0
+VRAY_ENGINE_CUDA = 5
+VRAY_ENGINE_RTX = 7
+VRAY_ENGINE_ALLOWED = [VRAY_ENGINE_CPU, VRAY_ENGINE_CUDA, VRAY_ENGINE_RTX]
+VRAY_ENGINE_NAMES = {
+    VRAY_ENGINE_CPU: "CPU",
+    VRAY_ENGINE_CUDA: "CUDA",
+    VRAY_ENGINE_RTX: "RTX",
+}

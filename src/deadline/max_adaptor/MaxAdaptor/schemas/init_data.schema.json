@@ -33,6 +33,18 @@
         "state_set": {
             "type": "string"
         },
+        "scene_state": {
+            "type": "string",
+            "description": "Scene state name to restore via rt.sceneStateMgr"
+        },
+        "preset_file": {
+            "type": "string",
+            "description": "Path to render preset file (.rps) to load"
+        },
+        "pixel_aspect": {
+            "type": "string",
+            "description": "Pixel aspect ratio override for rendering (string representation of a positive number)"
+        },
         "renderer": {
             "oneOf": [
                 {
@@ -44,7 +56,8 @@
                         "Default_Scanline_Renderer",
                         "ART_Renderer",
                         "Corona",
-                        "Redshift_Renderer"
+                        "Redshift_Renderer",
+                        "Arnold"
                     ]
                 }
             ]
@@ -54,6 +67,82 @@
         },
         "strict_error_checking": {
             "type": "boolean"
+        },
+        "enabled_modify_render_elements": {
+            "type": "string",
+            "enum": [
+                "true",
+                "false"
+            ],
+            "description": "Enable or disable modification of render elements settings"
+        },
+        "render_elements": {
+            "type": "string",
+            "enum": [
+                "true",
+                "false"
+            ],
+            "description": "Enable or disable render elements output"
+        },
+        "render_elements_update_paths": {
+            "type": "string",
+            "enum": [
+                "true",
+                "false"
+            ],
+            "description": "Update render element paths automatically"
+        },
+        "render_elements_include_name_in_path": {
+            "type": "string",
+            "enum": [
+                "true",
+                "false"
+            ],
+            "description": "Include render element name in output path"
+        },
+        "render_elements_include_type_in_path": {
+            "type": "string",
+            "enum": [
+                "true",
+                "false"
+            ],
+            "description": "Include render element type in output path"
+        },
+        "render_elements_include_name_in_filename": {
+            "type": "string",
+            "enum": [
+                "true",
+                "false"
+            ],
+            "description": "Include render element name in output filename"
+        },
+        "render_elements_include_type_in_filename": {
+            "type": "string",
+            "enum": [
+                "true",
+                "false"
+            ],
+            "description": "Include render element type in output filename"
+        },
+        "vray_render_elements_vfb_control": {
+            "type": "string",
+            "enum": [
+                "true",
+                "false"
+            ],
+            "description": "Control V-Ray VFB settings for render elements"
+        },
+        "vray_split_buffer_support": {
+            "type": "string",
+            "enum": [
+                "true",
+                "false"
+            ],
+            "description": "Enable V-Ray split buffer support for render elements"
+        },
+        "ignore_render_elements_by_name": {
+            "type": "string",
+            "description": "Comma-separated list of render element names to ignore during rendering"
         }
     },
     "required": [

@@ -1,5 +1,6 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
+from .arnold_handler import ArnoldHandler
 from .art_handler import ArtHandler
 from .corona_handler import CoronaHandler
 from .default_max_handler import DefaultMaxHandler
@@ -29,5 +30,7 @@ def get_render_handler(renderer: str = "Default_Scanline_Renderer") -> DefaultMa
         return VrayHandler(gpu=False)
     elif renderer == "Redshift_Renderer":
         return RedshiftHandler()
+    elif renderer == "Arnold":
+        return ArnoldHandler()
     else:
         return DefaultMaxHandler()

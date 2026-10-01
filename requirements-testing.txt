@@ -1,13 +1,20 @@
 coverage[toml] == 7.*
-pytest == 8.*
+pytest == 8.*; python_version < "3.10"
+pytest == 9.*; python_version >= "3.10"
 pytest-cov == 7.*
 pytest-xdist == 3.*
-twine == 6.*
-mypy == 1.*
+twine == 6.*; python_version < "3.10"
+twine == 7.*; python_version >= "3.10"
+mypy == 1.*; python_version < "3.10"
+mypy == 2.*; python_version >= "3.10"
 black == 25.*
-ruff == 0.13.*
+ruff == 0.16.*
 moto[s3,sts] == 5.*
 types-pyyaml == 6.*
+# Imported directly by test_console_signin_dependencies.py, so declared rather than
+# relying on pytest/mypy keeping their transitive pins.
+tomli == 2.*; python_version < "3.11"
+packaging == 26.*
 hatchling == 1.27.*
 hatch-vcs == 0.5.*
-editables == 0.5
+editables == 0.6

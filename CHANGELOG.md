@@ -1,3 +1,114 @@
+## 0.4.2 (2026-09-23)
+
+### Bug Fixes
+* Fixed AWS Console sign-in credentials failing to authenticate in the submitter. The minimum `deadline` dependency is now raised to 0.60.4 (which includes the `console` extra), and the dependency bundle now ships a loadable `awscrt`. (#295)
+* V-Ray bitmap textures now have path mapping applied, so textures uploaded via job attachments correctly resolve on the worker instead of pointing at the artist's local path. (#287)
+## 0.4.1 (2026-08-21)
+
+### Features
+* The 3ds Max render submitter now runs pre-GUI hooks before opening the submission dialog. Studios can use environment hooks (sourced from DEADLINE_HOOKS_DIR) to pre-populate job name, description, and parameters automatically. This behavior is gated by the `allow_environment_hooks` setting. (#262)
+## 0.4.0 (2026-08-07)
+
+### Features
+* Added a '3dsmaxcmd Render' submitter tab that renders scenes using 3dsmaxcmd.exe (the render server) instead of the standard 3dsmaxbatch adaptor. This enables network-licensed plugins such as Pencil+ (NTR) to render without a watermark, with full support for Deadline Cloud path mapping, shared job settings, and host requirements. (`7ae3b1f`)
+* Added Arnold AOV support. Per-frame AOV filenames are now unique and AOV output paths are correctly remapped to the worker's output directory, preventing frames from overwriting each other. (`faf3db7`)
+* The submitter dialog now displays version information for the plugin. (#279)
+* Added support for 3ds Max 2027. The compatible version range is now 2024–2027. (#267)
+## 0.3.4 (2026-07-08)
+
+### Features
+* Arnold renderer is now supported. You can submit Arnold scenes to AWS Deadline Cloud from 3ds Max, and the adaptor will correctly set Arnold as the active renderer on the worker. (#254)
+
+### Bug Fixes
+* The installer no longer writes to the global PYTHONPATH environment variable. Previously, the 3ds Max submitter installer added its scripts directory to the system-wide PYTHONPATH, which caused the bundled `deadline` package to shadow other Deadline Cloud integrations (e.g., the Maya submitter). Existing polluted PYTHONPATH entries are now cleaned up during installation. (#261)
+## 0.3.3 (2026-05-28)
+
+### Features
+* Added a timeout for the onRun action, improving reliability when 3ds Max becomes unresponsive during rendering. (#248)
+* Added V-Ray GPU support with configurable RT engine parameters, allowing users to select and configure V-Ray GPU rendering when submitting jobs. (#244)
+## 0.3.2 (2026-05-13)
+
+### Features
+* Added support for VRay 5 renderer in 3ds Max jobs submitted to AWS Deadline Cloud. (#246)
+## 0.3.1 (2026-04-23)
+
+### Features
+* The submitter now notifies you if a newer version is available, helping you stay up to date with the latest features and fixes. (#240)
+
+### Bug Fixes
+* Render element cleanup now occurs at session end instead of after every frame, improving per-frame rendering performance. (#242)
+## 0.3.0 (2026-04-13)
+
+
+### Features
+* add V-Ray export workflow with tile rendering ([`2c93e8a`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/2c93e8a761037aad35f3ff6754bd705c4e977c04))
+* add Autodesk Product Help MCP to dev and design powers ([`355a636`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/355a636a73bbc690a51ce107737d20d8d580725c))
+
+
+## 0.2.0 (2026-03-26)
+
+
+### Features
+* add batch rendering support (#205) ([`9ca4016`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/9ca401658a972b2e4662c261ae3897e9aed6321a))
+
+
+## 0.1.10 (2026-03-10)
+
+### Features
+* output filenames customizability with tokens (#203) ([`5abecab`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/5abecaba90a0e69aad868281e1847a9950a68078))
+* add developer option to override adaptor with local wheels ([`5002150`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/5002150084ae0ef5dc758c71e84e3bc453e1fdec))
+* add test packages installation to 3dsmax-dev-setup power ([`eaf1ba9`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/eaf1ba92854a2365a4f3b6a7b9cc29b180a4a99a))
+
+### Bug Fixes
+* enable header check in hatch run test and add missing headers (#204) ([`cbef175`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/cbef1759885994b40479bf64ff35dd276880b916))
+* skip output assets from asset introspection ([`bc5abc5`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/bc5abc5a164c83854a8c581656b2d1655608ca16))
+
+## 0.1.9 (2026-02-02)
+
+Due to Github Workflow issues, this is a re-release of 0.1.8.
+
+### Features
+* Support vrimg and exr ouput formats to write raw files (#193) ([`c26c853`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/c26c853aaf96a05dcb8bf13fba09168b33b303da))
+* refactoring to make the code more readable (#192) ([`04b6260`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/04b6260dec088cd1be20f633f6105c665be86a77))
+* Tool to dump current 3dsmax rendering config for debug ([`1e67321`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/1e673219ea232ee99ac56d2f6e2061b74778c71f))
+* implement vrmesh pathmapping handling (#188) ([`738adc4`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/738adc4e4375d885dcb4b12a0d81a10f35fc3cf2))
+* Add an integration test for light mix (#182) ([`1743899`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/1743899d506e68d6f55e9062c1634f2a0a0fce0a))
+* Fix Lightmix rendering with FBO split buffers (#183) ([`53e8e43`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/53e8e43d1759309941ae4d39148b90470cb09818))
+
+### Bug Fixes
+* output extension override from submitter (#195) ([`3682386`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/3682386091e0c12b3e2929276abc8c9e4218e89e))
+* fixed issue with Adaptor and added tests for VRayProxyObject pathmapping for vrmesh files ([`887f883`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/887f8830794fa09534127f47764836fcff50d507))
+* add VRay system environment variable detection (#178) ([`3fbe16f`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/3fbe16ffb58e67aa516c57782cc534b84bdc8468))
+
+## 0.1.8 (2026-01-31)
+
+
+### Features
+* Support vrimg and exr ouput formats to write raw files (#193) ([`c26c853`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/c26c853aaf96a05dcb8bf13fba09168b33b303da))
+* refactoring to make the code more readable (#192) ([`04b6260`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/04b6260dec088cd1be20f633f6105c665be86a77))
+* Tool to dump current 3dsmax rendering config for debug ([`1e67321`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/1e673219ea232ee99ac56d2f6e2061b74778c71f))
+* implement vrmesh pathmapping handling (#188) ([`738adc4`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/738adc4e4375d885dcb4b12a0d81a10f35fc3cf2))
+* Add an integration test for light mix (#182) ([`1743899`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/1743899d506e68d6f55e9062c1634f2a0a0fce0a))
+* Fix Lightmix rendering with FBO split buffers (#183) ([`53e8e43`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/53e8e43d1759309941ae4d39148b90470cb09818))
+
+### Bug Fixes
+* output extension override from submitter (#195) ([`3682386`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/3682386091e0c12b3e2929276abc8c9e4218e89e))
+* fixed issue with Adaptor and added tests for VRayProxyObject pathmapping for vrmesh files ([`887f883`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/887f8830794fa09534127f47764836fcff50d507))
+* add VRay system environment variable detection (#178) ([`3fbe16f`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/3fbe16ffb58e67aa516c57782cc534b84bdc8468))
+
+## 0.1.7 (2025-11-04)
+
+
+### Features
+* **render elements**: VRay split frame buffer and VFB fixes to support Render Elements (#167) ([`38356fa`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/38356fa07e0de4fbaf3fd047cf2c3e9ff985de31))
+* **render elements**: Adapter support for render elements. Apply settings from job template via pyxms (#162) ([`c0d7ab2`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/c0d7ab2eb5f91857e9bdcbe386da9bdd11e8294a))
+* Add new shared utilities class to support render element and general interaction with pyxms (#160) ([`cc2a1fe`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/cc2a1fe5f15f696f884a0461ed9c7fba0a3e8514))
+
+### Bug Fixes
+* Do not add render elements to init param if no render elements e… (#170) ([`e0024fe`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/e0024fef4fed3d2290a5622b7888a492e4354181))
+* Add sticky settings for various job settings (#165) ([`50520b1`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/50520b1afa7b46897a1c0ae22e73579e8d204b62))
+* Fix V_Ray renderer generally using "starts with" ([`872f453`](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/commit/872f45395eb2f180bfd4c41f595fb3e734fae6e4))
+
 ## 0.1.6 (2025-09-05)
 
 

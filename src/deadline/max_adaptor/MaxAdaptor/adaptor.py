@@ -6,13 +6,15 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
 from __future__ import annotations
 
+import glob
 import logging
 import os
 import re
 import sys
 import threading
 import time
-from typing import Callable
+from datetime import datetime
+from typing import BinaryIO, Callable, Iterator
 
 from openjd.adaptor_runtime.adaptors import Adaptor, AdaptorDataValidators, SemanticVersion
 from openjd.adaptor_runtime.adaptors.configuration import AdaptorConfiguration
@@ -27,13 +29,94 @@ from deadline.max_adaptor.MaxAdaptor.regex_callback_handler import MaxRegexCallb
 _logger = logging.getLogger(__name__)
 
 
+# 3ds Max's MaxScript log buffer truncates lines beyond this limit.
+_MAX_LOG_LINE_LENGTH = 512
+
+_MAX_LOG_TIMESTAMP_LENGTH = 19
+_MAX_LOG_TIMESTAMP_FORMAT = "%Y/%m/%d %H:%M:%S"
+
+# A log entry can span several lines. This guard confirms a line starts a new entry, so its
+# first 19 characters are a timestamp rather than arbitrary text from the middle of one.
+_MAX_LOG_TIMESTAMP_REGEX = re.compile(r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}")
+
+_LICENSE_GUIDANCE = (
+    "If you are using bring your own license (BYOL), check your license configuration "
+    "and availability.\n"
+    "If you are using usage-based licensing (UBL) from AWS Deadline Cloud and need a higher "
+    "'License sessions per license endpoint' limit, contact the AWS Deadline Cloud team."
+)
+
+# Neither renderer reports a failed checkout on stdout, only in Max.log. Anchor on the phrase:
+# V-Ray's code varies with the cause, and Redshift's advice to update the Maxon App is emitted
+# even when the real cause is an unreachable license server.
+#
+# Arnold is deliberately absent: it renders with watermarks rather than failing, which is its
+# documented behaviour and not ours to override.
+_MAX_LOG_LICENSE_ERROR_REGEXES = {
+    "V-Ray": re.compile(r"\[V-Ray\] Could not obtain a license", re.IGNORECASE),
+    "Redshift": re.compile(r"Maxon licensing error", re.IGNORECASE),
+}
+
+
+def _reversed_lines(file: BinaryIO, chunk_size: int = 8192) -> Iterator[bytes]:
+    """Yields the lines of a binary file from the end backwards."""
+    file.seek(0, os.SEEK_END)
+    position = file.tell()
+    remainder = b""
+
+    while position > 0:
+        step = min(chunk_size, position)
+        position -= step
+        file.seek(position)
+        # The first element is the tail of a line whose start is in the next chunk back.
+        lines = (file.read(step) + remainder).split(b"\n")
+        remainder = lines[0]
+        for line in reversed(lines[1:]):
+            yield line
+
+    if remainder:
+        yield remainder
+
+
 class MaxNotRunningError(Exception):
     """Error that is raised when attempting to use Max while it is not running"""
 
 
 # Renderer needs extra steps
-_FIRST_MAX_ACTIONS = ["scene_file", "state_set"]  # Actions which must be queued before any others
-_MAX_INIT_KEYS = {"camera", "output_file_path", "output_file_name", "output_file_format"}
+_FIRST_MAX_ACTIONS = [
+    "scene_file",
+    "state_set",
+    "scene_state",
+]  # Actions which must be queued before any others
+
+# Render elements feature on/off control key
+_ENABLED_MODIFY_RENDER_ELEMENTS_KEY = "enabled_modify_render_elements"
+
+# Action constants
+_CONFIGURE_RENDER_ELEMENTS_ACTION = "configure_render_elements"
+
+# Render elements related keys
+_RENDER_ELEMENT_KEYS = {
+    "render_elements",
+    "render_elements_update_paths",
+    "render_elements_include_name_in_path",
+    "render_elements_include_type_in_path",
+    "render_elements_include_name_in_filename",
+    "render_elements_include_type_in_filename",
+    "vray_render_elements_vfb_control",
+    "vray_split_buffer_support",
+    "ignore_render_elements_by_name",
+}
+
+# Base initialization keys
+_MAX_INIT_KEYS = {
+    "camera",
+    "output_file_path",
+    "output_file_name",
+    "output_file_format",
+    "preset_file",
+    "pixel_aspect",
+}
 
 
 def _check_for_exception(func: Callable) -> Callable:
@@ -67,11 +150,12 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
 
     # If a thread raises an exception we will update this to raise in the main thread
     _exc_info: Exception | None = None
+    _license_scan_since: datetime | None = None
     _performing_cleanup = False
 
     @property
     def integration_data_interface_version(self) -> SemanticVersion:
-        return SemanticVersion(major=0, minor=1)
+        return SemanticVersion(major=0, minor=3)
 
     @staticmethod
     def _get_timer(timeout: int | float) -> Callable[[], bool]:
@@ -260,9 +344,12 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
         )
         deadline_namespace_dir = os.path.dirname(os.path.dirname(deadline.max_adaptor.__file__))
         python_path_addition = f"{openjd_namespace_dir}{os.pathsep}{deadline_namespace_dir}"
+        # Prepend (not append) so the adaptor's own packages take priority over any
+        # pre-existing site-packages on PYTHONPATH.  Without this, the system-installed
+        # adaptor version can shadow the override wheels during development.
         if "PYTHONPATH" in os.environ:
             os.environ["PYTHONPATH"] = (
-                f"{os.environ['PYTHONPATH']}{os.pathsep}{python_path_addition}"
+                f"{python_path_addition}{os.pathsep}{os.environ['PYTHONPATH']}"
             )
         else:
             os.environ["PYTHONPATH"] = python_path_addition
@@ -285,12 +372,121 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
             Action("renderer", {"renderer": self.init_data["renderer"]})
         )
 
+        # Only enqueue actions whose keys are actually present in init_data.
+        # In Batch Render mode, "state_set" is absent (replaced by "scene_state"),
+        # and in Default mode "scene_state" is absent.  Skipping missing keys
+        # avoids a KeyError and keeps the two submission modes compatible with
+        # the same ordered action list.
         for action_name in _FIRST_MAX_ACTIONS:
-            self._action_queue.enqueue_action(self._action_from_action_item(action_name))
+            if action_name in self.init_data:
+                self._action_queue.enqueue_action(self._action_from_action_item(action_name))
 
         for action_name in _MAX_INIT_KEYS:
             if action_name in self.init_data:
                 self._action_queue.enqueue_action(self._action_from_action_item(action_name))
+
+        render_element_data = {}
+        has_render_element_config = False
+
+        # Only process render elements if modification is enabled from the submitter.
+        if self.init_data.get(_ENABLED_MODIFY_RENDER_ELEMENTS_KEY, "false").lower() == "true":
+            # If any render element parameters are present, enqueue the _CONFIGURE_RENDER_ELEMENTS_ACTION
+            for key in _RENDER_ELEMENT_KEYS:
+                if key in self.init_data:
+                    render_element_data[key] = self.init_data[key]
+                    has_render_element_config = True
+
+            if has_render_element_config:
+                _logger.info(
+                    f"Queueing {_CONFIGURE_RENDER_ELEMENTS_ACTION} action with data: {render_element_data}"
+                )
+                self._action_queue.enqueue_action(
+                    Action(_CONFIGURE_RENDER_ELEMENTS_ACTION, render_element_data)
+                )
+            else:
+                _logger.info("No render element configuration found in init_data")
+        else:
+            _logger.info(
+                "Render element modification is disabled, skipping render element configuration"
+            )
+
+    def _max_log_paths(self) -> list[str]:
+        """Returns the 3ds Max network log files for this user."""
+        local_appdata = os.environ.get("LOCALAPPDATA", "")
+        if not local_appdata:
+            _logger.warning("LOCALAPPDATA not set, cannot locate Max.log")
+            return []
+
+        pattern = os.path.join(
+            local_appdata, "Autodesk", "3dsMax", "*", "ENU", "Network", "Max.log"
+        )
+        log_files = glob.glob(pattern)
+        if not log_files:
+            _logger.info("No Max.log files found at %s", pattern)
+        return log_files
+
+    def _find_license_error(self, since: datetime) -> tuple[str, str] | None:
+        """
+        Returns the product and log line for a license failure logged after ``since``.
+
+        Max.log keeps history and is shared by every Max process running as this user, so only
+        lines newer than ``since`` are this render's. It is read backwards because a failure is
+        logged near the end, and the scan stops at the first line predating this render instead
+        of walking the file, whose size is set by a user preference.
+        """
+        since_stamp = since.strftime(_MAX_LOG_TIMESTAMP_FORMAT)
+
+        for log_file in self._max_log_paths():
+            try:
+                with open(log_file, "rb") as f:
+                    for raw in _reversed_lines(f):
+                        line = raw.decode("utf-8", errors="replace")
+                        if not _MAX_LOG_TIMESTAMP_REGEX.match(line):
+                            continue
+                        # Lexicographic order matches chronological order for this format.
+                        if line[:_MAX_LOG_TIMESTAMP_LENGTH] <= since_stamp:
+                            break
+                        for product, regex in _MAX_LOG_LICENSE_ERROR_REGEXES.items():
+                            if regex.search(line):
+                                return product, line.strip()
+            except OSError as e:
+                _logger.warning("Failed to read Max.log at %s: %s", log_file, e)
+        return None
+
+    def _dump_max_log_on_error(self) -> None:
+        """
+        Reads and logs the full 3ds Max network log file.
+
+        MaxScript's log buffer truncates output at 512 characters per line, so the
+        STDOUT captured by the adaptor may be incomplete. The on-disk Max.log contains
+        the untruncated output. This method is called on failure so the full error
+        context is available in the worker logs.
+
+        Lines longer than _MAX_LOG_LINE_LENGTH are split into chunks to avoid any
+        downstream truncation in log pipelines.
+        """
+        log_files = self._max_log_paths()
+        if not log_files:
+            return
+
+        for log_file in log_files:
+            try:
+                _logger.info("--- Begin 3ds Max Full Log (%s) ---", log_file)
+                with open(log_file, "r", errors="replace") as f:
+                    line = f.readline()
+                    while line != "":
+                        line = line.rstrip("\n")
+                        if len(line) <= _MAX_LOG_LINE_LENGTH:
+                            _logger.info(line)
+                        else:
+                            # Split long lines into chunks to prevent truncation
+                            for i in range(0, len(line), _MAX_LOG_LINE_LENGTH):
+                                chunk = line[i : i + _MAX_LOG_LINE_LENGTH]
+                                _logger.info(chunk if i == 0 else f"\t{chunk}")
+                        line = f.readline()
+                _logger.info("--- End 3ds Max Full Log ---")
+            except OSError as e:
+                _logger.warning("Failed to read Max.log at %s: %s", log_file, e)
 
     def on_start(self) -> None:
         """
@@ -309,6 +505,11 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
         validators = AdaptorDataValidators.for_adaptor(schema_dir)
         validators.init_data.validate(self.init_data)
 
+        # The renderer is assigned during initialization and V-Ray checks out its license
+        # then, so the scan floor has to predate that. Max.log timestamps are second
+        # resolution, and a line from this second belongs to an earlier render.
+        self._license_scan_since = datetime.now().replace(microsecond=0)
+
         self.update_status(progress=0, status_message="Initializing Max")
         self._start_max_server_thread()
         self._populate_action_queue()
@@ -325,6 +526,7 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
             time.sleep(0.1)  # Busy wait for max to finish initialization
 
         if len(self._action_queue) > 0:
+            self._dump_max_log_on_error()
             if is_not_timed_out():
                 raise RuntimeError(
                     "Max encountered an error and was not able to complete initialization actions."
@@ -360,8 +562,23 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
             # error case because the Max Client should still be running and waiting for the next command.
             # If the thread finished, then we cannot continue
             exit_code = self._max_client.returncode
+            self._dump_max_log_on_error()
             raise RuntimeError(
                 f"Max exited early and did not render successfully, please check render logs. Exit code {exit_code}"
+            )
+
+        # A renderer license failure reports a completed render, so it has to be checked
+        # even when the render appears to have succeeded.
+        since = self._license_scan_since or datetime.now().replace(microsecond=0)
+        license_error = self._find_license_error(since)
+        if license_error is not None:
+            product, line = license_error
+            # The matched line names the product but rarely the cause. The surrounding log
+            # separates an unreachable server from exhausted seats, which decides which half
+            # of the guidance applies.
+            self._dump_max_log_on_error()
+            raise RuntimeError(
+                f"{product} failed to acquire a license.\n{_LICENSE_GUIDANCE}\nError: {line}"
             )
 
     def on_stop(self) -> None:
@@ -376,7 +593,13 @@ class MaxAdaptor(Adaptor[AdaptorConfiguration]):
         """
         self._performing_cleanup = True
 
+        # Restore render elements to their original state before closing Max.
+        # This is done here (once per session) rather than after each frame,
+        # so that render element configuration persists across tasks in the
+        # same session.
         self._action_queue.enqueue_action(Action("close"), front=True)
+        if self.init_data.get(_ENABLED_MODIFY_RENDER_ELEMENTS_KEY, "false").lower() == "true":
+            self._action_queue.enqueue_action(Action("cleanup_render_elements", {}), front=True)
         is_not_timed_out = self._get_timer(self._MAX_END_TIMEOUT_SECONDS)
         while self._max_is_running and is_not_timed_out():
             time.sleep(0.1)

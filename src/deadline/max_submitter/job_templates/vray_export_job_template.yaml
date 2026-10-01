@@ -1,0 +1,51 @@
+specificationVersion: 'jobtemplate-2023-09'
+name: VRayStandaloneExport
+parameterDefinitions:
+- name: SceneFile
+  type: PATH
+  objectType: FILE
+  dataFlow: IN
+  description: The 3ds Max scene file to export
+- name: VRSceneOutputPath
+  type: PATH
+  objectType: FILE
+  dataFlow: OUT
+  description: Output path for the vrscene file
+- name: StartFrame
+  type: INT
+  default: '1'
+- name: EndFrame
+  type: INT
+  default: '1'
+- name: ExportAnimationMode
+  type: INT
+  default: '1'
+  allowedValues:
+  - '1'
+  - '2'
+  - '3'
+  description: 1=Single File, 2=File Per Frame, 3=File Per Frame (Incremental)
+steps:
+- name: ExportVRScene
+  parameterSpace:
+    taskParameterDefinitions:
+    - name: Frame
+      type: INT
+      range: '{{Param.StartFrame}}-{{Param.EndFrame}}'
+  stepEnvironments:
+  - name: 3dsMax
+    description: Runs 3ds Max to export vrscene
+    script:
+      actions:
+        onRun:
+          command: 3dsmaxbatch
+          args:
+          - -sceneFile
+          - '{{Param.SceneFile}}'
+          - -script
+          - '{{Task.File.ExportScript}}'
+      embeddedFiles:
+      - name: ExportScript
+        type: TEXT
+        filename: export_vrscene.ms
+        data: INJECT_EXPORT_SCRIPT

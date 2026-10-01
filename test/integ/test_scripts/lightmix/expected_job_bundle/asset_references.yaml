@@ -1,0 +1,10 @@
+assetReferences:
+  inputs:
+    directories: []
+    filenames:
+    - lightmix/scene/Grycon3.tx
+    - lightmix/scene/scene.max
+  outputs:
+    directories:
+    - lightmix/expected_images/
+  referencedPaths: []

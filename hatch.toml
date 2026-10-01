@@ -5,7 +5,11 @@ pre-install-commands = [
 
 [envs.default.scripts]
 sync = "pip install -r requirements-testing.txt"
-test = "pytest --cov-config pyproject.toml {args:test/unit}"
+test = "pytest --cov-config pyproject.toml {args:test/unit test/test_copyright_headers.py}"
+# Opts in to the tests `test` deselects: they resolve wheels from a package index to check
+# that NATIVE_DEPENDENCIES still name their extension modules the way the merge assumes.
+# Serial so the shared download fixture runs once rather than once per xdist worker.
+test-network = "pytest --no-cov -m network --numprocesses=1 {args:test/unit} -vvv"
 test-installer = "pytest --no-cov {args:test/installer} -vvv"
 typing = "mypy {args:src test}"
 style = [
@@ -24,15 +28,6 @@ lint = [
 [[envs.all.matrix]]
 python = ["3.9", "3.10", "3.11", "3.12"]
 
-[envs.default.env-vars]
-SKIP_BOOTSTRAP_TEST_RESOURCES="True"
-
-[envs.codebuild.scripts]
-build = "hatch build"
-
-[envs.codebuild.env-vars]
-SKIP_BOOTSTRAP_TEST_RESOURCES="True"
-
 [envs.integ]
 pre-install-commands = [
   "pip install -r requirements-integ-testing.txt",
@@ -43,6 +38,31 @@ pre-install-commands = [
 test = "pytest --no-cov {args:test/integ} -vvv --numprocesses=1"
 test_submitters = "pytest --no-cov {args:test/integ} -vvv --numprocesses=1 -m submitter"
 test_adaptors = "pytest --no-cov {args:test/integ} -vvv --numprocesses=1 -m adaptor"
+
+[envs.integ-ci]
+pre-install-commands = [
+  "pip install -r requirements-integ-testing.txt",
+  "pip install -r requirements-testing.txt",
+]
+
+[[envs.integ-ci.matrix]]
+max = ["2024"]
+python = ["3.10"]
+
+[[envs.integ-ci.matrix]]
+max = ["2025"]
+python = ["3.11"]
+
+[[envs.integ-ci.matrix]]
+max = ["2026"]
+python = ["3.11"]
+
+[envs.integ-ci.env-vars]
+MAX_VERSION = "{matrix:max}"
+
+[envs.integ-ci.scripts]
+setup = "python ./pipeline/setup-runner.py --versions {matrix:max} {args}"
+test = "pytest --no-cov {args:test/integ} -vvv --numprocesses=1 --color=no"
 
 [envs.release]
 detached = true

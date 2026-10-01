@@ -1,0 +1,15 @@
+{
+  "version": "pathmapping-1.0",
+  "path_mapping_rules": [
+    {
+      "source_path_format": "WINDOWS",
+      "source_path": "C:/Users/RDP/deadline-cloud-for-3ds-max/test/integ/test_scripts/vray_vrmesh_test/scene",
+      "destination_path": "C:/Users/RDP/deadline-cloud-for-3ds-max/test/integ/test_scripts/vray_vrmesh_remap_test/scene"
+    },
+    {
+      "source_path_format": "WINDOWS",
+      "source_path": "C:\\Users\\RDP\\deadline-cloud-for-3ds-max\\test\\integ\\test_scripts\\assets",
+      "destination_path": "C:\\Users\\RDP\\deadline-cloud-for-3ds-max\\test\\integ\\test_scripts\\vray_vrmesh_remap_test\\scene"
+    }
+  ]
+}

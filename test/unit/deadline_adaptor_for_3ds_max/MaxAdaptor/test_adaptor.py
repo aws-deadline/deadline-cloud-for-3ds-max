@@ -2,13 +2,68 @@
 
 from __future__ import annotations
 
+import importlib.resources
+import io
+import json
 import re
+from datetime import datetime, timedelta
+from pathlib import Path
 from unittest.mock import Mock, PropertyMock, patch
 
 import jsonschema  # type: ignore
 import pytest
+from openjd.adaptor_runtime.adaptors import SemanticVersion
 from deadline.max_adaptor.MaxAdaptor import MaxAdaptor
-from deadline.max_adaptor.MaxAdaptor.adaptor import _FIRST_MAX_ACTIONS, MaxNotRunningError
+from deadline.max_adaptor.MaxAdaptor.adaptor import (
+    _FIRST_MAX_ACTIONS,
+    MaxNotRunningError,
+    _reversed_lines,
+)
+
+# Test data that exercises ALL properties in init_data schema
+# If the schema changes (properties added/removed/modified), this test data
+# must be updated AND the integration_data_interface_version must be bumped
+EXPECTED_INIT_DATA_PROPERTIES = {
+    "camera": "Camera001",
+    "output_file_path": "/path/to/output",
+    "output_file_name": "output_###",
+    "output_file_format": ".jpg",
+    "state_set": "State01",
+    "scene_state": "MySceneState",
+    "preset_file": "/path/to/preset.rps",
+    "pixel_aspect": "1.0",
+    "renderer": "Default_Scanline_Renderer",
+    "scene_file": "/path/to/scene.max",
+    "strict_error_checking": True,
+    "enabled_modify_render_elements": "false",
+    "render_elements": "false",
+    "render_elements_update_paths": "false",
+    "render_elements_include_name_in_path": "false",
+    "render_elements_include_type_in_path": "false",
+    "render_elements_include_name_in_filename": "false",
+    "render_elements_include_type_in_filename": "false",
+    "vray_render_elements_vfb_control": "false",
+    "vray_split_buffer_support": "false",
+    "ignore_render_elements_by_name": "element1,element2",
+}
+
+# Required fields for init_data schema
+EXPECTED_INIT_DATA_REQUIRED = ["renderer", "scene_file"]
+
+# Test data that exercises ALL properties in run_data schema
+# If the schema changes (properties added/removed/modified), this test data
+# must be updated AND the integration_data_interface_version must be bumped
+EXPECTED_RUN_DATA_PROPERTIES = {
+    "frame": 1,
+    "camera": "Camera001",
+}
+
+# Required fields for run_data schema
+EXPECTED_RUN_DATA_REQUIRED = ["frame"]
+
+# Expected version - must be bumped when schemas change
+EXPECTED_SCHEMA_VERSION_MAJOR = 0
+EXPECTED_SCHEMA_VERSION_MINOR = 3
 
 
 @pytest.fixture
@@ -41,6 +96,151 @@ def run_data() -> dict:
         dict: A run_data dictionary
     """
     return {"frame": 42}
+
+
+class TestMaxAdaptor_semantic_version:
+    def test_semantic_version(self, init_data: dict) -> None:
+        """Tests that the adaptor semantic version is in the expected format"""
+        adaptor = MaxAdaptor(init_data)
+        assert adaptor.integration_data_interface_version == SemanticVersion(major=0, minor=3)
+
+    @pytest.mark.parametrize(
+        "renderer_value",
+        [
+            "Default_Scanline_Renderer",
+            "ART_Renderer",
+            "Corona",
+            "Redshift_Renderer",
+            "Arnold",
+            "V_Ray_6_Hotfix_3",
+            "V_Ray_GPU_7",
+        ],
+        ids=[
+            "scanline",
+            "art",
+            "corona",
+            "redshift",
+            "arnold",
+            "vray_cpu_versioned",
+            "vray_gpu_versioned",
+        ],
+    )
+    def test_init_data_schema_accepts_supported_renderers(
+        self, init_data: dict, renderer_value: str
+    ) -> None:
+        """Init-data schema should accept every supported renderer name."""
+        # Load the schema as a package resource so this test is independent of
+        # repo layout (matches the production code in MaxAdaptor.adaptor, which
+        # resolves the schema dir relative to its own __file__).
+        schema_text = (
+            importlib.resources.files("deadline.max_adaptor.MaxAdaptor")
+            .joinpath("schemas/init_data.schema.json")
+            .read_text(encoding="utf-8")
+        )
+        init_data_schema = json.loads(schema_text)
+
+        payload = dict(init_data)
+        payload["renderer"] = renderer_value
+
+        # Should not raise
+        jsonschema.validate(payload, init_data_schema)
+
+    def test_if_init_data_and_run_data_schema_are_changed_schema_version_is_bumped(
+        self, init_data: dict
+    ) -> None:
+        """
+        Test to validate that if the init data or run data schema are changed, we also bump the
+        integration_data_interface_version. We load the schema files and validate expected test data
+        that we define as EXPECTED_INIT_DATA_PROPERTIES and EXPECTED_RUN_DATA_PROPERTIES
+        """
+        adaptor = MaxAdaptor(init_data)
+        semantic_version = adaptor.integration_data_interface_version
+
+        root_directory_path = Path(__file__).parent.parent.parent.parent.parent
+        schema_path = root_directory_path.joinpath(
+            "src", "deadline", "max_adaptor", "MaxAdaptor", "schemas"
+        )
+        init_data_path = schema_path.joinpath("init_data.schema.json")
+        run_data_path = schema_path.joinpath("run_data.schema.json")
+
+        # Load actual schemas
+        with init_data_path.open() as init_data_schema_file:
+            init_data_schema = json.load(init_data_schema_file)
+
+        with run_data_path.open() as run_data_schema_file:
+            run_data_schema = json.load(run_data_schema_file)
+
+        # Validate that our test data covers all schema properties
+        init_schema_properties = set(init_data_schema.get("properties", {}).keys())
+        expected_init_properties = set(EXPECTED_INIT_DATA_PROPERTIES.keys())
+
+        run_schema_properties = set(run_data_schema.get("properties", {}).keys())
+        expected_run_properties = set(EXPECTED_RUN_DATA_PROPERTIES.keys())
+
+        # Check init_data schema properties
+        assert init_schema_properties == expected_init_properties, (
+            f"If the init_data.schema.json is changed, the integration_data_interface_version must be bumped. "
+            f"Schema properties have changed - "
+            f"Missing in test: {init_schema_properties - expected_init_properties}. "
+            f"Extra in test: {expected_init_properties - init_schema_properties}. "
+        )
+
+        # Check run_data schema properties
+        assert run_schema_properties == expected_run_properties, (
+            f"If the run_data.schema.json is changed, the integration_data_interface_version must be bumped. "
+            f"Schema properties have changed - "
+            f"Missing in test: {run_schema_properties - expected_run_properties}. "
+            f"Extra in test: {expected_run_properties - run_schema_properties}. "
+        )
+
+        # Check init_data required fields
+        init_schema_required = set(init_data_schema.get("required", []))
+        expected_init_required = set(EXPECTED_INIT_DATA_REQUIRED)
+        assert init_schema_required == expected_init_required, (
+            f"If the init_data.schema.json is changed, the integration_data_interface_version must be bumped. "
+            f"Schema required fields have changed - "
+            f"Missing in test: {init_schema_required - expected_init_required}. "
+            f"Extra in test: {expected_init_required - init_schema_required}. "
+        )
+
+        # Check run_data required fields
+        run_schema_required = set(run_data_schema.get("required", []))
+        expected_run_required = set(EXPECTED_RUN_DATA_REQUIRED)
+        assert run_schema_required == expected_run_required, (
+            f"If the run_data.schema.json is changed, the integration_data_interface_version must be bumped. "
+            f"Schema required fields have changed - "
+            f"Missing in test: {run_schema_required - expected_run_required}. "
+            f"Extra in test: {expected_run_required - run_schema_required}. "
+        )
+
+        # Validate test data against schemas using jsonschema
+        try:
+            jsonschema.validate(EXPECTED_INIT_DATA_PROPERTIES, init_data_schema)
+        except jsonschema.ValidationError as e:
+            pytest.fail(
+                f"If the init_data.schema.json is changed, the integration_data_interface_version must be bumped. "
+                f"Schema validation failed: {e.message}. "
+            )
+
+        try:
+            jsonschema.validate(EXPECTED_RUN_DATA_PROPERTIES, run_data_schema)
+        except jsonschema.ValidationError as e:
+            pytest.fail(
+                f"If the run_data.schema.json is changed, the integration_data_interface_version must be bumped. "
+                f"Schema validation failed: {e.message}. "
+            )
+
+        # Verify version matches expected version
+        assert semantic_version.major == EXPECTED_SCHEMA_VERSION_MAJOR, (
+            f"If the init_data.schema.json or run_data.schema.json is changed, "
+            f"the integration_data_interface_version must be bumped. "
+            f"Expected major version {EXPECTED_SCHEMA_VERSION_MAJOR}, got {semantic_version.major}. "
+        )
+        assert semantic_version.minor == EXPECTED_SCHEMA_VERSION_MINOR, (
+            f"If the init_data.schema.json or run_data.schema.json is changed, "
+            f"the integration_data_interface_version must be bumped. "
+            f"Expected minor version {EXPECTED_SCHEMA_VERSION_MINOR}, got {semantic_version.minor}. "
+        )
 
 
 class TestMaxAdaptor_on_start:
@@ -219,6 +419,185 @@ class TestMaxAdaptor_on_start:
         # THEN
         error_msg = " is a required property"
         assert error_msg in exc_info.value.message
+
+
+class TestMaxAdaptor_license_errors:
+    _VRAY_ERROR = (
+        "2026/09/27 18:43:09 ERR: [08784] [10832] [V-Ray] Could not obtain a license (-2): "
+        "-2: Internal error: Please contact Chaos support."
+    )
+
+    def _write_max_log(self, tmp_path: Path, *lines: str) -> None:
+        log = tmp_path / "Autodesk" / "3dsMax" / "2026 - 64bit" / "ENU" / "Network"
+        log.mkdir(parents=True)
+        (log / "Max.log").write_text("\n".join(lines))
+
+    def test_reversed_lines_reassembles_lines_split_by_a_chunk(self) -> None:
+        """Tests that a line the chunk boundary cuts in half is yielded whole."""
+        content = b"first line here\nsecond line here\nthird line here"
+
+        with io.BytesIO(content) as f:
+            read = [line.decode() for line in _reversed_lines(f, chunk_size=4)]
+
+        assert read == ["third line here", "second line here", "first line here"]
+
+    def test_finds_license_error_across_a_chunk_boundary(
+        self, init_data: dict, tmp_path: Path
+    ) -> None:
+        """Tests that a line split across the backwards reader's chunks is still found."""
+        padding = [f"2026/09/27 18:43:1{i % 10} INF: {'x' * 200}" for i in range(200)]
+        self._write_max_log(tmp_path, self._VRAY_ERROR, *padding)
+        adaptor = MaxAdaptor(init_data)
+
+        with patch.dict("os.environ", {"LOCALAPPDATA": str(tmp_path)}):
+            found = adaptor._find_license_error(datetime(2026, 9, 27, 18, 43, 0))
+
+        assert found is not None
+        assert found[0] == "V-Ray"
+        assert "Could not obtain a license" in found[1]
+
+    def test_stops_at_the_first_line_predating_the_render(
+        self, init_data: dict, tmp_path: Path
+    ) -> None:
+        """Tests that the scan stops rather than reaching an older failure further back."""
+        self._write_max_log(
+            tmp_path,
+            self._VRAY_ERROR,
+            "2026/09/27 18:44:00 INF: License Startup Success",
+        )
+        adaptor = MaxAdaptor(init_data)
+
+        with patch.dict("os.environ", {"LOCALAPPDATA": str(tmp_path)}):
+            found = adaptor._find_license_error(datetime(2026, 9, 27, 18, 43, 30))
+
+        assert found is None
+
+    def test_ignores_a_license_phrase_on_a_continuation_line(
+        self, init_data: dict, tmp_path: Path
+    ) -> None:
+        """Tests that a line without its own timestamp is not treated as a log entry."""
+        self._write_max_log(
+            tmp_path,
+            "2026/09/27 18:43:20 INF: [08784] [10832] render summary follows",
+            "        [V-Ray] Could not obtain a license (-2)",
+        )
+        adaptor = MaxAdaptor(init_data)
+
+        with patch.dict("os.environ", {"LOCALAPPDATA": str(tmp_path)}):
+            found = adaptor._find_license_error(datetime(2026, 9, 27, 18, 43, 0))
+
+        assert found is None
+
+    def test_finds_license_error_from_this_render(self, init_data: dict, tmp_path: Path) -> None:
+        """Tests that a license failure logged during the render is found."""
+        self._write_max_log(tmp_path, self._VRAY_ERROR)
+        adaptor = MaxAdaptor(init_data)
+
+        with patch.dict("os.environ", {"LOCALAPPDATA": str(tmp_path)}):
+            found = adaptor._find_license_error(datetime(2026, 9, 27, 18, 43, 0))
+
+        assert found is not None
+        assert found[0] == "V-Ray"
+
+    def test_finds_redshift_license_error(self, init_data: dict, tmp_path: Path) -> None:
+        """Tests that a Redshift license failure is found and attributed to Redshift."""
+        self._write_max_log(
+            tmp_path,
+            "2026/09/28 01:02:28 ERR: [ERROR]  Maxon licensing error: Please update your Maxon "
+            "App to at least version 2024.5 (current version ). (16)",
+        )
+        adaptor = MaxAdaptor(init_data)
+
+        with patch.dict("os.environ", {"LOCALAPPDATA": str(tmp_path)}):
+            found = adaptor._find_license_error(datetime(2026, 9, 28, 1, 2, 0))
+
+        assert found is not None
+        assert found[0] == "Redshift"
+
+    def test_ignores_license_error_from_an_earlier_render(
+        self, init_data: dict, tmp_path: Path
+    ) -> None:
+        """Tests that Max.log history is not attributed to this render."""
+        self._write_max_log(tmp_path, self._VRAY_ERROR)
+        adaptor = MaxAdaptor(init_data)
+
+        with patch.dict("os.environ", {"LOCALAPPDATA": str(tmp_path)}):
+            found = adaptor._find_license_error(datetime(2026, 9, 27, 18, 43, 10))
+
+        assert found is None
+
+    @patch("time.sleep")
+    @patch("deadline.max_adaptor.MaxAdaptor.adaptor.ActionsQueue.__len__", return_value=0)
+    @patch("deadline.max_adaptor.MaxAdaptor.adaptor.LoggingSubprocess")
+    @patch("deadline.max_adaptor.MaxAdaptor.adaptor.AdaptorServer")
+    def test_on_run_reports_a_license_failure_that_rendered(
+        self,
+        mock_server: Mock,
+        mock_logging_subprocess: Mock,
+        mock_actions_queue: Mock,
+        mock_sleep: Mock,
+        init_data: dict,
+        run_data: dict,
+        tmp_path: Path,
+    ) -> None:
+        """Tests that a license failure is reported even though the render reported success."""
+        adaptor = MaxAdaptor(init_data)
+        mock_server.return_value.server_path = "/tmp/9999"
+        MaxAdaptor._is_rendering = PropertyMock(side_effect=[None, True, False])
+        adaptor.on_start()
+
+        # The timestamp has to come from the floor on_start established, so the real scan runs.
+        assert adaptor._license_scan_since is not None
+        logged = (adaptor._license_scan_since + timedelta(seconds=1)).strftime("%Y/%m/%d %H:%M:%S")
+        self._write_max_log(
+            tmp_path,
+            f"{logged} ERR: [08784] [10832] [V-Ray] Could not obtain a license (-2): "
+            "-2: Internal error: Please contact Chaos support.",
+        )
+
+        with patch.dict("os.environ", {"LOCALAPPDATA": str(tmp_path)}):
+            with pytest.raises(RuntimeError) as exc_info:
+                adaptor.on_run(run_data)
+
+        assert "V-Ray failed to acquire a license." in str(exc_info.value)
+
+    def test_ignores_license_error_from_the_same_second(
+        self, init_data: dict, tmp_path: Path
+    ) -> None:
+        """Tests that a line from the render start second belongs to the earlier render."""
+        self._write_max_log(tmp_path, self._VRAY_ERROR)
+        adaptor = MaxAdaptor(init_data)
+
+        with patch.dict("os.environ", {"LOCALAPPDATA": str(tmp_path)}):
+            found = adaptor._find_license_error(datetime(2026, 9, 27, 18, 43, 9))
+
+        assert found is None
+
+    @patch("time.sleep")
+    @patch("deadline.max_adaptor.MaxAdaptor.adaptor.ActionsQueue.__len__", return_value=0)
+    @patch("deadline.max_adaptor.MaxAdaptor.adaptor.LoggingSubprocess")
+    @patch("deadline.max_adaptor.MaxAdaptor.adaptor.AdaptorServer")
+    def test_scan_floor_predates_renderer_assignment(
+        self,
+        mock_server: Mock,
+        mock_logging_subprocess: Mock,
+        mock_actions_queue: Mock,
+        mock_sleep: Mock,
+        init_data: dict,
+        run_data: dict,
+    ) -> None:
+        """Tests that the scan starts from initialization, when the renderer is assigned."""
+        adaptor = MaxAdaptor(init_data)
+        mock_server.return_value.server_path = "/tmp/9999"
+        MaxAdaptor._is_rendering = PropertyMock(side_effect=[None, True, False])
+        adaptor.on_start()
+        floor = adaptor._license_scan_since
+
+        with patch.object(MaxAdaptor, "_find_license_error", return_value=None) as mock_find:
+            adaptor.on_run(run_data)
+
+        assert floor is not None
+        mock_find.assert_called_once_with(floor)
 
 
 class TestMaxAdaptor_on_run:

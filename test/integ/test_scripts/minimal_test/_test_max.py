@@ -17,6 +17,11 @@ def main(job_history_dir: str, output_dir: str):
     """
 
     widget = show_job_bundle_submitter()
+    # show_job_bundle_submitter returns None when a pre-GUI hook aborts the open (declined
+    # confirmation, hook failure, or a bad hook value). This test configures no environment hooks,
+    # so that path is not expected here; assert to fail clearly instead of raising an opaque
+    # AttributeError on widget.job_settings_type() below if it ever does.
+    assert widget is not None, "submitter did not open (pre-GUI hook aborted?)"
 
     settings = widget.job_settings_type()
     widget.shared_job_settings.update_settings(settings)
@@ -27,6 +32,8 @@ def main(job_history_dir: str, output_dir: str):
     settings.include_adaptor_wheels = False
     settings.override_frame_range = True
     settings.frame_list = "1-2"
+    # Set the output filename pattern to use tokens
+    settings.output_filename_pattern = "<stateset>_test_###_<camera>"
 
     widget.shared_job_settings.shared_job_properties_box.set_parameter_value(
         {"name": "deadline:targetTaskRunStatus", "value": "READY"}

@@ -80,6 +80,93 @@
                 <addEnvironmentVariable name="${name}" value="${new_value}" scope="${scope}"/>
             </actionList>
         </actionDefinition>
+        <actionDefinition name="fnRemovePathFromEnvironmentVariable">
+            <!--
+                Removes a single directory entry from a PATH-like environment variable
+                using InstallBuilder-native actions only. Avoid runProgram/PowerShell
+                because those are brittle on Windows and can be blocked or skipped.
+
+                Build a regex-safe copy of ${value}. escape_backslashes only handles '\',
+                so also escape regex metacharacters that are legal in Windows path entries
+                (., ^, $, (), [], {}, +). Without this, a path like
+                "C:\Program Files (x86)\..." turns "(x86)" into a capture group and
+                cleanup silently no-ops.
+
+                The regular expression removes the target when it appears as the
+                only entry, first entry, middle entry, or last entry in a semicolon
+                separated value. If the result is empty, delete the environment
+                variable; otherwise write back the cleaned value.
+
+                The source value is read from the scope-specific registry key
+                (HKCU\Environment for user, HKLM Session Manager\Environment for
+                system) rather than ${env(NAME)}. ${env()} returns the merged
+                user+system process environment, which caused cross-scope bleed:
+                a stale entry present in one scope could trigger a write to the
+                other scope (e.g. synthesizing a user PYTHONPATH from the machine
+                value). Reading per scope keeps the two independent. The write
+                actions are non-fatal so a non-admin install cannot be aborted by
+                an HKLM (system-scope) write it lacks permission for.
+            -->
+            <parameterList>
+                <stringParameter name="name"/>
+                <stringParameter name="value"/>
+                <stringParameter name="scope" default="user"/>
+            </parameterList>
+            <actionList>
+                <setInstallerVariable name="_regex_safe_value" value="${value.escape_backslashes}"/>
+                <setInstallerVariableFromRegEx>
+                    <name>_regex_safe_value</name>
+                    <text>${_regex_safe_value}</text>
+                    <pattern>([].^$(){}[+])</pattern>
+                    <substitution>\\\1</substitution>
+                </setInstallerVariableFromRegEx>
+                <setInstallerVariable name="_env_reg_key" value="HKEY_CURRENT_USER\Environment"/>
+                <setInstallerVariable name="_env_reg_key" value="HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Environment">
+                    <ruleList>
+                        <compareText text="${scope}" logic="equals" value="system"/>
+                    </ruleList>
+                </setInstallerVariable>
+                <registryGet key="${_env_reg_key}" name="${name}" variable="_scope_env_value" wowMode="64"/>
+                <actionGroup>
+                    <actionList>
+                        <setInstallerVariableFromRegEx>
+                            <name>_cleaned_env_value</name>
+                            <text>${_scope_env_value}</text>
+                            <pattern>(^|;)${_regex_safe_value}(;|$)</pattern>
+                            <substitution>\1</substitution>
+                        </setInstallerVariableFromRegEx>
+                        <setInstallerVariableFromRegEx>
+                            <name>_cleaned_env_value</name>
+                            <text>${_cleaned_env_value}</text>
+                            <pattern>;$</pattern>
+                            <substitution></substitution>
+                        </setInstallerVariableFromRegEx>
+                        <deleteEnvironmentVariable>
+                            <name>${name}</name>
+                            <scope>${scope}</scope>
+                            <abortOnError>0</abortOnError>
+                            <showMessageOnError>0</showMessageOnError>
+                            <ruleList>
+                                <compareTextLength text="${_cleaned_env_value}" logic="equals" length="0"/>
+                            </ruleList>
+                        </deleteEnvironmentVariable>
+                        <addEnvironmentVariable>
+                            <name>${name}</name>
+                            <value>${_cleaned_env_value}</value>
+                            <scope>${scope}</scope>
+                            <abortOnError>0</abortOnError>
+                            <showMessageOnError>0</showMessageOnError>
+                            <ruleList>
+                                <compareTextLength text="${_cleaned_env_value}" logic="does_not_equal" length="0"/>
+                            </ruleList>
+                        </addEnvironmentVariable>
+                    </actionList>
+                    <ruleList>
+                        <regExMatch text="${_scope_env_value}" logic="matches" pattern="(^|;)${_regex_safe_value}(;|$)"/>
+                    </ruleList>
+                </actionGroup>
+            </actionList>
+        </actionDefinition>
     </functionDefinitionList>
 
     <componentList>
@@ -189,5 +276,24 @@
         </actionGroup>
         <deleteFile path="${installdir}/installer_version.txt"/>
     </preUninstallationActionList>
+    <postUninstallationActionList>
+        <!--
+            After uninstall, sweep any stale PYTHONPATH entry that a pre-fix installer may have
+            left in the user's or system's environment. Safe no-op if not present.
+            ${max_installdir} is persisted in the component's readyToInstallActionList and
+            resolves at uninstall time to the exact directory that older installers had added
+            to PYTHONPATH.
+        -->
+        <fnRemovePathFromEnvironmentVariable>
+            <name>PYTHONPATH</name>
+            <value>${max_installdir}/scripts</value>
+            <scope>user</scope>
+        </fnRemovePathFromEnvironmentVariable>
+        <fnRemovePathFromEnvironmentVariable>
+            <name>PYTHONPATH</name>
+            <value>${max_installdir}/scripts</value>
+            <scope>system</scope>
+        </fnRemovePathFromEnvironmentVariable>
+    </postUninstallationActionList>
     <width>550</width>
 </project>

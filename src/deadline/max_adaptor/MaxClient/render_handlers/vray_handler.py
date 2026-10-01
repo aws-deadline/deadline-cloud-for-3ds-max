@@ -4,9 +4,17 @@
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 """
 
+import os
 import sys
+from typing import Any
 
 from pymxs import runtime as rt
+
+from deadline.max_shared.utilities.max_utils import (
+    configure_vray_raw_output,
+    get_max_version_year,
+    is_vray_raw_output_format,
+)
 
 from .default_max_handler import DefaultMaxHandler
 
@@ -18,12 +26,47 @@ sys.stderr = sys.__stderr__
 class VrayHandler(DefaultMaxHandler):
     """Render Handler for V-Ray"""
 
-    def __init__(self, gpu):
+    def __init__(self, gpu: bool) -> None:
         """
         Initializes the V-Ray and V-Ray Handler
         """
         super().__init__()
         self.gpu: bool = gpu
+        self._validate_vray_environment()
+
+    def _validate_vray_environment(self) -> None:
+        """
+        Validates that required VRay environment variables are set.
+        Raises RuntimeError with actionable message if variables are missing.
+        """
+        # Get 3ds Max release year (e.g. 2025)
+        year: int = get_max_version_year()
+
+        # Define required environment variables
+        required_vars: list[str] = [
+            f"VRAY_FOR_3DSMAX{year}_MAIN",
+            f"VRAY_FOR_3DSMAX{year}_PLUGINS",
+            f"VRAY_MDL_PATH_3DSMAX{year}",
+        ]
+
+        # Check for missing variables
+        missing_vars: list[str] = [var for var in required_vars if var not in os.environ]
+
+        if missing_vars:
+            error_msg = (
+                f"V-Ray renderer detected, but required environment variables are missing.\n"
+                f"Please set the following variables in to the system environment variables:\n"
+                f"{os.linesep.join(f'  - {var}' for var in missing_vars)}"
+            )
+            print(error_msg, flush=True)
+            raise RuntimeError(error_msg)
+        else:
+            # Print confirmation that VRay environment is properly configured
+            success_msg = (
+                f"V-Ray environment validated successfully for 3ds Max {year}:\n"
+                f"{os.linesep.join(f'  - {var}: {os.environ[var]}' for var in required_vars)}"
+            )
+            print(success_msg, flush=True)
 
     def check_renderer(self) -> None:
         """
@@ -61,3 +104,156 @@ class VrayHandler(DefaultMaxHandler):
             if "V_Ray" not in current_renderer or "V_Ray_GPU" in current_renderer:
                 # Set to most recent version of V-Ray
                 rt.renderers.current = vray()
+
+    def _apply_path_mapping(self) -> None:
+        """
+        Applies path mapping to V-Ray specific assets.
+
+        Currently handles:
+        - VRayProxy objects (.vrmesh files)
+        - Bitmap textures (all Bitmaptexture instances in the scene)
+        """
+        self.log_to_console("VrayHandler._apply_path_mapping called")
+        if self.map_path is None:
+            self.log_to_console("VrayHandler._apply_path_mapping: map_path is None, skipping")
+            return
+
+        self.log_to_console(
+            "VrayHandler._apply_path_mapping: map_path is set, applying VRay path mapping"
+        )
+        self._apply_vray_proxy_path_mapping()
+        self._apply_bitmap_path_mapping()
+
+    def _apply_vray_proxy_path_mapping(self) -> None:
+        """
+        Applies path mapping to all VRayProxy objects in the scene.
+        """
+        # Check if VRayProxy class exists
+        if not hasattr(rt, "VRayProxy"):
+            self.log_to_console("VRayProxy class not found - V-Ray may not be loaded")
+            return
+
+        # rt.objects returns pymxs objects (dynamically typed)
+        proxies: list[Any] = [obj for obj in rt.objects if rt.classOf(obj) == rt.VRayProxy]
+
+        if not proxies:
+            self.log_to_console("No VRayProxy objects found in scene")
+            return
+
+        mapped_count: int = 0
+        for proxy in proxies:
+            original_path: Any = getattr(proxy, "fileName", None)
+            if not original_path:
+                continue
+
+            original_path_str: str = str(original_path)
+
+            # Use the injected map_path function (guaranteed non-None by caller)
+            assert self.map_path is not None  # For mypy
+            self.log_to_console(f"Requesting Path Mapping for path '{original_path_str}'.")
+            mapped_path: str = self.map_path(original_path_str)
+            self.log_to_console(f"Mapped path '{original_path_str}' to '{mapped_path}'.")
+
+            if mapped_path != original_path_str:
+                try:
+                    proxy.fileName = mapped_path
+                    mapped_count += 1
+                    self.log_to_console(
+                        f"Remapped VRayProxy '{proxy.name}': {original_path_str} -> {mapped_path}"
+                    )
+                except Exception as e:
+                    self.log_to_console(f"Warning: Failed to remap VRayProxy '{proxy.name}': {e}")
+
+        self.log_to_console(f"VRMesh path mapping complete: {mapped_count} proxies remapped")
+
+    def _apply_bitmap_path_mapping(self) -> None:
+        """
+        Applies path mapping to all bitmap texture file paths in the scene.
+
+        This covers standard 3ds Max Bitmaptexture nodes, which are used by
+        Chaos Cosmos assets, V-Ray materials, and any other material that
+        references an image file. Without this, textures uploaded via job
+        attachments remain pointing at the artist's local filesystem path
+        and silently fail to load on the worker (V-Ray renders without them
+        instead of erroring).
+        """
+        try:
+            bitmaps: list[Any] = list(rt.getClassInstances(rt.Bitmaptexture))
+        except Exception as e:
+            self.log_to_console(f"Warning: could not enumerate Bitmaptexture instances: {e}")
+            return
+
+        if not bitmaps:
+            self.log_to_console("No Bitmaptexture instances found in scene")
+            return
+
+        assert self.map_path is not None  # Guaranteed by caller
+        mapped_count: int = 0
+        for tex in bitmaps:
+            # Note: Bitmaptexture exposes its path as `.filename` (lowercase 'n'),
+            # whereas VRayProxy uses `.fileName` (capital 'N'). These spellings are
+            # defined by 3ds Max / MAXScript per class and are not interchangeable.
+            try:
+                raw_filename = tex.filename
+                # An unassigned .filename comes back as rt.undefined, which is truthy;
+                # str() on it yields the literal "undefined". Skip those explicitly so
+                # we don't make a bogus map_path call or log a misleading path.
+                if raw_filename is None or raw_filename is rt.undefined:
+                    continue
+                original_path: str = str(raw_filename)
+            except Exception as e:
+                self.log_to_console(
+                    f"Warning: could not read filename for a Bitmaptexture instance: {e}"
+                )
+                continue
+
+            if not original_path:
+                continue
+
+            self.log_to_console(f"Requesting Path Mapping for path '{original_path}'.")
+            mapped_path: str = self.map_path(original_path)
+            self.log_to_console(f"Mapped path '{original_path}' to '{mapped_path}'.")
+            if mapped_path != original_path:
+                try:
+                    tex.filename = mapped_path
+                    mapped_count += 1
+                    self.log_to_console(f"Remapped Bitmaptexture: {original_path} -> {mapped_path}")
+                except Exception as e:
+                    self.log_to_console(
+                        f"Warning: Failed to remap bitmap texture '{original_path}': {e}"
+                    )
+
+        self.log_to_console(f"Bitmap path mapping complete: {mapped_count} textures remapped")
+
+    def _configure_renderer_output(
+        self, output_name: str, output_dir: str, output_format: str
+    ) -> bool:
+        """
+        Configure V-Ray output settings before rendering.
+
+        Resolves output filename tokens before setting V-Ray output paths,
+        so the split buffer filename matches the resolved main output.
+
+        Automatically uses raw output pipeline for .vrimg and .exr formats,
+        which stores all render elements in a single multichannel container file.
+        For other formats, does nothing and defers output configuration to 3dsMax.
+        """
+        # Auto-detect raw output mode based on format
+        if not is_vray_raw_output_format(output_format):
+            # Only need to configure output for raw formats
+            return False
+
+        # If output_name is a full path (e.g. from batch view output_filename),
+        # extract just the filename portion. The directory comes from output_dir.
+        output_name = os.path.basename(output_name)
+        self.log_to_console(f"V-Ray raw output mode enabled for format: {output_format}")
+        warnings = configure_vray_raw_output(
+            output_path=output_dir,
+            output_name=output_name,
+            output_format=output_format,
+        )
+        for warning in warnings:
+            self.log_to_console(f"Warning: {warning}")
+
+        # V-Ray manages its own output file writing for raw output mode
+        return True

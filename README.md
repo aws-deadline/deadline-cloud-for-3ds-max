@@ -1,5 +1,6 @@
 # AWS Deadline Cloud for 3ds Max
 
+### [User guide](https://docs.aws.amazon.com/deadline-cloud/latest/userguide/autodesk-3ds-max.html) | [Service documentation](https://docs.aws.amazon.com/deadline-cloud/) | [Deadline Cloud on GitHub](https://github.com/aws-deadline/) 
 
 [![pypi](https://img.shields.io/pypi/v/deadline-cloud-for-3ds-max.svg?style=flat)](https://pypi.python.org/pypi/deadline-cloud-for-3ds-max)
 [![python](https://img.shields.io/pypi/pyversions/deadline-cloud-for-3ds-max.svg?style=flat)](https://pypi.python.org/pypi/deadline-cloud-for-3ds-max)
@@ -17,7 +18,7 @@ AWS Deadline Cloud for 3ds Max is a python package that allows users to create [
 
 This library requires:
 
-1. 3ds Max 2024, 2025, 2026.
+1. 3ds Max 2024, 2025, 2026, 2027.
 1. Python 3.10 or higher.
 1. Windows operating system.
 
@@ -28,10 +29,25 @@ AWS Deadline Cloud officially supports rendering 3ds Max jobs using the followin
 * Autodesk Scanline 
 * Autodesk Raytracer (ART) 
 * Chaos Corona 
+* Chaos V-Ray 5 (CPU & GPU)
 * Chaos V-Ray 6 (CPU & GPU)
 * Chaos V-Ray 7 (CPU & GPU)
 * Maxon Redshift
-## Getting Started
+* Autodesk Arnold
+
+## Deadline Cloud Getting Started
+
+3ds Max integration for AWS Deadline Cloud's Service Managed Fleets (SMF) leverages the Host Configuration feature of Deadline Cloud. At instance boot up, 3ds Max, and renderers such as V-Ray are installed to the host.
+
+Please follow the README.md available at the Deadline Cloud Samples Github repository. [link](https://github.com/aws-deadline/deadline-cloud-samples/tree/mainline/host_configuration_scripts/3dsmax)
+
+Currently tested configurations:
+- 3dsmax 2024
+- 3dsmax 2025 + VRay
+- 3dsmax 2025 + VRay + tyFlow
+- Other examples to follow, or please request additional examples via the discussion forum.
+
+## Development Getting Started
 
 This 3ds Max integration for AWS Deadline Cloud has two components that you will need to install:
 
@@ -52,6 +68,25 @@ It automatically determines the files required based on the loaded scene, allows
 The 3ds Max submitter plugin is packaged as part of the Deadline Cloud submitter installer. Please visit the Deadline Cloud downloads page in the AWS console to download the latest version.
 
 To manually build the installer, please follow the instructions [here](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/blob/mainline/DEVELOPMENT.md#manual-installation).
+
+### Submission Hooks
+
+The 3ds Max submitter supports Deadline Cloud *submission hooks* — pre-GUI, pre-submission, and
+post-submission — sourced from a directory named by the `DEADLINE_HOOKS_DIR` environment variable.
+A pre-GUI hook can pre-populate the submitter dialog (job name/description, parameters such as
+priority or Conda packages) before it opens. Enable environment hooks with:
+
+```sh
+deadline config set settings.allow_environment_hooks true
+```
+
+Hooks run when you open the submitter from the 3ds Max shelf button. The submitter shows a
+confirmation dialog listing the hooks it found before running them, skipped when the
+general-purpose `settings.auto_accept` setting is enabled.
+
+For the hook types, the `hooks.yaml` format, the stdin/stdout contract, and examples, see
+[Submission Hooks](https://github.com/aws-deadline/deadline-cloud/blob/mainline/docs/submission-hooks.md)
+in the AWS Deadline Cloud client library.
 
 ## Adaptor
 
@@ -93,7 +128,7 @@ See [CONTRIBUTING](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/bl
 
 ## Telemetry
 
-See [telemetry](https://github.com/aws-deadline/deadline-cloud-for-3ds-max/blob/release/docs/telemetry.md) for more information.
+See [telemetry](https://docs.aws.amazon.com/deadline-cloud/latest/userguide/opt-out.html) for more information.
 
 ## License
 

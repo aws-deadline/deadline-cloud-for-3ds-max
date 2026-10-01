@@ -4,12 +4,25 @@
 global maxVersion_ = maxVersion()
 global majorVersion = maxVersion_[1]
 
--- Python script to add repo path to max script locations
-python.Execute "import sys"
-python.Execute "import os"
-python.Execute "max_submitter_path: str = os.environ.get('MAX_SUBMITTER', '')"
-python.Execute "sys.path.append(max_submitter_path)"
-python.Execute "sys.path.append(f'{max_submitter_path}/deadline/max_submitter')"
+-- Python script to add the submitter's own directories to sys.path.
+-- Prepend (insert at 0) rather than append so the bundled 'deadline' package always wins
+-- over any leaked older 'deadline' that may be present in a user or system Python install.
+-- Use os.path.normpath / os.path.join so the entries are stored in canonical native form
+-- (matching what run_ui.py's defense-in-depth bootstrap uses), keeping the exact-string
+-- dedup below correct on Windows regardless of how the MAX_SUBMITTER env var was written
+-- by the installer.
+--
+-- IMPORTANT: read the raw env value and truthy-check it BEFORE calling os.path.normpath.
+-- os.path.normpath("") returns "." (truthy), which would otherwise cause "." and
+-- "./deadline/max_submitter" to be prepended to sys.path if MAX_SUBMITTER were unset —
+-- exactly the CWD-on-sys.path footgun this whole change is trying to eliminate.
+python.Execute "import sys, os"
+python.Execute "_dc_max_submitter_raw = os.environ.get('MAX_SUBMITTER', '')"
+python.Execute "_dc_max_submitter_path = os.path.normpath(_dc_max_submitter_raw) if _dc_max_submitter_raw else ''"
+python.Execute "_dc_sys_path_entries = tuple((_dc_max_submitter_path, os.path.join(_dc_max_submitter_path, 'deadline', 'max_submitter'))) if _dc_max_submitter_path else ()"
+python.Execute "sys.path[:] = [p for p in sys.path if p not in _dc_sys_path_entries]"
+python.Execute "sys.path[0:0] = list(_dc_sys_path_entries)"
+python.Execute "del _dc_max_submitter_raw, _dc_max_submitter_path, _dc_sys_path_entries"
 
 -- Check if this is 3ds Max 2024 or earlier (version 26000 and below)
 if majorVersion <= 26000 then

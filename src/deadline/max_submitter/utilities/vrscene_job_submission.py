@@ -5,6 +5,7 @@ V-Ray Standalone Job Submission Utilities
 """
 
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -86,13 +87,17 @@ def create_tile_rendering_job_template(
     settings,
     vrscene_path: str,
     output_filename: str,
-    start_frame: int,
-    end_frame: int,
+    frames: str,
 ) -> Dict[str, Any]:
     """
     Create job template with tile rendering steps. Loaded from YAML.
 
     Steps: RenderRegions (N×M tasks/frame) → MergeRegions (1 task/frame).
+
+    ``frames`` is the OpenJD ``Frames`` value, handed to
+    ``range: '{{Param.Frames}}'`` verbatim. It is the artist's own text with
+    only the ends trimmed, checked by :func:`validate_frame_string` before
+    submission, and may be non-contiguous, e.g. ``"1-3,8,11-12"``.
     """
     template = _load_job_template("vray_tile_render_job_template.yaml")
     template["name"] = f"{settings.name} - VRay Tile Render"
@@ -102,11 +107,6 @@ def create_tile_rendering_job_template(
     _inject_embedded_script(template, "INJECT_TILE_MERGE_SCRIPT", _get_tile_merge_script())
 
     # Set dynamic parameter defaults from settings
-    if start_frame == end_frame:
-        frames = str(start_frame)
-    else:
-        frames = f"{start_frame}-{end_frame}"
-
     defaults = {
         "OutputFileName": output_filename,
         "Frames": frames,
@@ -138,17 +138,16 @@ def create_vrscene_render_job_parameters(
     vrscene_path: str,
     output_path: str,
     output_filename: str,
-    start_frame: int,
-    end_frame: int,
+    frames: str,
     vray_executable: str,
 ) -> List[Dict[str, Any]]:
-    """Create parameter values for vrscene render job."""
-    # Determine frame range string
-    if start_frame == end_frame:
-        frames = str(start_frame)
-    else:
-        frames = f"{start_frame}-{end_frame}"
+    """Create parameter values for vrscene render job.
 
+    ``frames`` is the OpenJD ``Frames`` value, handed to
+    ``range: '{{Param.Frames}}'`` verbatim. It is the artist's own text with
+    only the ends trimmed, checked by :func:`validate_frame_string` before
+    submission, and may be non-contiguous, e.g. ``"1-3,8,11-12"``.
+    """
     parameters = [
         {"name": "VRayExecutable", "value": vray_executable},
         {"name": "VRSceneOutputPath", "value": vrscene_path},
@@ -184,20 +183,151 @@ def create_export_job_parameters(
     return parameters
 
 
-def get_frame_range_from_string(frame_string: str) -> Tuple[int, int]:
-    """Parse frame range string (e.g. "1-100") and return (start, end)."""
-    # Handle simple cases
-    if "-" in frame_string:
-        parts = frame_string.split("-")
-        start = int(parts[0].split(",")[-1].strip())
-        end = int(parts[-1].split(",")[0].strip())
-        return start, end
-    elif "," in frame_string:
-        frames = [int(f.strip()) for f in frame_string.split(",")]
-        return min(frames), max(frames)
+# One comma-separated frame group: a frame, a range, or a range with a step.
+# The sign is part of each number rather than a separator, so "-5--1" parses as
+# -5 to -1: 3ds Max allows negative animation ranges and get_frames() passes
+# rt.animationrange.start straight through.
+_FRAME_GROUP_RE = re.compile(
+    r"^(?P<start>-?\d+)" r"(?:\s*-\s*(?P<end>-?\d+)" r"(?:\s*:\s*(?P<step>-?\d+))?" r")?$"
+)
+
+
+def parse_frame_groups(frame_string: str) -> List[Tuple[int, int]]:
+    """Parse a frame string into the (low, high) span of each comma-separated group.
+
+    Accepts the forms OpenJD's range expression accepts, which is what consumes
+    the ``Frames`` job parameter via ``range: '{{Param.Frames}}'``:
+
+    * a single frame, including zero and negatives -- ``5``, ``0``, ``-5``
+    * a range -- ``1-10``, ``-5--1``
+    * a range with a step -- ``1-10:2``, ``10-1:-2``
+
+    Only the endpoints are inspected, never the frames between them, so the cost
+    is proportional to the number of groups rather than the size of the span. That
+    matters because this runs on the raw frame-list field: expanding it would let a
+    typo such as ``1-100000000`` allocate a hundred million integers inside the
+    3ds Max process, several GB and a long freeze with no feedback. A string-length
+    limit does not help, because ``1-100000000`` is only eleven characters.
+
+    :param frame_string: frame specification
+    :return: one (low, high) pair per group, in the order written
+    :raises ValueError: if the string is empty or any group is malformed
+    """
+    if not frame_string or not frame_string.strip():
+        raise ValueError("Frame range cannot be empty")
+
+    spans: List[Tuple[int, int]] = []
+    for group in frame_string.strip().split(","):
+        group = group.strip()
+        if not group:
+            raise ValueError(f"Empty frame group in '{frame_string}'")
+
+        match = _FRAME_GROUP_RE.match(group)
+        if not match:
+            raise ValueError(
+                f"'{group}' is not a frame or frame range. Use a frame (5), "
+                "a range (1-10), or a range with a step (1-10:2)."
+            )
+
+        start = int(match.group("start"))
+        end_text, step_text = match.group("end"), match.group("step")
+        if end_text is None:
+            spans.append((start, start))
+            continue
+
+        end = int(end_text)
+        if step_text is None:
+            # Matches OpenJD: without an explicit step the range must ascend.
+            if end < start:
+                raise ValueError(
+                    f"'{group}' counts down, so it needs a negative step: "
+                    f"write '{start}-{end}:-1' if that is what you meant."
+                )
+        else:
+            step = int(step_text)
+            if step == 0:
+                raise ValueError(f"'{group}' has a step of zero, which renders no frames.")
+            if step > 0 and end < start:
+                raise ValueError(f"'{group}' counts down but its step is positive.")
+            if step < 0 and end > start:
+                raise ValueError(f"'{group}' counts up but its step is negative.")
+
+        spans.append((min(start, end), max(start, end)))
+
+    return spans
+
+
+def validate_frame_string(frame_string: str) -> List[str]:
+    """Check a frame string the way OpenJD will, and describe any problem plainly.
+
+    The frame list is passed to the service verbatim as the ``Frames`` job
+    parameter, so OpenJD is what ultimately judges it. Rather than pre-processing
+    the value into something OpenJD is guaranteed to like -- which would mean
+    guessing at what the artist meant -- this reports the problem so it can be
+    corrected before anything is submitted.
+
+    The rules mirror OpenJD's, established by exercising its parser directly:
+    groups may appear in any order and gaps are fine, but two groups may not
+    overlap, and the comparison is on each group's *span*. ``1-10:2,2-10:2`` is
+    rejected even though the frames themselves are disjoint, so spans are the
+    right unit here, and no range ever has to be expanded to check.
+
+    :param frame_string: frame specification
+    :return: a list of human-readable problems; empty when the value is usable
+    """
+    try:
+        spans = parse_frame_groups(frame_string)
+    except ValueError as exc:
+        return [str(exc)]
+
+    errors: List[str] = []
+    ordered = sorted(spans)
+    for (previous_low, previous_high), (low, high) in zip(ordered, ordered[1:]):
+        if low <= previous_high:
+            errors.append(_describe_overlap(previous_low, previous_high, low, high))
+    return errors
+
+
+def _describe_overlap(previous_low: int, previous_high: int, low: int, high: int) -> str:
+    """Word an overlap the way it reads best for the shapes involved.
+
+    Spans arrive sorted, so the second one starts at or after the first. Phrasing
+    each combination separately avoids sentences like "Frames 5 overlap frames 5",
+    which is what a single template produces for a repeated single frame.
+    """
+    single_previous = previous_low == previous_high
+    single_current = low == high
+
+    if single_current and single_previous:
+        # Already says everything the guidance below would add.
+        return f"Frame {low} is listed more than once."
+    if single_current:
+        detail = f"Frame {low} is already covered by {previous_low}-{previous_high}."
+    elif single_previous:
+        detail = f"Frames {low}-{high} already include frame {previous_low}."
     else:
-        frame = int(frame_string.strip())
-        return frame, frame
+        detail = f"Frames {low}-{high} overlap frames {previous_low}-{previous_high}."
+
+    return detail + " Each frame may only be listed once."
+
+
+def get_frame_range_from_string(frame_string: str) -> Tuple[int, int]:
+    """Parse a frame string and return its bounding (start, end).
+
+    Handles non-contiguous input by returning the true min/max, e.g.
+    "1-10,20-30" -> (1, 30) and "1-3,6,8" -> (1, 8).
+
+    Used for the vrscene export, which needs a first and last frame rather than
+    the exact set. The exact set is never needed on this path: the frame string
+    goes to the service verbatim as the ``Frames`` job parameter and OpenJD fans
+    it out into tasks.
+
+    :param frame_string: frame specification
+    :return: (start, end) bounding the requested frames
+    :raises ValueError: if the string is empty or cannot be parsed
+    """
+    spans = parse_frame_groups(frame_string)
+    return min(low for low, _ in spans), max(high for _, high in spans)
 
 
 def create_export_job_template() -> Dict[str, Any]:

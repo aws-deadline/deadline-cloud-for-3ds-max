@@ -85,6 +85,18 @@ def main():
         f"-imgHeight={image_height}",
         f"-region={region_str}",
         f"-frames={frame}",
+        # Write exactly the name asked for above, instead of appending a frame
+        # number to it.
+        #
+        # Without this, V-Ray adds its own frame number when the scene's output
+        # settings ask for a numbered sequence -- 3ds Max writes
+        # img_file_needFrameNumber=1 into the vrscene whenever the artist has a
+        # render output filename configured. Since tile_filename already carries
+        # the frame, the file lands as _tile{N}_{base}.{frame}.{frame}{ext} and
+        # the merge step cannot find it. Verified against a customer scene that
+        # sets the flag and a test scene that does not: with this flag both
+        # produce the requested name, and frames stay in separate files.
+        "-noFrameNumbers=1",
         "-display=0",
         *remap_args,
     ]

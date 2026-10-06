@@ -138,8 +138,6 @@ def on_create_vrscene_job_bundle_callback(
             job_bundle_path,
             settings,
             vrscene_path,
-            start_frame,
-            end_frame,
             queue_parameters,
             asset_references,
         )
@@ -195,11 +193,12 @@ def _create_combined_export_render_job_bundle(
     _logger.info(f"Using 3ds Max executable: {max_executable}")
     _logger.info(f"Using V-Ray executable: {vray_executable}")
 
-    # Determine frame range string
-    if start_frame == end_frame:
-        frames = str(start_frame)
-    else:
-        frames = f"{start_frame}-{end_frame}"
+    # The frame list goes to the service verbatim, so non-contiguous ranges such
+    # as "1-3,8,11-12" survive: the templates declare the task range as
+    # range: '{{Param.Frames}}', and OpenJD fans that out into one task per
+    # frame. Validated before we get here by validate_vrscene_export_settings.
+    # start_frame/end_frame remain the bounding span used for the export script.
+    frames = settings.frame_list.strip()
 
     output_filename = _determine_output_filename(settings, vrscene_path)
     _logger.info(f"Output filename: {output_filename}")
@@ -316,7 +315,7 @@ def _create_combined_export_render_job_bundle(
 
         # Get tile rendering steps from the tile template
         tile_template = create_tile_rendering_job_template(
-            settings, vrscene_path, output_filename, start_frame, end_frame
+            settings, vrscene_path, output_filename, frames
         )
         tile_steps = tile_template["steps"]
         tile_steps[0]["dependencies"] = [{"dependsOn": "ExportVRScene"}]
@@ -380,8 +379,6 @@ def _create_vrscene_render_job_bundle(
     job_bundle_path: Path,
     settings: VRSceneRenderSubmitterUISettings,
     vrscene_path: str,
-    start_frame: int,
-    end_frame: int,
     queue_parameters: list[dict[str, Any]],
     asset_references: AssetReferences,
     export_job_dependency: bool = False,
@@ -404,19 +401,16 @@ def _create_vrscene_render_job_bundle(
             f"Tile rendering enabled: {settings.vrscene_render_region_columns}x"
             f"{settings.vrscene_render_region_rows}"
         )
+        # Passed verbatim; OpenJD parses the range. See the note on the export
+        # path above.
+        frames = settings.frame_list.strip()
+
         job_template = create_tile_rendering_job_template(
             settings,
             vrscene_path,
             output_filename,
-            start_frame,
-            end_frame,
+            frames,
         )
-
-        # Build parameter values for tile rendering
-        if start_frame == end_frame:
-            frames = str(start_frame)
-        else:
-            frames = f"{start_frame}-{end_frame}"
 
         parameter_values = [
             {"name": "VRayExecutable", "value": vray_executable},
@@ -449,8 +443,7 @@ def _create_vrscene_render_job_bundle(
             vrscene_path,
             settings.output_path,
             output_filename,
-            start_frame,
-            end_frame,
+            settings.frame_list.strip(),
             vray_executable,
         )
 

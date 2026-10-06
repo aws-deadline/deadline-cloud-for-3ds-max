@@ -137,7 +137,23 @@ class VRayStandaloneSettingsWidget(QWidget):
         # Frame List
         job_options_layout.addWidget(QLabel("Frame List:"), row, 0)
         self.frame_list_edit = QLineEdit()
-        self.frame_list_edit.setToolTip("Frame range to render (e.g., 1-100 or 1,5,10-20)")
+        # Documents the syntax the service actually accepts. The value is sent
+        # verbatim as the Frames job parameter and OpenJD turns it into one task
+        # per frame, so these are OpenJD's rules, not ours. Rich text so the
+        # examples line up as a list; Qt renders HTML in tooltips.
+        self.frame_list_edit.setToolTip(
+            "<b>Frames to render.</b> Separate entries with commas."
+            "<ul>"
+            "<li><b>5</b> &mdash; a single frame</li>"
+            "<li><b>1-100</b> &mdash; every frame from 1 to 100</li>"
+            "<li><b>1-100:2</b> &mdash; every 2nd frame: 1, 3, 5, ...</li>"
+            "<li><b>1-3,8,11-12</b> &mdash; gaps are fine: 1, 2, 3, 8, 11, 12</li>"
+            "<li><b>-5-10</b> &mdash; negative frames are allowed</li>"
+            "</ul>"
+            "Entries may be listed in any order, but each frame may only appear "
+            "once, so ranges must not overlap. To count backwards, give a negative "
+            "step: <b>10-1:-1</b>."
+        )
         job_options_layout.addWidget(self.frame_list_edit, row, 1, 1, 3)
         row += 1
 

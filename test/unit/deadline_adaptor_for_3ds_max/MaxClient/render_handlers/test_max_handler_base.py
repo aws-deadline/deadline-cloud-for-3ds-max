@@ -1,6 +1,6 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 from __future__ import annotations
-from unittest.mock import patch, Mock
+from unittest.mock import patch, Mock, PropertyMock
 
 import pytest
 from deadline.max_adaptor.MaxClient.render_handlers import DefaultMaxHandler
@@ -164,6 +164,72 @@ class TestDefaultMaxHandler:
 
         # THEN
         mock_render_element_manager.restore_render_elements.assert_called_once()
+
+    @patch("deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.os.path.isfile")
+    @patch("deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.rt")
+    def test_set_scene_file_loads_with_file_units(
+        self, mock_rt: Mock, mock_isfile: Mock, maxhandlerbase: DefaultMaxHandler
+    ) -> None:
+        """Tests that the scene is loaded with its own units instead of being rescaled to the session's"""
+        # GIVEN
+        mock_isfile.return_value = True
+        maxhandlerbase.map_path = None
+
+        # WHEN
+        maxhandlerbase.set_scene_file({"scene_file": "/path/to/scene.max"})
+
+        # THEN
+        mock_rt.loadMaxFile.assert_called_once_with(
+            "/path/to/scene.max", quiet=True, useFileUnits=True
+        )
+
+    @patch("deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.os.path.isfile")
+    @patch("deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.rt")
+    def test_set_scene_file_logs_system_units(
+        self, mock_rt: Mock, mock_isfile: Mock, maxhandlerbase: DefaultMaxHandler
+    ) -> None:
+        """Tests that system units are logged before and after the scene is loaded"""
+        # GIVEN
+        mock_isfile.return_value = True
+        mock_rt.units.SystemType = "#Inches"
+        mock_rt.units.SystemScale = 1.0
+        maxhandlerbase.map_path = None
+        maxhandlerbase.log_to_console = Mock()  # type: ignore[method-assign]
+
+        # WHEN
+        maxhandlerbase.set_scene_file({"scene_file": "/path/to/scene.max"})
+
+        # THEN
+        messages = [call.args[0] for call in maxhandlerbase.log_to_console.call_args_list]
+        assert "System units before scene load: type=#Inches, scale=1.0" in messages
+        assert "System units after scene load: type=#Inches, scale=1.0" in messages
+
+    @patch("deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.os.path.isfile")
+    @patch("deadline.max_adaptor.MaxClient.render_handlers.default_max_handler.rt")
+    def test_set_scene_file_units_read_failure_does_not_fail_load(
+        self, mock_rt: Mock, mock_isfile: Mock, maxhandlerbase: DefaultMaxHandler
+    ) -> None:
+        """Tests that a failure to read system units is only a warning and does not stop the load"""
+        # GIVEN
+        mock_isfile.return_value = True
+        type(mock_rt.units).SystemType = PropertyMock(side_effect=RuntimeError("no units"))
+        maxhandlerbase.map_path = Mock()
+        maxhandlerbase._apply_path_mapping = Mock()  # type: ignore[method-assign]
+        maxhandlerbase.log_to_console = Mock()  # type: ignore[method-assign]
+
+        # WHEN
+        maxhandlerbase.set_scene_file({"scene_file": "/path/to/scene.max"})
+
+        # THEN
+        mock_rt.loadMaxFile.assert_called_once_with(
+            "/path/to/scene.max", quiet=True, useFileUnits=True
+        )
+        maxhandlerbase._apply_path_mapping.assert_called_once()
+        messages = [call.args[0] for call in maxhandlerbase.log_to_console.call_args_list]
+        assert messages == [
+            "Warning: could not read system units before scene load: no units",
+            "Warning: could not read system units after scene load: no units",
+        ]
 
 
 class TestBatchRender:

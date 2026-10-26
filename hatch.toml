@@ -1,10 +1,14 @@
 [envs.default]
+# Install via hatch's uv ({env:HATCH_UV}) rather than a bare `pip`: when hatch
+# builds the env with uv (e.g. HATCH_ENV_TYPE_VIRTUAL_UV_PATH is set in CI), the
+# env has no pip, so `pip` would resolve to one outside the env and the test
+# requirements would be installed into the wrong interpreter.
 pre-install-commands = [
-  "pip install -r requirements-testing.txt"
+  "{env:HATCH_UV} pip install -r requirements-testing.txt"
 ]
 
 [envs.default.scripts]
-sync = "pip install -r requirements-testing.txt"
+sync = "{env:HATCH_UV} pip install -r requirements-testing.txt"
 test = "pytest --cov-config pyproject.toml {args:test/unit test/test_copyright_headers.py}"
 # Opts in to the tests `test` deselects: they resolve wheels from a package index to check
 # that NATIVE_DEPENDENCIES still name their extension modules the way the merge assumes.
@@ -30,8 +34,8 @@ python = ["3.9", "3.10", "3.11", "3.12"]
 
 [envs.integ]
 pre-install-commands = [
-  "pip install -r requirements-integ-testing.txt",
-  "pip install -r requirements-testing.txt",
+  "{env:HATCH_UV} pip install -r requirements-integ-testing.txt",
+  "{env:HATCH_UV} pip install -r requirements-testing.txt",
 ]
 
 [envs.integ.scripts]
@@ -41,8 +45,8 @@ test_adaptors = "pytest --no-cov {args:test/integ} -vvv --numprocesses=1 -m adap
 
 [envs.integ-ci]
 pre-install-commands = [
-  "pip install -r requirements-integ-testing.txt",
-  "pip install -r requirements-testing.txt",
+  "{env:HATCH_UV} pip install -r requirements-integ-testing.txt",
+  "{env:HATCH_UV} pip install -r requirements-testing.txt",
 ]
 
 [[envs.integ-ci.matrix]]

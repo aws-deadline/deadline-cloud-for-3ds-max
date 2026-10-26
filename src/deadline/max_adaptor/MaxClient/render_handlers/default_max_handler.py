@@ -509,6 +509,9 @@ class DefaultMaxHandler:
         Opens a scene file in 3dsMax in quiet mode. This means that any popups after start up get ignored
         (e.g. missing XRefs) so they don't halt the adaptor.
 
+        The scene is loaded with its authored system units so it is not rescaled when the host's
+        unit scale differs.
+
         :param data: The data given from the Adaptor. Keys expected: ['scene_file']
 
         :raises: FileNotFoundError: If the file provided in the data dictionary does not exist.
@@ -518,11 +521,12 @@ class DefaultMaxHandler:
         if not os.path.isfile(file_path):
             self.log_to_console(f"Error: The scene file '{file_path}' does not exist")
             raise FileNotFoundError(f"Error: The scene file '{file_path}' does not exist")
+        self._log_system_units("before scene load")
         try:
             rt.SetQuietMode(True)
             # Make sure any renderered frames are re-rendered.
             rt.skipRenderedFrames = False
-            rt.loadMaxFile(file_path, quiet=True)
+            rt.loadMaxFile(file_path, quiet=True, useFileUnits=True)
 
             # Apply path mapping after scene load
             if self.map_path is not None:
@@ -531,6 +535,21 @@ class DefaultMaxHandler:
         except Exception:
             self.log_to_console(f"Error: while opening '{file_path}'")
             raise RuntimeError(f"Error: while opening '{file_path}'")
+        self._log_system_units("after scene load")
+
+    def _log_system_units(self, when: str) -> None:
+        """
+        Writes the current system unit type and scale to the session log. This is diagnostic only:
+        a failure to read the units is logged as a warning and never affects the scene load.
+
+        :param when: Short label for where in the load sequence this is logged.
+        """
+        try:
+            self.log_to_console(
+                f"System units {when}: type={rt.units.SystemType}, scale={rt.units.SystemScale}"
+            )
+        except Exception as e:
+            self.log_to_console(f"Warning: could not read system units {when}: {e}")
 
     def _apply_path_mapping(self) -> None:
         """

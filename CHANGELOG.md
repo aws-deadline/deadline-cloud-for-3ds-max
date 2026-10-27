@@ -1,3 +1,9 @@
+## 0.4.3 (2026-10-27)
+
+### Bug Fixes
+* Scenes now load in their own file units instead of being rescaled to the worker's default system units (inches). Before this fix, parameters stored in absolute units, such as Normalize Spline segment length or Path Deform offsets, could change object shapes when a scene authored in other units rendered on Deadline Cloud. Renders now match interactive 3ds Max, and system units are written to the log. (#306)
+* Fixed V-Ray tile rendering jobs where every MergeRegions task failed with "Missing tile" and no merged frame was produced. V-Ray added its own frame number to tile filenames, so the merge step couldn't find the tiles. It now finds them. (#293)
+* When V-Ray, Redshift or Arnold fails to check out a license, the task now fails with an error that names the renderer. Before, the task succeeded without writing any output. Arnold license failures are detected from its watermark message. (#298)
 ## 0.4.2 (2026-09-23)
 
 ### Bug Fixes

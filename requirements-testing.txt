@@ -15,6 +15,6 @@ types-pyyaml == 6.*
 # relying on pytest/mypy keeping their transitive pins.
 tomli == 2.*; python_version < "3.11"
 packaging == 26.*
-hatchling == 1.27.*
+hatchling == 1.33.*
 hatch-vcs == 0.5.*
 editables == 0.6

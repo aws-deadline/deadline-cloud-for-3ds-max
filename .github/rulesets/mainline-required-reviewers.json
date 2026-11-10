@@ -28,9 +28,9 @@
           {
             "minimum_approvals": 2,
             "file_patterns": [
-              "*",
-              "!/.github/**",
-              "!/*.md"
+              "/src/**",
+              "/test/**",
+              "/install_files/**"
             ],
             "reviewer": {
               "id": 19835138,

@@ -125,6 +125,11 @@ VRSCENE_EXPORT_ANIMATION_MODES = [
     ["File Per Frame (Incremental)", 3],
 ]
 
+# Maximum length the service accepts for a job-parameter string value. Shared by
+# every submitter path that puts artist-entered text into a job parameter, so a
+# too-long value is rejected in the dialog rather than at submit time.
+JOB_PARAMETER_MAX_STRING_LENGTH: int = 1024
+
 VRSCENE_SUBMITTER_SETTINGS_FILE_EXT = ".deadline_vrscene_settings.json"
 
 # 3dsmaxcmd command-line render workflow sticky settings

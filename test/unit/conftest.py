@@ -85,6 +85,16 @@ def pytest_configure(config):
         mock_utilities_module.job_template_utils = job_template_utils
         sys.modules["utilities.job_template_utils"] = job_template_utils
 
+        # Same reasoning for vrscene_job_submission: it is pure path/string logic
+        # with no pymxs or Qt dependency, and vrscene_utils reaches into it for
+        # frame-range validation via "from utilities.vrscene_job_submission
+        # import ...". Registering the real module keeps that validation under
+        # test instead of silently resolving to a MagicMock that returns no errors.
+        from deadline.max_submitter.utilities import vrscene_job_submission
+
+        mock_utilities_module.vrscene_job_submission = vrscene_job_submission
+        sys.modules["utilities.vrscene_job_submission"] = vrscene_job_submission
+
     # Now we can import data_classes (depends on data_const)
     if "data_classes" not in sys.modules:
         from deadline.max_submitter import data_classes

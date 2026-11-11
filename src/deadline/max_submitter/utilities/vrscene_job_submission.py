@@ -8,6 +8,12 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+# Shipped in the submitter bundle (see scripts/deps_bundle.py). Imported at module
+# scope deliberately: if it is missing, the frame list cannot be checked against
+# the rules the service applies, and failing loudly here is better than validating
+# by some approximation of them.
+from openjd.model import IntRangeExpr
+
 # These generic helpers now live in a renderer-agnostic module. They are
 # re-exported here under their original private names so existing V-Ray call
 # sites keep working unchanged.
@@ -86,13 +92,17 @@ def create_tile_rendering_job_template(
     settings,
     vrscene_path: str,
     output_filename: str,
-    start_frame: int,
-    end_frame: int,
+    frames: str,
 ) -> Dict[str, Any]:
     """
     Create job template with tile rendering steps. Loaded from YAML.
 
     Steps: RenderRegions (N×M tasks/frame) → MergeRegions (1 task/frame).
+
+    ``frames`` is the OpenJD ``Frames`` value, handed to
+    ``range: '{{Param.Frames}}'`` verbatim. It is the artist's own text with
+    only the ends trimmed, checked by :func:`validate_frame_string` before
+    submission, and may be non-contiguous, e.g. ``"1-3,8,11-12"``.
     """
     template = _load_job_template("vray_tile_render_job_template.yaml")
     template["name"] = f"{settings.name} - VRay Tile Render"
@@ -102,11 +112,6 @@ def create_tile_rendering_job_template(
     _inject_embedded_script(template, "INJECT_TILE_MERGE_SCRIPT", _get_tile_merge_script())
 
     # Set dynamic parameter defaults from settings
-    if start_frame == end_frame:
-        frames = str(start_frame)
-    else:
-        frames = f"{start_frame}-{end_frame}"
-
     defaults = {
         "OutputFileName": output_filename,
         "Frames": frames,
@@ -138,17 +143,16 @@ def create_vrscene_render_job_parameters(
     vrscene_path: str,
     output_path: str,
     output_filename: str,
-    start_frame: int,
-    end_frame: int,
+    frames: str,
     vray_executable: str,
 ) -> List[Dict[str, Any]]:
-    """Create parameter values for vrscene render job."""
-    # Determine frame range string
-    if start_frame == end_frame:
-        frames = str(start_frame)
-    else:
-        frames = f"{start_frame}-{end_frame}"
+    """Create parameter values for vrscene render job.
 
+    ``frames`` is the OpenJD ``Frames`` value, handed to
+    ``range: '{{Param.Frames}}'`` verbatim. It is the artist's own text with
+    only the ends trimmed, checked by :func:`validate_frame_string` before
+    submission, and may be non-contiguous, e.g. ``"1-3,8,11-12"``.
+    """
     parameters = [
         {"name": "VRayExecutable", "value": vray_executable},
         {"name": "VRSceneOutputPath", "value": vrscene_path},
@@ -184,20 +188,69 @@ def create_export_job_parameters(
     return parameters
 
 
+def validate_frame_string(frame_string: str) -> List[str]:
+    """Check a frame string with the parser that will judge it, and report plainly.
+
+    The frame list is passed to the service verbatim as the ``Frames`` job
+    parameter and consumed as ``range: '{{Param.Frames}}'``, so OpenJD's range
+    expression is what decides whether it is usable. Asking that parser directly
+    is the only way to be certain the answer matches: a second implementation
+    here could only ever approximate it, and every gap would show up as a
+    submit-time rejection of a value the artist was told was fine.
+
+    Only the wording is ours. OpenJD reports an overlap or a duplicate as
+    "Failed to create IntRangeExpr", which is no use to an artist, so its text is
+    quoted after a sentence that names the rules instead.
+
+    :param frame_string: frame specification
+    :return: a list of human-readable problems; empty when the value is usable
+    """
+    if not frame_string or not frame_string.strip():
+        return ["Frame range cannot be empty"]
+
+    value = frame_string.strip()
+    try:
+        IntRangeExpr.from_str(value)
+    except Exception as exc:
+        return [
+            f"'{value}' is not a frame range the service accepts. Use plain digits: "
+            "a frame (5), a range (1-10), or a range with a step (1-10:2). Ranges may "
+            "not overlap and each frame may be listed only once, and a descending "
+            "range needs a negative step (10-1:-1). "
+            f"The parser reported: {exc}"
+        ]
+    return []
+
+
 def get_frame_range_from_string(frame_string: str) -> Tuple[int, int]:
-    """Parse frame range string (e.g. "1-100") and return (start, end)."""
-    # Handle simple cases
-    if "-" in frame_string:
-        parts = frame_string.split("-")
-        start = int(parts[0].split(",")[-1].strip())
-        end = int(parts[-1].split(",")[0].strip())
-        return start, end
-    elif "," in frame_string:
-        frames = [int(f.strip()) for f in frame_string.split(",")]
-        return min(frames), max(frames)
-    else:
-        frame = int(frame_string.strip())
-        return frame, frame
+    """Parse a frame string and return the lowest and highest frame in it.
+
+    Handles non-contiguous input, e.g. "1-10,20-30" -> (1, 30) and "1-3,6,8" ->
+    (1, 8). Used for the vrscene export, which needs a first and last frame
+    rather than the exact set; the exact set never matters on this path, because
+    the frame string goes to the service verbatim as the ``Frames`` job parameter
+    and OpenJD fans it out into tasks.
+
+    ``start`` and ``end`` are taken from the expression's own properties, which
+    read the first and last of its sorted, direction-normalised groups. Indexing
+    the expression instead would be wrong as well as slower: groups sort by their
+    low end but a descending group still iterates high to low, so for
+    "1-5,30-20:-1" the last element is 20 while the highest frame is 30 -- the
+    export would then miss every frame the render job still has a task for.
+
+    The properties are also O(1). This runs on the raw frame-list field, so a
+    typo such as an extra zero must not expand: "1-1000000000" is eleven
+    characters and a billion frames.
+
+    :param frame_string: frame specification
+    :return: (lowest, highest) of the requested frames
+    :raises ValueError: if the string is empty or OpenJD cannot parse it
+    """
+    if not frame_string or not frame_string.strip():
+        raise ValueError("Frame range cannot be empty")
+
+    expression = IntRangeExpr.from_str(frame_string.strip())
+    return expression.start, expression.end
 
 
 def create_export_job_template() -> Dict[str, Any]:

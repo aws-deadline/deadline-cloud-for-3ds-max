@@ -10,6 +10,8 @@ from typing import List, Tuple
 
 from pymxs import runtime as rt
 
+from data_const import JOB_PARAMETER_MAX_STRING_LENGTH
+
 _logger = logging.getLogger(__name__)
 
 
@@ -119,9 +121,27 @@ def validate_vrscene_export_settings(settings) -> List[str]:
             except Exception as e:
                 errors.append(f"Cannot write to output directory: {output_dir} - {str(e)}")
 
-    # Validate frame range
+    # Validate frame range. The frame list is sent verbatim as the Frames job
+    # parameter and OpenJD turns it into one task per frame, so anything OpenJD
+    # would reject is reported here instead -- before the job bundle is built and
+    # while the artist is still looking at the field they typed it into.
+    from utilities.vrscene_job_submission import validate_frame_string
+
     if not settings.frame_list or not settings.frame_list.strip():
         errors.append("Frame range cannot be empty")
+    elif len(settings.frame_list) > JOB_PARAMETER_MAX_STRING_LENGTH:
+        # The frame list *is* the Frames job parameter, so this is the length the
+        # service will see. A sparse selection that cannot be written as ranges
+        # grows with the frame count.
+        errors.append(
+            f"The frame range is too long ({len(settings.frame_list)} characters). "
+            f"The maximum allowed is {JOB_PARAMETER_MAX_STRING_LENGTH}."
+        )
+    else:
+        errors.extend(
+            f"Frame range '{settings.frame_list.strip()}': {problem}"
+            for problem in validate_frame_string(settings.frame_list)
+        )
 
     # Validate region settings
     if settings.vrscene_render_region_columns < 1 or settings.vrscene_render_region_columns > 10:

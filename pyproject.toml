@@ -37,6 +37,18 @@ dependencies = [
     # declare no `console` extra.
     "deadline >= 0.60.4,< 0.61",
     "openjd-adaptor-runtime == 0.9.*",
+    # The submitter asks this parser to confirm the frame list, so the artist is told
+    # about a bad value before submitting rather than by the service afterwards.
+    # Pinned for packaging reasons rather than behaviour: 0.9.0 is the last release with
+    # a pure-Python wheel (0.1 MB, against ~5 MB for the compiled builds from 0.10.0 on,
+    # which the submitter bundle would carry). IntRangeExpr, the only API used here,
+    # gives identical verdicts through 0.12, so this is not a behavioural floor.
+    # The cost is on openjd-cli == 0.7.* in requirements-integ-testing.txt: that is a
+    # range, so pip does not fail, it backtracks. Pinning 0.9 here resolves the integ
+    # environment to openjd-cli 0.7.5 and openjd-sessions 0.10.9, where leaving
+    # openjd-model free would give 0.7.7 / 0.12.1. Raising this pin means accepting the
+    # larger bundle; keeping it means the integ tools stay a couple of releases back.
+    "openjd-model == 0.9.*",
 ]
 
 [project.urls]

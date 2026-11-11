@@ -10,14 +10,24 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
-SUPPORTED_PYTHON_VERSIONS = ["3.9", "3.10", "3.11", "3.12"]
+# 3.13 covers 3ds Max 2027. Without it the bundle carries no loadable
+# `_pydantic_core` for that interpreter, so openjd-model cannot be imported there and
+# V-Ray Standalone submission raises ImportError the moment Submit is pressed. Nothing
+# on the tab-construction path imports openjd -- ui/vray_standalone_tab.py pulls in only
+# data_const, utilities.vrscene_utils and qtpy, and vrscene_utils reaches
+# validate_frame_string through a function-local import -- so the tab builds, accepts a
+# full configuration, and only then fails, with the artist's work already done.
+SUPPORTED_PYTHON_VERSIONS = ["3.9", "3.10", "3.11", "3.12", "3.13"]
 SUPPORTED_PLATFORMS = ["win_amd64"]
 # Packages with compiled extension modules, fetched once per supported Python version so the
 # bundle carries a loadable artifact for each interpreter. Resolving these in the base
 # environment alone would ship only what the build host's interpreter produced. awscrt is
 # not uniformly abi3 (3.9 and 3.10 get version-specific artifacts, 3.11+ abi3), and pyyaml's
 # `_yaml` is version-specific and fails soft -- it falls back to its pure-Python parser.
-NATIVE_DEPENDENCIES = ["xxhash", "psutil", "awscrt", "pyyaml"]
+# pydantic-core arrives with openjd-model (via pydantic) and publishes no abi3 wheel, so
+# every supported interpreter needs its own `_pydantic_core.cp3XX-win_amd64.pyd`. Those
+# names carry the interpreter tag, so all four coexist in the flat bundle.
+NATIVE_DEPENDENCIES = ["xxhash", "psutil", "awscrt", "pyyaml", "pydantic-core"]
 
 
 def _get_project_dict() -> dict[str, Any]:
@@ -44,15 +54,31 @@ def _get_dependencies(pyproject_dict: dict[str, Any]) -> list[str]:
         raise Exception("pyproject.toml is missing dependencies section")
 
     dependencies = pyproject_dict["project"]["dependencies"]
-    deps_noopenjd = filter(lambda dep: not dep.startswith("openjd"), dependencies)
-    return list(map(lambda dep: dep.replace(" ", ""), deps_noopenjd))
+    # The adaptor runtime is worker-side only, so it is kept out of the submitter bundle.
+    # Excluded by exact name rather than by an "openjd" prefix: the prefix also caught
+    # openjd-model, which the submitter does need, and dropped it silently -- the bundle
+    # built fine and 3ds Max then raised "No module named 'openjd'" at runtime.
+    excluded = {"openjd-adaptor-runtime"}
+    kept = [dep for dep in dependencies if _requirement_name(dep).lower() not in excluded]
+    return list(map(lambda dep: dep.replace(" ", ""), kept))
+
+
+def _requirement_name(requirement: str) -> str:
+    """The distribution name of a requirement string, without extras or specifier."""
+    match = re.match(r"\s*(?P<name>[A-Za-z0-9._-]+)", requirement)
+    if not match:
+        raise Exception(f"could not read a package name from requirement {requirement!r}")
+    return match.group("name")
 
 
 def _get_package_version_regex(package: str) -> re.Pattern:
-    # Case-insensitive because `pip list` prints the distribution's casing, not the
-    # requirement's: `pyyaml` is reported as `PyYAML`. The required whitespace keeps a prefix
-    # sibling like `pyyaml-env-tag` from matching.
-    return re.compile(rf"^{re.escape(package)}\s+(\S+)\s*$", re.IGNORECASE)
+    # `pip list` prints the distribution's own spelling rather than the requirement's, and
+    # it can differ in two ways: case (`pyyaml` is reported as `PyYAML`) and separator
+    # (`pydantic-core` is reported as `pydantic_core`). Both are treated as equivalent,
+    # which is what packaging name normalisation does. The required whitespace keeps a
+    # prefix sibling like `pyyaml-env-tag` from matching.
+    name = "".join("[-_]" if character in "-_" else re.escape(character) for character in package)
+    return re.compile(rf"^{name}\s+(\S+)\s*$", re.IGNORECASE)
 
 
 def _get_package_version(package: str, install_path: Path) -> str:

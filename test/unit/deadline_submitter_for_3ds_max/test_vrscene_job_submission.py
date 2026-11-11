@@ -7,6 +7,7 @@ import pytest
 from deadline.max_submitter.utilities.vrscene_job_submission import (
     calculate_region_coordinates,
     get_frame_range_from_string,
+    validate_frame_string,
 )
 
 
@@ -128,6 +129,180 @@ class TestGetFrameRangeFromString:
     def test_large_range(self):
         assert get_frame_range_from_string("0-9999") == (0, 9999)
 
+    def test_non_contiguous_returns_bounding_range(self):
+        assert get_frame_range_from_string("1-10,20-30") == (1, 30)
+
+    def test_descending_range_is_rejected_like_openjd(self):
+        """OpenJD requires a negative step to count down, so "5-1" is an error.
+
+        This is never reached with bad input in practice:
+        validate_vrscene_export_settings runs first and refuses the submission
+        with a message naming the problem. Raising here rather than guessing the
+        artist meant "1-5" keeps this function honest about what it was given.
+        """
+        with pytest.raises(ValueError, match="negative step"):
+            get_frame_range_from_string("5-1")
+
+    def test_descending_range_with_negative_step_is_bounded(self):
+        assert get_frame_range_from_string("10-1:-1") == (1, 10)
+
+    @pytest.mark.parametrize(
+        "frame_string, expected",
+        [
+            ("1-5,30-20:-1", (1, 30)),
+            ("10-1:-1,20-30", (1, 30)),
+            ("1-5,20-10:-5", (1, 20)),
+            ("30-20:-1,1-5", (1, 30)),
+        ],
+    )
+    def test_descending_group_beside_another_group(self, frame_string, expected):
+        """A descending group iterates high to low, so position is not order.
+
+        OpenJD sorts groups by their low end but leaves each group's direction
+        as written, so the last element of the expression can sit in the middle
+        of the requested frames. "1-5,30-20:-1" ends on 20 while the highest
+        frame is 30.
+
+        These bounds are the vrscene export span, not a display value: reporting
+        (1, 20) there would leave the render job with tasks for frames 21-30
+        running against a .vrscene that was never exported for them. The field's
+        tooltip advertises negative steps, so this input is expected rather than
+        exotic.
+        """
+        assert get_frame_range_from_string(frame_string) == expected
+
+    def test_bounds_match_the_frames_openjd_will_render(self):
+        """The bounds must agree with the real expansion, whatever the shape."""
+        from openjd.model import IntRangeExpr
+
+        for frame_string in (
+            "1-5,30-20:-1",
+            "10-1:-1,20-30",
+            "1-4,8-11,23",
+            "1-10:2",
+            "10-1:-2",
+            "-5--1",
+            "1-5,20-10:-5",
+        ):
+            frames = list(IntRangeExpr.from_str(frame_string))
+            assert get_frame_range_from_string(frame_string) == (
+                min(frames),
+                max(frames),
+            ), f"{frame_string!r}: bounds disagree with the expanded frames"
+
+    def test_step_range_bounds_stop_at_the_last_frame_the_step_reaches(self):
+        """ "1-100:5" renders 1, 6, 11 ... 96, so 96 is the highest frame, not 100.
+
+        The bound feeds the vrscene export, so reporting 100 would export four
+        frames that no task ever renders.
+        """
+        assert get_frame_range_from_string("1-100:5") == (1, 96)
+
+    def test_negative_frames(self):
+        assert get_frame_range_from_string("-10--5") == (-10, -5)
+
+    def test_negative_and_positive_frames(self):
+        assert get_frame_range_from_string("-5,0,5") == (-5, 5)
+
+    def test_huge_span_is_not_expanded(self):
+        """Bounds must be read from the endpoints, never by walking the span.
+
+        This is called on the raw frame-list field before validation, so a typo
+        such as an extra zero must not allocate the whole range in memory.
+        Returning the right answer for a billion-frame span is the assertion:
+        expanding it would exhaust memory rather than merely be slow, so no
+        timing check is needed (and a wall-clock threshold would be flaky on a
+        loaded CI runner).
+        """
+        assert get_frame_range_from_string("1-1000000000") == (1, 1000000000)
+
+    def test_huge_non_contiguous_span_is_not_expanded(self):
+        assert get_frame_range_from_string("1-500000000,900000000-1000000000") == (1, 1000000000)
+
+    def test_mixed_singles_and_ranges_bounding(self):
+        assert get_frame_range_from_string("1-5,50-55,100") == (1, 100)
+
+
+class TestValidateFrameString:
+    """Our validation must agree with OpenJD, which is what judges the value.
+
+    The frame list is sent to the service verbatim as the Frames job parameter,
+    so OpenJD's parser has the final say. These tests pin that we accept exactly
+    what it accepts: being stricter would block legitimate jobs, being looser
+    would let the service reject a submission we said was fine.
+    """
+
+    ACCEPTED = [
+        "1",
+        "0",
+        "-5",
+        "1-10",
+        "1-1",
+        "1,2,3",
+        "1, 3, 5",
+        "  1-5  ",
+        "1-3,6,8",
+        "1-10,12-17,21",
+        "21,1-3",
+        "8,6,1-3",
+        "1-10:2",
+        "1-10:3",
+        "10-1:-2",
+        "1-10:2,11-20:2",
+        "-5--1",
+    ]
+
+    REJECTED = [
+        "5-1",
+        "1-5,3-7",
+        "5,5,5",
+        "1-5,5-9",
+        "1-5,5",
+        "1-10:2,2-10:2",
+        "1-10:0",
+        "",
+        "abc",
+        "1-",
+        "1..5",
+        "1;2",
+        "1-2-3",
+        # Non-ASCII digits, which arrive by paste from a localised app or a
+        # spreadsheet. Python's \d matches them and int() converts them, so our
+        # own rules read these as 12 and 1-5; OpenJD refuses them. Only reported
+        # because OpenJD gets the final say on the value.
+        "\u0661\u0662",
+        "\uff11-\uff15",
+    ]
+
+    @pytest.mark.parametrize("frame_string", ACCEPTED)
+    def test_accepted(self, frame_string):
+        assert validate_frame_string(frame_string) == []
+
+    @pytest.mark.parametrize("frame_string", REJECTED)
+    def test_rejected_with_a_message(self, frame_string):
+        problems = validate_frame_string(frame_string)
+        assert problems, f"expected {frame_string!r} to be reported"
+        assert all(problem.strip() for problem in problems)
+
+    def test_overlap_message_names_both_ranges(self):
+        problems = validate_frame_string("1-5,3-7")
+        assert len(problems) == 1
+        assert "1-5" in problems[0] and "3-7" in problems[0]
+
+    def test_duplicate_single_frame_is_reported(self):
+        problems = validate_frame_string("5,5")
+        assert problems and "5" in problems[0]
+
+    def test_overlap_is_found_regardless_of_written_order(self):
+        assert validate_frame_string("3-7,1-5") != []
+
+    def test_gaps_are_not_overlaps(self):
+        assert validate_frame_string("1-3,5-7,9") == []
+
+    def test_adjacent_ranges_are_allowed(self):
+        """1-5 and 6-10 touch but do not share a frame."""
+        assert validate_frame_string("1-5,6-10") == []
+
 
 class TestCreateVrsceneRenderJobParameters:
     """Tests for create_vrscene_render_job_parameters."""
@@ -148,7 +323,7 @@ class TestCreateVrsceneRenderJobParameters:
 
         settings = self._make_settings(render_engine=0)
         params = create_vrscene_render_job_parameters(
-            settings, "/scene.vrscene", "/output", "scene.png", 1, 1, "vray.exe"
+            settings, "/scene.vrscene", "/output", "scene.png", "1", "vray.exe"
         )
         names = [p["name"] for p in params]
         assert "RenderEngine" in names
@@ -162,7 +337,7 @@ class TestCreateVrsceneRenderJobParameters:
 
         settings = self._make_settings(render_engine=5)
         params = create_vrscene_render_job_parameters(
-            settings, "/scene.vrscene", "/output", "scene.png", 1, 1, "vray.exe"
+            settings, "/scene.vrscene", "/output", "scene.png", "1", "vray.exe"
         )
         render_engine_param = next(p for p in params if p["name"] == "RenderEngine")
         assert render_engine_param["value"] == "5"
@@ -174,7 +349,7 @@ class TestCreateVrsceneRenderJobParameters:
 
         settings = self._make_settings(render_engine=7)
         params = create_vrscene_render_job_parameters(
-            settings, "/scene.vrscene", "/output", "scene.png", 1, 1, "vray.exe"
+            settings, "/scene.vrscene", "/output", "scene.png", "1", "vray.exe"
         )
         render_engine_param = next(p for p in params if p["name"] == "RenderEngine")
         assert render_engine_param["value"] == "7"
@@ -186,7 +361,7 @@ class TestCreateVrsceneRenderJobParameters:
 
         settings = self._make_settings()
         params = create_vrscene_render_job_parameters(
-            settings, "/scene.vrscene", "/output", "scene.tiff", 1, 1, "vray.exe"
+            settings, "/scene.vrscene", "/output", "scene.tiff", "1", "vray.exe"
         )
         output_param = next(p for p in params if p["name"] == "OutputFileName")
         assert output_param["value"] == "scene.tiff"
@@ -198,7 +373,7 @@ class TestCreateVrsceneRenderJobParameters:
 
         settings = self._make_settings()
         params = create_vrscene_render_job_parameters(
-            settings, "/scene.vrscene", "/output", "scene.exr", 1, 1, "vray.exe"
+            settings, "/scene.vrscene", "/output", "scene.exr", "1", "vray.exe"
         )
         output_param = next(p for p in params if p["name"] == "OutputFileName")
         assert output_param["value"] == "scene.exr"
@@ -230,7 +405,7 @@ class TestRTEngineParameters:
 
         settings = self._make_settings(rt_timeout=5.0)
         params = create_vrscene_render_job_parameters(
-            settings, "/scene.vrscene", "/output", "scene.png", 1, 1, "vray.exe"
+            settings, "/scene.vrscene", "/output", "scene.png", "1", "vray.exe"
         )
         assert self._get_param(params, "RTTimeout")["value"] == "5.0"
 
@@ -241,7 +416,7 @@ class TestRTEngineParameters:
 
         settings = self._make_settings(rt_noise=0.005)
         params = create_vrscene_render_job_parameters(
-            settings, "/scene.vrscene", "/output", "scene.png", 1, 1, "vray.exe"
+            settings, "/scene.vrscene", "/output", "scene.png", "1", "vray.exe"
         )
         assert self._get_param(params, "RTNoise")["value"] == "0.005"
 
@@ -252,7 +427,7 @@ class TestRTEngineParameters:
 
         settings = self._make_settings(rt_sample_level=1000)
         params = create_vrscene_render_job_parameters(
-            settings, "/scene.vrscene", "/output", "scene.png", 1, 1, "vray.exe"
+            settings, "/scene.vrscene", "/output", "scene.png", "1", "vray.exe"
         )
         assert self._get_param(params, "RTSampleLevel")["value"] == "1000"
 
@@ -263,7 +438,7 @@ class TestRTEngineParameters:
 
         settings = self._make_settings()
         params = create_vrscene_render_job_parameters(
-            settings, "/scene.vrscene", "/output", "scene.png", 1, 1, "vray.exe"
+            settings, "/scene.vrscene", "/output", "scene.png", "1", "vray.exe"
         )
         assert self._get_param(params, "RTTimeout")["value"] == "0.0"
         assert self._get_param(params, "RTNoise")["value"] == "0.001"

@@ -33,9 +33,11 @@ classifiers = [
 # 2026 - 3.11: https://help.autodesk.com/view/MAXDEV/2026/ENU/?guid=MAXDEV_Python_what_s_new_in_3ds_max_python_api_html
 
 dependencies = [
-    # 0.60.4 floor: earlier 0.60.x have no AWS_CONSOLE_LOGIN credentials source and
+    # 0.60.12 floor: it lists farms reached only through a queue or fleet
+    # membership (ListMemberships); older releases show those users an empty farm list.
+    # Console sign-in also needs 0.60.4+: earlier 0.60.x have no AWS_CONSOLE_LOGIN credentials source and
     # declare no `console` extra.
-    "deadline >= 0.60.4,< 0.61",
+    "deadline >= 0.60.12,< 0.61",
     "openjd-adaptor-runtime == 0.9.*",
 ]
 
